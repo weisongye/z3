@@ -19,14 +19,7 @@ Revision History:
 #include<iostream>
 #include<time.h>
 #include<signal.h>
-#include"memory_manager.h"
-#include"trace.h"
-#include"debug.h"
-#include"util.h"
-#include"warning.h"
 #include"version.h"
-#include"z3_exception.h"
-#include"error_codes.h"
 #include"timeout.h"
 #include"cmd_context.h"
 #include"smt2parser.h"
