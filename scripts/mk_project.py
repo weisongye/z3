@@ -64,7 +64,8 @@ def init_project_def():
             includes2install=['z3.h', 'z3_api.h', 'z3_v1.h', 'z3_macros.h'])
     add_exe('shell', ['api', 'sat', 'extra_cmds'], exe_name='z3')
     add_exe('test', ['api', 'fuzzing'], exe_name='test-z3', install=False)
-    add_extra_exe('mcsat_shell', ['cmd_context', 'smt2parser'], 'mcsat/shell', exe_name='mcs') 
+    add_lib('mcsat', ['solver'])
+    add_extra_exe('mcsat_shell', ['cmd_context', 'smt2parser', 'mcsat'], 'mcsat/shell', exe_name='mcs') 
     API_files = ['z3_api.h']
     add_dll('api_dll', ['api', 'sat', 'extra_cmds'], 'api/dll', 
             reexports=['api'], 

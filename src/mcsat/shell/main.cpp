@@ -23,6 +23,7 @@ Revision History:
 #include"timeout.h"
 #include"cmd_context.h"
 #include"smt2parser.h"
+#include"mcsat_solver.h"
 
 char const *         g_input_file          = 0;
 bool                 g_display_statistics  = false;
@@ -162,8 +163,8 @@ unsigned read_smtlib2_commands(char const * file_name) {
     signal(SIGINT, on_ctrl_c);
     cmd_context ctx;
 
-    // solver * s = mk_smt_strategic_solver(ctx);
-    // ctx.set_solver(s);
+    solver * s = alloc(mcsat::solver);
+    ctx.set_solver(s);
 
     g_cmd_context = &ctx;
     register_on_timeout_proc(on_timeout);
