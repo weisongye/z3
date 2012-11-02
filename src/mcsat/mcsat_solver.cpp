@@ -17,12 +17,16 @@ Revision History:
 
 --*/
 #include"mcsat_solver.h"
+#include"mcsat_preprocessor.h"
+#include"mcsat_kernel.h"
 
 namespace mcsat {
 
     struct solver::imp {
         ast_manager & m_manager;
         params_ref    m_params;
+        // preprocessor  m_preprocessor;
+        // kernel        m_kernel;
 
         imp(ast_manager & m):
             m_manager(m) {

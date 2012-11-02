@@ -381,8 +381,8 @@ struct assertion_stack::imp {
     void convert(model_ref & m) {
     }
     
-    void display(std::ostream & out) const {
-        out << "(assertion-stack";
+    void display(std::ostream & out, char const * header) const {
+        out << "(" << header;
         unsigned sz = size();
         for (unsigned i = 0; i < sz; i++) {
             out << "\n  ";
@@ -513,6 +513,6 @@ void assertion_stack::convert(model_ref & m) {
     m_imp->convert(m);
 }
 
-void assertion_stack::display(std::ostream & out) const {
-    m_imp->display(out);
+void assertion_stack::display(std::ostream & out, char const * header) const {
+    m_imp->display(out, header);
 }

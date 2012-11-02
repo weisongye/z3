@@ -82,7 +82,7 @@ public:
     void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
 
     void convert(model_ref & m);
-    void display(std::ostream & out) const;
+    void display(std::ostream & out, char const * header = "assertion-stack") const;
 };
 
 #endif

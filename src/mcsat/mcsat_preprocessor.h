@@ -1,0 +1,74 @@
+/*++
+Copyright (c) 2012 Microsoft Corporation
+
+Module Name:
+
+    mcsat_preprocessor.h
+
+Abstract:
+
+    MCSAT preprocessor
+
+Author:
+
+    Leonardo de Moura (leonardo) 2012-11-01.
+
+Revision History:
+
+--*/
+#ifndef _MCSAT_PREPROCESSOR_H_
+#define _MCSAT_PREPROCESSOR_H_
+
+#include"ast.h"
+#include"model.h"
+
+class tactic;
+
+namespace mcsat {
+
+    /**
+       \brief MCSAT preprocessor can be customized with tactics that
+       can process assertion_stacks.
+    */
+    class preprocessor {
+        struct imp;
+        imp * m_imp;
+    public:
+        preprocessor(ast_manager & m, bool proofs_enabled, bool models_enabled, bool core_enabled);
+        ~preprocessor();
+        
+        ast_manager & m() const;
+
+        /**
+           \brief Add a tactic to be applied before required transformations (e.g., nnf)
+        */
+        void add_before_tactic(tactic * t);
+        /**
+           \brief Add a tactic to be applied after required transformations.
+        */
+        void add_after_tactic(tactic * t);
+
+        void assert_expr(expr * f, proof * pr, expr_dependency * d);
+        void assert_expr(expr * f);
+        
+        void commit();
+        void push();
+        void pop(unsigned num_scopes);
+
+        void set_cancel(bool f);
+        
+        unsigned size() const;
+        expr * form(unsigned i) const;
+        proof * pr(unsigned i) const;
+        expr_dependency * dep(unsigned i) const;
+        
+        bool is_well_sorted() const;
+        
+        void convert(model_ref & m);
+
+        void display(std::ostream & out) const;
+    };
+
+};
+
+#endif 
