@@ -310,7 +310,7 @@ bool expr_context_simplifier::is_false(expr* e) const {
 //  it occurs in the context (on the path) where it was inserted.
 // 
 
-expr_strong_context_simplifier::expr_strong_context_simplifier(front_end_params& p, ast_manager& m): 
+expr_strong_context_simplifier::expr_strong_context_simplifier(smt_params& p, ast_manager& m): 
     m_manager(m), m_params(p), m_arith(m), m_id(0), m_fn(0,m), m_solver(m, p) {
     sort* i_sort = m_arith.mk_int();
     m_fn = m.mk_func_decl(symbol(0xbeef101), i_sort, m.mk_bool_sort());
@@ -329,7 +329,6 @@ void expr_strong_context_simplifier::simplify_basic(expr* fml, expr_ref& result)
         result = fml;
         return;
     }                                                
-    flet<bool> fl1(m_params.m_strong_context_simplifier, false);
 
     ptr_vector<expr> todo;
     ptr_vector<expr> names;
@@ -480,7 +479,6 @@ void expr_strong_context_simplifier::simplify_model_based(expr* fml, expr_ref& r
         result = fml;
         return;
     }                                                
-    flet<bool> fl1(m_params.m_strong_context_simplifier, false);
 
     ptr_vector<expr> todo;
     ptr_vector<expr> names;

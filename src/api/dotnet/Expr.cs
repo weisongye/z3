@@ -48,9 +48,11 @@ namespace Microsoft.Z3
         /// </summary>
         public FuncDecl FuncDecl
         {
-            get {
+            get
+            {
                 Contract.Ensures(Contract.Result<FuncDecl>() != null);
-                return new FuncDecl(Context, Native.Z3_get_app_decl(Context.nCtx, NativeObject)); }
+                return new FuncDecl(Context, Native.Z3_get_app_decl(Context.nCtx, NativeObject));
+            }
         }
 
         /// <summary>
@@ -74,7 +76,7 @@ namespace Microsoft.Z3
         /// The arguments of the expression.
         /// </summary>        
         public Expr[] Args
-        {            
+        {
             get
             {
                 Contract.Ensures(Contract.Result<Expr[]>() != null);
@@ -176,7 +178,7 @@ namespace Microsoft.Z3
         public override string ToString()
         {
             return base.ToString();
-        }        
+        }
 
         /// <summary>
         /// Indicates whether the term is a numeral
@@ -200,9 +202,11 @@ namespace Microsoft.Z3
         /// </summary>
         public Sort Sort
         {
-            get {
+            get
+            {
                 Contract.Ensures(Contract.Result<Sort>() != null);
-                return Sort.Create(Context, Native.Z3_get_sort(Context.nCtx, NativeObject)); }
+                return Sort.Create(Context, Native.Z3_get_sort(Context.nCtx, NativeObject));
+            }
         }
 
         #region Constants
@@ -243,7 +247,7 @@ namespace Microsoft.Z3
         {
             get { return Native.Z3_is_algebraic_number(Context.nCtx, NativeObject) != 0; }
         }
-        #endregion        
+        #endregion
 
         #region Term Kind Tests
 
@@ -429,7 +433,8 @@ namespace Microsoft.Z3
             get
             {
                 return (Native.Z3_is_app(Context.nCtx, NativeObject) != 0 &&
-                        (Z3_sort_kind)Native.Z3_get_sort_kind(Context.nCtx, Native.Z3_get_sort(Context.nCtx, NativeObject)) == Z3_sort_kind.Z3_ARRAY_SORT);
+                        (Z3_sort_kind)Native.Z3_get_sort_kind(Context.nCtx, Native.Z3_get_sort(Context.nCtx, NativeObject)) 
+                        == Z3_sort_kind.Z3_ARRAY_SORT);
             }
         }
 
@@ -1304,7 +1309,8 @@ namespace Microsoft.Z3
             get
             {
                 return (Native.Z3_is_app(Context.nCtx, NativeObject) != 0 &&
-                        (Z3_sort_kind)Native.Z3_get_sort_kind(Context.nCtx, Native.Z3_get_sort(Context.nCtx, NativeObject)) == Z3_sort_kind.Z3_RELATION_SORT);
+                        Native.Z3_get_sort_kind(Context.nCtx, Native.Z3_get_sort(Context.nCtx, NativeObject)) 
+                        == (uint)Z3_sort_kind.Z3_RELATION_SORT);
             }
         }
 
@@ -1425,7 +1431,7 @@ namespace Microsoft.Z3
             get
             {
                 return (Native.Z3_is_app(Context.nCtx, NativeObject) != 0 &&
-                        (Z3_sort_kind)Native.Z3_get_sort_kind(Context.nCtx, Native.Z3_get_sort(Context.nCtx, NativeObject)) == Z3_sort_kind.Z3_FINITE_DOMAIN_SORT);
+                        Native.Z3_get_sort_kind(Context.nCtx, Native.Z3_get_sort(Context.nCtx, NativeObject)) == (uint)Z3_sort_kind.Z3_FINITE_DOMAIN_SORT);
             }
         }
 
@@ -1471,22 +1477,26 @@ namespace Microsoft.Z3
         #endregion
 
         #region Internal
-        /// <summary> Constructor for Expr </summary>
+        /// <summary> 
+        /// Constructor for Expr 
+        /// </summary>
         internal protected Expr(Context ctx) : base(ctx) { Contract.Requires(ctx != null); }
-        /// <summary> Constructor for Expr </summary>
+        /// <summary> 
+        /// Constructor for Expr 
+        /// </summary>
         internal protected Expr(Context ctx, IntPtr obj) : base(ctx, obj) { Contract.Requires(ctx != null); }
 
-        #if DEBUG
+#if DEBUG
         [Pure]
         internal override void CheckNativeObject(IntPtr obj)
         {
             if (Native.Z3_is_app(Context.nCtx, obj) == 0 &&
-                (Z3_ast_kind)Native.Z3_get_ast_kind(Context.nCtx, obj) != Z3_ast_kind.Z3_VAR_AST &&
-                (Z3_ast_kind)Native.Z3_get_ast_kind(Context.nCtx, obj) != Z3_ast_kind.Z3_QUANTIFIER_AST)
+                Native.Z3_get_ast_kind(Context.nCtx, obj) != (uint)Z3_ast_kind.Z3_VAR_AST &&
+                Native.Z3_get_ast_kind(Context.nCtx, obj) != (uint)Z3_ast_kind.Z3_QUANTIFIER_AST)
                 throw new Z3Exception("Underlying object is not a term");
             base.CheckNativeObject(obj);
         }
-        #endif
+#endif
 
         [Pure]
         internal static Expr Create(Context ctx, FuncDecl f, params Expr[] arguments)
@@ -1495,11 +1505,11 @@ namespace Microsoft.Z3
             Contract.Requires(f != null);
             Contract.Ensures(Contract.Result<Expr>() != null);
 
-            IntPtr obj = Native.Z3_mk_app(ctx.nCtx, f.NativeObject, 
-                                          AST.ArrayLength(arguments), 
+            IntPtr obj = Native.Z3_mk_app(ctx.nCtx, f.NativeObject,
+                                          AST.ArrayLength(arguments),
                                           AST.ArrayToNative(arguments));
             return Create(ctx, obj);
-        }        
+        }
 
         [Pure]
         new internal static Expr Create(Context ctx, IntPtr obj)
@@ -1522,7 +1532,7 @@ namespace Microsoft.Z3
                 {
                     case Z3_sort_kind.Z3_INT_SORT: return new IntNum(ctx, obj);
                     case Z3_sort_kind.Z3_REAL_SORT: return new RatNum(ctx, obj);
-                    case Z3_sort_kind.Z3_BV_SORT: return new BitVecNum(ctx, obj);
+                    case Z3_sort_kind.Z3_BV_SORT: return new BitVecNum(ctx, obj);                    
                 }
             }
 
@@ -1533,144 +1543,10 @@ namespace Microsoft.Z3
                 case Z3_sort_kind.Z3_REAL_SORT: return new RealExpr(ctx, obj);
                 case Z3_sort_kind.Z3_BV_SORT: return new BitVecExpr(ctx, obj);
                 case Z3_sort_kind.Z3_ARRAY_SORT: return new ArrayExpr(ctx, obj);
-                case Z3_sort_kind.Z3_DATATYPE_SORT: return new DatatypeExpr(ctx, obj);
+                case Z3_sort_kind.Z3_DATATYPE_SORT: return new DatatypeExpr(ctx, obj);                
             }
 
             return new Expr(ctx, obj);
-        }
-        #endregion
-    }
-
-    /// <summary>
-    /// Boolean expressions
-    /// </summary>
-    public class BoolExpr : Expr
-    {
-        #region Internal
-        /// <summary> Constructor for BoolExpr </summary>
-        internal protected BoolExpr(Context ctx) : base(ctx) { Contract.Requires(ctx != null); }
-        /// <summary> Constructor for BoolExpr </summary>
-        internal BoolExpr(Context ctx, IntPtr obj) : base(ctx, obj) { Contract.Requires(ctx != null); }
-        #endregion
-    }
-
-    /// <summary>
-    /// Arithmetic expressions (int/real)
-    /// </summary>
-    public class ArithExpr : Expr
-    {
-        #region Internal
-        /// <summary> Constructor for ArithExpr </summary>
-        internal protected ArithExpr(Context ctx)
-            : base(ctx)
-        {
-            Contract.Requires(ctx != null);
-        }
-        internal ArithExpr(Context ctx, IntPtr obj)
-            : base(ctx, obj)
-        {
-            Contract.Requires(ctx != null);
-        }
-        #endregion
-    }
-
-    /// <summary>
-    /// Int expressions
-    /// </summary>
-    public class IntExpr : ArithExpr
-    {
-        #region Internal
-        /// <summary> Constructor for IntExpr </summary>
-        internal protected IntExpr(Context ctx)
-            : base(ctx)
-        {
-            Contract.Requires(ctx != null);
-        }
-        internal IntExpr(Context ctx, IntPtr obj)
-            : base(ctx, obj)
-        {
-            Contract.Requires(ctx != null);
-        }
-        #endregion
-    }
-
-    /// <summary>
-    /// Real expressions
-    /// </summary>
-    public class RealExpr : ArithExpr
-    {
-        #region Internal
-        /// <summary> Constructor for RealExpr </summary>
-        internal protected RealExpr(Context ctx)
-            : base(ctx)
-        {
-            Contract.Requires(ctx != null);
-        }
-        internal RealExpr(Context ctx, IntPtr obj)
-            : base(ctx, obj)
-        {
-            Contract.Requires(ctx != null);
-        }
-        #endregion
-    }
-
-    /// <summary>
-    /// Bit-vector expressions
-    /// </summary>
-    public class BitVecExpr : Expr
-    {
-
-        /// <summary>
-        /// The size of the sort of a bit-vector term.
-        /// </summary>
-        public uint SortSize
-        {
-            get { return ((BitVecSort)Sort).Size; }
-        }
-
-        #region Internal
-        /// <summary> Constructor for BitVecExpr </summary>
-        internal protected BitVecExpr(Context ctx) : base(ctx) { Contract.Requires(ctx != null); }
-        internal BitVecExpr(Context ctx, IntPtr obj) : base(ctx, obj) { Contract.Requires(ctx != null); }
-        #endregion
-    }
-
-    /// <summary>
-    /// Array expressions
-    /// </summary>
-    public class ArrayExpr : Expr
-    {
-        #region Internal
-        /// <summary> Constructor for ArrayExpr </summary>
-        internal protected ArrayExpr(Context ctx)
-            : base(ctx)
-        {
-            Contract.Requires(ctx != null);
-        }
-        internal ArrayExpr(Context ctx, IntPtr obj)
-            : base(ctx, obj)
-        {
-            Contract.Requires(ctx != null);
-        }
-        #endregion
-    }
-
-    /// <summary>
-    /// Datatype expressions
-    /// </summary>
-    public class DatatypeExpr : Expr
-    {
-        #region Internal
-        /// <summary> Constructor for DatatypeExpr </summary>
-        internal protected DatatypeExpr(Context ctx)
-            : base(ctx)
-        {
-            Contract.Requires(ctx != null);
-        }
-        internal DatatypeExpr(Context ctx, IntPtr obj)
-            : base(ctx, obj)
-        {
-            Contract.Requires(ctx != null);
         }
         #endregion
     }

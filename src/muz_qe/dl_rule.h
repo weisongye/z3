@@ -83,6 +83,11 @@ namespace datalog {
 
         unsigned hoist_quantifier(bool is_forall, expr_ref& fml, svector<symbol>* names);
 
+        /**
+           \brief Perform cheap quantifier elimination to reduce the number of variables in the interpreted tail.
+         */
+        void reduce_unbound_vars(rule_ref& r);
+
     public:
 
         ast_manager& get_manager() const { return m; }
@@ -111,7 +116,7 @@ namespace datalog {
            \remark A tail may contain negation. tail[i] is assumed to be negated if is_neg != 0 && is_neg[i] == true
         */
         rule * mk(app * head, unsigned n, app * const * tail, bool const * is_neg = 0, 
-                         symbol const& name = symbol::null);
+                  symbol const& name = symbol::null, bool normalize = true);
 
         /**
            \brief Create a rule with the same tail as \c source and with a specified head.
@@ -125,6 +130,7 @@ namespace datalog {
 
         /** make sure there are not non-quantified variables that occur only in interpreted predicates */
         void fix_unbound_vars(rule_ref& r, bool try_quantifier_elimination);
+
 
 
         /**
@@ -246,7 +252,7 @@ namespace datalog {
 
         std::ostream& display_smt2(ast_manager& m, std::ostream & out) const;
 
-        symbol const& name() { return m_name; }
+        symbol const& name() const { return m_name; }
 
         unsigned hash() const;
 

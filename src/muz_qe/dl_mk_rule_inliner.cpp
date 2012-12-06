@@ -116,16 +116,20 @@ namespace datalog {
         apply(src, false, UINT_MAX,   tail, tail_neg);
         mk_rule_inliner::remove_duplicate_tails(tail, tail_neg);
         SASSERT(tail.size()==tail_neg.size());
-        res = m_rm.mk(new_head, tail.size(), tail.c_ptr(), tail_neg.c_ptr());
+        res = m_rm.mk(new_head, tail.size(), tail.c_ptr(), tail_neg.c_ptr(), tgt.name(), m_normalize);
         res->set_accounting_parent_object(m_context, const_cast<rule*>(&tgt));
-        res->norm_vars(m_rm);
-        m_rm.fix_unbound_vars(res, true);        
-        if (m_interp_simplifier.transform_rule(res.get(), simpl_rule)) {
-            res = simpl_rule;
-            return true;
+        if (m_normalize) {
+            m_rm.fix_unbound_vars(res, true);        
+            if (m_interp_simplifier.transform_rule(res.get(), simpl_rule)) {
+                res = simpl_rule;
+                return true;
+            }
+            else {
+                return false;
+            }
         }
         else {
-            return false;
+            return true;
         }
     }
 
@@ -190,6 +194,7 @@ namespace datalog {
         }
     }
 
+    // TBD: replace by r.has_quantifiers() and test
     bool mk_rule_inliner::has_quantifier(rule const& r) const {
         unsigned utsz = r.get_uninterpreted_tail_size();
         for (unsigned i = utsz; i < r.get_tail_size(); ++i) {
@@ -200,7 +205,7 @@ namespace datalog {
 
     void mk_rule_inliner::count_pred_occurrences(rule_set const & orig)
     {
-        m_context.get_rmanager().collect_non_empty_predicates(m_preds_with_facts);
+        m_context.get_rel_context().get_rmanager().collect_non_empty_predicates(m_preds_with_facts);
 
         rule_set::iterator rend = orig.end();
         for (rule_set::iterator rit = orig.begin(); rit!=rend; ++rit) {
@@ -745,8 +750,7 @@ namespace datalog {
         valid.reset();
         valid.resize(sz, true);        
 
-        params_ref const& params = m_context.get_params();
-        bool allow_branching = params.get_bool(":inline-linear-branch", false);
+        bool allow_branching = m_context.get_params().inline_linear_branch();
 
         for (unsigned i = 0; i < sz; ++i) {
 
@@ -837,7 +841,6 @@ namespace datalog {
         bool something_done = false;
         ref<horn_subsume_model_converter> hsmc;        
         ref<replace_proof_converter> hpc;
-        params_ref const& params = m_context.get_params();
 
         if (source.get_num_rules() == 0) {
             return 0;
@@ -862,7 +865,7 @@ namespace datalog {
 
         scoped_ptr<rule_set> res = alloc(rule_set, m_context);
 
-        if (params.get_bool(":inline-eager", true)) {
+        if (m_context.get_params().inline_eager()) {
             TRACE("dl", source.display(tout << "before eager inlining\n"););
             plan_inlining(source);            
             something_done = transform_rules(source, *res);            
@@ -874,7 +877,7 @@ namespace datalog {
             TRACE("dl", res->display(tout << "after eager inlining\n"););
         }
 
-        if (params.get_bool(":inline-linear", true) && inline_linear(res)) {
+        if (m_context.get_params().inline_linear() && inline_linear(res)) {
             something_done = true;
         }
 

@@ -1,7 +1,36 @@
 RELEASE NOTES
 
+Version 4.3.2
+=============
+
+- Added get_version() and get_version_string() to Z3Py
+
+- Added support for FreeBSD. Z3 can be compiled on FreeBSD using g++. 
+
+- Reverted to `(set-option :global-decls false)` as the default. In Z3 4.3.0 and Z3 4.3.1, this option was set to true.
+  Thanks to Julien Henry for reporting this problem.
+
+- Added `doc` directory and scripts for automatically generating the API documentation.
+
+- Removed 'autoconf' dependency. We do not need to execute 'autoconf' and './configure' anymore to build Z3.
+
+- Fixed incorrect result returned by Z3_solver_get_num_scopes. (Thanks to Herman Venter). This bug was introduced in Z3 4.3.0
+
+- Java bindings. To enable them, we must use the option `--java` when executing the `mk_make.py` script. Example: `python scripts/mk_make.py --java`
+
+- Fixed crash when parsing incorrect formulas. The crash was introduced when support for "arithmetic coercions" was added in Z3 4.3.0.
+
+Version 4.3.1
+=============
+
+- Added support for compiling Z3 using clang++ on Linux and OSX
+
+- Added missing compilation option (-D _EXTERNAL_RELEASE) in release mode.
+
 Version 4.3.0
 =============
+
+- Fixed bug during model construction reported by Heizmann (http://z3.codeplex.com/workitem/5)
 
 - Remark: We skipped version 4.2 due to a mistake when releasing 4.1.2. Version 4.1.2 was accidentally tagged as 4.2. 
   Thanks to Claude Marche for reporting this issue.

@@ -29,7 +29,7 @@ Revision History:
 #include "dl_base.h"
 #include "pdr_prop_solver.h"
 #include "pdr_reachable_cache.h"
-#include "pdr_quantifiers.h"
+
 
 namespace datalog {
     class rule_set;
@@ -42,7 +42,6 @@ namespace pdr {
     class model_node;
     class context;
 
-    typedef obj_map<datalog::rule const, qinst*> qinst_map;
     typedef obj_map<datalog::rule const, app_ref_vector*> rule2inst;
     typedef obj_map<func_decl, pred_transformer*> decl2rel;
 
@@ -78,7 +77,6 @@ namespace pdr {
         obj_map<expr, unsigned>      m_prop2level;      // map property to level where it occurs.
         obj_map<expr, datalog::rule const*> m_tag2rule; // map tag predicate to rule. 
         rule2expr                    m_rule2tag;        // map rule to predicate tag.
-        qinst_map                    m_rule2qinst;      // map tag to quantifier instantiation.
         rule2inst                    m_rule2inst;       // map rules to instantiations of indices
         rule2expr                    m_rule2transition; // map rules to transition 
         rule2apps                    m_rule2vars;       // map rule to auxiliary variables
@@ -99,7 +97,6 @@ namespace pdr {
         void init_rule(decl2rel const& pts, datalog::rule const& rule, expr_ref& init,                                      
                        ptr_vector<datalog::rule const>& rules, expr_ref_vector& transition);
         void init_atom(decl2rel const& pts, app * atom, app_ref_vector& var_reprs, expr_ref_vector& conj, unsigned tail_idx);
-        void ground_free_vars(expr* e, app_ref_vector& vars, ptr_vector<app>& aux_vars);
 
         void simplify_formulas(tactic& tac, expr_ref_vector& fmls);
 
@@ -120,31 +117,30 @@ namespace pdr {
         ptr_vector<datalog::rule> const& rules() const { return m_rules; }
         func_decl* sig(unsigned i) { init_sig(); return m_sig[i].get(); } // signature 
         func_decl* const* sig() { init_sig(); return m_sig.c_ptr(); }
+        unsigned  sig_size() { init_sig(); return m_sig.size(); }
         expr*  transition() const { return m_transition; }
         expr*  initial_state() const { return m_initial_state; }
-        bool   has_quantifiers() const { return !m_rule2qinst.empty(); }
-        qinst* get_quantifiers(datalog::rule const* r) const { qinst* q = 0; m_rule2qinst.find(r, q); return q; }
         expr*  rule2tag(datalog::rule const* r) { return m_rule2tag.find(r); }
         unsigned get_num_levels() { return m_levels.size(); }
-        expr_ref get_cover_delta(int level);
+        expr_ref get_cover_delta(func_decl* p_orig, int level);
         void     add_cover(unsigned level, expr* property);
 
         std::ostream& display(std::ostream& strm) const;
 
         void collect_statistics(statistics& st) const;
+        void reset_statistics();
 
         bool is_reachable(expr* state);
         void remove_predecessors(expr_ref_vector& literals);
         void find_predecessors(datalog::rule const& r, ptr_vector<func_decl>& predicates) const;
-        void find_predecessors(model_core const& model, ptr_vector<func_decl>& preds) const;
         datalog::rule const& find_rule(model_core const& model) const;
         expr* get_transition(datalog::rule const& r) { return m_rule2transition.find(&r); }
-        void  get_aux_vars(datalog::rule const& r, ptr_vector<app>& vs) { m_rule2vars.find(&r, vs); }
+        ptr_vector<app>& get_aux_vars(datalog::rule const& r) { return m_rule2vars.find(&r); }
 
         bool propagate_to_next_level(unsigned level);
         void add_property(expr * lemma, unsigned lvl);  // add property 'p' to state at level.
 
-        lbool is_reachable(model_node& n, expr_ref_vector* core);
+        lbool is_reachable(model_node& n, expr_ref_vector* core, bool& uses_level);
         bool is_invariant(unsigned level, expr* co_state, bool inductive, bool& assumes_level, expr_ref_vector* core = 0);
         bool check_inductive(unsigned level, expr_ref_vector& state, bool& assumes_level);
 
@@ -165,6 +161,10 @@ namespace pdr {
 
         void inherit_properties(pred_transformer& other);
 
+        void ground_free_vars(expr* e, app_ref_vector& vars, ptr_vector<app>& aux_vars);
+
+        prop_solver& get_solver() { return m_solver; }
+
     };
 
 
@@ -175,21 +175,26 @@ namespace pdr {
         expr_ref               m_state;
         model_ref              m_model;
         ptr_vector<model_node> m_children;
-        unsigned               m_level;
+        unsigned               m_level;       
         unsigned               m_orig_level;
+        unsigned               m_depth;
         bool                   m_closed;
+        datalog::rule const*   m_rule;
     public:
         model_node(model_node* parent, expr_ref& state, pred_transformer& pt, unsigned level):
-            m_parent(parent), m_pt(pt), m_state(state), m_model(0), m_level(level), m_orig_level(level), m_closed(false) {
+            m_parent(parent), m_pt(pt), m_state(state), m_model(0), 
+                m_level(level), m_orig_level(level), m_depth(0), m_closed(false), m_rule(0) {
             if (m_parent) {
                 m_parent->m_children.push_back(this);
                 SASSERT(m_parent->m_level == level+1);
                 SASSERT(m_parent->m_level > 0);
+                m_depth = m_parent->m_depth+1;
             }
         }
         void set_model(model_ref& m) { m_model = m; }
         unsigned level() const { return m_level; }
         unsigned orig_level() const { return m_orig_level; }
+        unsigned depth() const { return m_depth; }
         void     increase_level() { ++m_level; }
         expr*    state() const { return m_state; }
         ptr_vector<model_node> const& children() { return m_children; }
@@ -214,6 +219,9 @@ namespace pdr {
         void set_closed();     
         void set_pre_closed() { m_closed = true; }
         void reset() { m_children.reset(); }
+
+        void set_rule(datalog::rule const* r) { m_rule = r; }
+        datalog::rule* get_rule();
 
         expr_ref get_trace() const;
         void mk_instantiate(datalog::rule_ref& r0, datalog::rule_ref& r1, expr_ref_vector& binding);
@@ -271,6 +279,7 @@ namespace pdr {
             }
         }
         virtual void collect_statistics(statistics& st) const {}
+        virtual void reset_statistics() {}
     };
 
     class context {
@@ -282,11 +291,10 @@ namespace pdr {
             void reset() { memset(this, 0, sizeof(*this)); }
         };
         
-        front_end_params&    m_fparams;
-        params_ref const&    m_params;
+        smt_params&    m_fparams;
+        fixedpoint_params const&    m_params;
         ast_manager&         m;
         datalog::context*    m_context;
-        quantifier_model_checker m_quantifier_inst;
         manager              m_pm;  
         decl2rel             m_rels;         // Map from relation predicate to fp-operator.       
         func_decl_ref        m_query_pred;
@@ -303,13 +311,11 @@ namespace pdr {
         // Functions used by search.
         void solve_impl();
         bool check_reachability(unsigned level);        
-        void check_quantifiers();
-        bool has_quantifiers() const;
         void propagate(unsigned max_prop_lvl);
         void close_node(model_node& n);
         void check_pre_closed(model_node& n);
         void expand_node(model_node& n);
-        lbool expand_state(model_node& n, expr_ref_vector& cube);
+        lbool expand_state(model_node& n, expr_ref_vector& cube, bool& uses_level);
         void create_children(model_node& n);
         expr_ref mk_sat_answer() const;
         expr_ref mk_unsat_answer() const;
@@ -343,14 +349,14 @@ namespace pdr {
            We check whether there is some reachable state of the relation checked_relation.
         */
         context(
-            front_end_params&  fparams,
-            params_ref const&  params,
+            smt_params&        fparams,
+            fixedpoint_params const&  params,
             ast_manager&       m);
 
         ~context();
         
-        front_end_params& get_fparams() const { return m_fparams; }
-        params_ref const& get_params() const { return m_params; }
+        smt_params&       get_fparams() const { return m_fparams; }
+        fixedpoint_params const& get_params() const { return m_params; }
         ast_manager&      get_manager() const { return m; }
         manager&          get_pdr_manager() { return m_pm; }
         decl2rel const&   get_pred_transformers() const { return m_rels; }
@@ -362,6 +368,7 @@ namespace pdr {
 
 
         void collect_statistics(statistics& st) const;
+        void reset_statistics();
 
         std::ostream& display(std::ostream& strm) const;        
 
@@ -381,23 +388,25 @@ namespace pdr {
 
         void set_model_converter(model_converter_ref& mc) { m_mc = mc; }
 
+        model_converter_ref get_model_converter() { return m_mc; }
+
         void set_proof_converter(proof_converter_ref& pc) { m_pc = pc; }
 
         void update_rules(datalog::rule_set& rules);
 
         void set_axioms(expr* axioms) { m_pm.set_background(axioms); }
 
-        void refine(qi& q, datalog::rule_set& rules) { m_quantifier_inst.refine(q, rules); }
-
         unsigned get_num_levels(func_decl* p);
 
-        expr_ref get_cover_delta(int level, func_decl* p);
+        expr_ref get_cover_delta(int level, func_decl* p_orig, func_decl* p);
 
         void add_cover(int level, func_decl* pred, expr* property);
 
-        void get_model(model_ref& md);
+        model_ref get_model();
 
         proof_ref get_proof() const;
+
+        model_node& get_root() const { return m_search.get_root(); }
 
     };
 

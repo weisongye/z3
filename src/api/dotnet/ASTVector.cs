@@ -51,7 +51,7 @@ namespace Microsoft.Z3
             }
             set
             {
-                Contract.Requires(value!= null);
+                Contract.Requires(value != null);
 
                 Native.Z3_ast_vector_set(Context.nCtx, NativeObject, i, value.NativeObject);
             }
@@ -103,7 +103,7 @@ namespace Microsoft.Z3
         internal ASTVector(Context ctx, IntPtr obj) : base(ctx, obj) { Contract.Requires(ctx != null); }
         internal ASTVector(Context ctx) : base(ctx, Native.Z3_mk_ast_vector(ctx.nCtx)) { Contract.Requires(ctx != null); }
 
-        internal class DecRefQueue : Z3.DecRefQueue
+        internal class DecRefQueue : IDecRefQueue
         {
             public override void IncRef(Context ctx, IntPtr obj)
             {

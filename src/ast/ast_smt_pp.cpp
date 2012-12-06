@@ -29,6 +29,7 @@ Revision History:
 #include"vector.h"
 #include"for_each_ast.h"
 #include"decl_collector.h"
+#include"smt2_util.h"
 
 // ---------------------------------------
 // smt_renaming
@@ -66,33 +67,16 @@ symbol smt_renaming::fix_symbol(symbol s, int k) {
         buffer << s << k;
         return symbol(buffer.str().c_str());            
     }
-    
-    buffer << "|";
-    if (*data == '|') {
-        while (*data) {
-            if (*data == '|') {
-                if (!data[1]) {
-                    break;
-                }
-                buffer << "\\";
-            }
-            buffer << *data;
-            ++data;
-        }                      
+
+    if (is_smt2_quoted_symbol(s)) {
+        buffer << mk_smt2_quoted_symbol(s);
     }
     else {
-        while (*data) {
-            if (*data == '|') {
-                buffer << "\\";
-            }
-            buffer << *data;
-            ++data;
-        }
+        buffer << s;
     }
     if (k > 0) {
         buffer << k;
     }
-    buffer << "|";
     
     return symbol(buffer.str().c_str());
 }
@@ -317,8 +301,8 @@ class smt_printer {
     }
 
     void visit_sort(sort* s, bool bool2int = false) {
-        symbol sym; 
-        if (bool2int && is_bool(s)) {
+        symbol sym;  
+        if (bool2int && is_bool(s) && !m_is_smt2) {
             sym = symbol("Int");
         } else if (s->is_sort_of(m_bv_fid, BV_SORT)) {
             sym = symbol("BitVec");
@@ -970,6 +954,10 @@ public:
         mark.mark(s, true);
     }
 
+    void operator()(sort* s) {
+        ast_mark mark;
+        pp_sort_decl(mark, s);
+    }
 
     void operator()(func_decl* d) {
         if (m_is_smt2) {
@@ -983,7 +971,6 @@ public:
             m_out << ") ";
             visit_sort(d->get_range());
             m_out << ")";
-            newline();
         }
         else {
             m_out << "(";
@@ -1042,6 +1029,22 @@ void ast_smt_pp::display_expr_smt2(std::ostream& strm, expr* n, unsigned indent,
     p(n);
 }
 
+void ast_smt_pp::display_ast_smt2(std::ostream& strm, ast* a, unsigned indent, unsigned num_var_names, char const* const* var_names) {
+    ptr_vector<quantifier> ql;
+    smt_renaming rn;
+    smt_printer p(strm, m_manager, ql, rn, m_logic, false, true, m_simplify_implies, indent, num_var_names, var_names);
+    if (is_expr(a)) {
+        p(to_expr(a));
+    }
+    else if (is_func_decl(a)) {
+        p(to_func_decl(a));
+    }
+    else {
+        SASSERT(is_sort(a));
+        p(to_sort(a));
+    }
+}
+
 
 void ast_smt_pp::display_smt2(std::ostream& strm, expr* n) {
     ptr_vector<quantifier> ql;
@@ -1092,6 +1095,7 @@ void ast_smt_pp::display_smt2(std::ostream& strm, expr* n) {
         if (!(*m_is_declared)(d)) {
             smt_printer p(strm, m_manager, ql, rn, m_logic, true, true, m_simplify_implies, 0);
             p(d);
+            strm << "\n";
         }
     }
 
@@ -1100,6 +1104,7 @@ void ast_smt_pp::display_smt2(std::ostream& strm, expr* n) {
         if (!(*m_is_declared)(d)) {
             smt_printer p(strm, m_manager, ql, rn, m_logic, true, true, m_simplify_implies, 0);
             p(d);
+            strm << "\n";
         }
     }
 

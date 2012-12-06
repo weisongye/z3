@@ -29,7 +29,6 @@ Revision History:
 #include "model_smt2_pp.h"
 #include "model_converter.h"
 
-
 namespace pdr {
 
     class collect_decls_proc {
@@ -58,24 +57,20 @@ namespace pdr {
     expr_ref inductive_property::fixup_clause(expr* fml) const {        
         expr_ref_vector disjs(m);
         datalog::flatten_or(fml, disjs);
-        switch(disjs.size()) {
-        case 0: return expr_ref(m.mk_false(), m);
-        case 1: return expr_ref(disjs[0].get(), m);
-        default: return expr_ref(m.mk_or(disjs.size(), disjs.c_ptr()), m);
-        }
+        expr_ref result(m);
+        bool_rewriter(m).mk_or(disjs.size(), disjs.c_ptr(), result);
+        return result;
     }
 
     expr_ref inductive_property::fixup_clauses(expr* fml) const {
         expr_ref_vector conjs(m);
+        expr_ref result(m);
         datalog::flatten_and(fml, conjs);
         for (unsigned i = 0; i < conjs.size(); ++i) {
             conjs[i] = fixup_clause(conjs[i].get());
         }
-        switch(conjs.size()) {
-        case 0: return expr_ref(m.mk_true(), m);
-        case 1: return expr_ref(conjs[0].get(), m);
-        default: return expr_ref(m.mk_and(conjs.size(), conjs.c_ptr()), m);
-        }
+        bool_rewriter(m).mk_and(conjs.size(), conjs.c_ptr(), result);
+        return result;
     }
 
     std::string inductive_property::to_string() const {
@@ -147,11 +142,10 @@ namespace pdr {
             }
         }
         smt2_pp_environment_dbg env(m);
-        pp_params params;
         func_decl_set::iterator it = aux_decls.begin(), end = aux_decls.end();
         for (; it != end; ++it) {
             func_decl* f = *it;
-            ast_smt2_pp(out, f, env, params);
+            ast_smt2_pp(out, f, env);
             out << "\n";
         }
 
@@ -172,7 +166,7 @@ namespace pdr {
         return res;
     }
     
-    manager::manager(front_end_params& fparams, params_ref const& params, ast_manager& manager) :
+    manager::manager(smt_params& fparams, fixedpoint_params const& params, ast_manager& manager) :
         m(manager),
         m_fparams(fparams),
         m_params(params),
@@ -317,17 +311,8 @@ namespace pdr {
         else {
             return false;
         }
-    }
-    
-    
-    interpolant_provider& manager::get_interpolator() {
-        if(!m_interpolator) {
-            m_interpolator = interpolant_provider::mk(m, get_params());
-        }
-        return *m_interpolator;
-    }
-    
-    
+    }       
+        
     bool manager::implication_surely_holds(expr * lhs, expr * rhs, expr * bg) {
         smt::kernel sctx(m, get_fparams());
         if(bg) {

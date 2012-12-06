@@ -24,8 +24,9 @@ Revision History:
 #include "ast_smt2_pp.h"
 #include "dl_util.h"
 #include "model_pp.h"
-#include "front_end_params.h"
+#include "smt_params.h"
 #include "datatype_decl_plugin.h"
+#include "bv_decl_plugin.h"
 #include "pdr_farkas_learner.h"
 #include "ast_smt2_pp.h"
 #include "expr_replacer.h"
@@ -94,9 +95,12 @@ namespace pdr {
         void expand_literals(expr_ref_vector& conjs) {
             arith_util arith(m);
             datatype_util dt(m);
+            bv_util       bv(m);
             expr* e1, *e2, *c, *val;
-            for (unsigned i = 0; i < conjs.size(); ++i) {
+            rational r;
+            unsigned bv_size;
 
+            for (unsigned i = 0; i < conjs.size(); ++i) {
                 expr* e = conjs[i].get();
                 if (m.is_eq(e, e1, e2) && arith.is_int_real(e1)) {
                     conjs[i] = arith.mk_le(e1,e2);
@@ -109,13 +113,32 @@ namespace pdr {
                     }
                     ++i;
                 }
-                else if (m.is_eq(e, c, val) && is_app(val) && dt.is_constructor(to_app(val))) {
+                else if ((m.is_eq(e, c, val) && is_app(val) && dt.is_constructor(to_app(val))) ||
+                         (m.is_eq(e, val, c) && is_app(val) && dt.is_constructor(to_app(val)))){
                     func_decl* f = to_app(val)->get_decl();
                     func_decl* r = dt.get_constructor_recognizer(f);
                     conjs[i] = m.mk_app(r,c);
                     ptr_vector<func_decl> const& acc = *dt.get_constructor_accessors(f);
                     for (unsigned i = 0; i < acc.size(); ++i) {
                         conjs.push_back(m.mk_eq(m.mk_app(acc[i], c), to_app(val)->get_arg(i)));
+                    }
+                }
+                else if ((m.is_eq(e, c, val) && bv.is_numeral(val, r, bv_size)) ||
+                         (m.is_eq(e, val, c) && bv.is_numeral(val, r, bv_size))) {
+                    rational two(2);
+                    for (unsigned j = 0; j < bv_size; ++j) {
+                        parameter p(j);
+                        expr* e = m.mk_app(bv.get_family_id(), OP_BIT2BOOL, 1, &p, 1, &c);
+                        if ((r % two).is_zero()) {
+                            e = m.mk_not(e);
+                        }
+                        r = div(r, two);
+                        if (j == 0) {
+                            conjs[i] = e;
+                        }
+                        else {
+                            conjs.push_back(e);
+                        }
                     }
                 }
             }
@@ -189,7 +212,7 @@ namespace pdr {
         m(pm.get_manager()),
         m_pm(pm),
         m_name(name),
-        m_try_minimize_core(pm.get_params().get_bool(":try-minimize-core", false)),
+        m_try_minimize_core(pm.get_params().try_minimize_core()),
         m_ctx(pm.mk_fresh()),
         m_pos_level_atoms(m),
         m_neg_level_atoms(m),
@@ -341,7 +364,7 @@ namespace pdr {
         }
         fl.get_lemmas(pr, bs, lemmas);
         safe.elim_proxies(lemmas);
-        fl.simplify_lemmas(lemmas); // redundant
+        fl.simplify_lemmas(lemmas); // redundant?
         if (m_fparams.m_arith_mode == AS_DIFF_LOGIC &&
             !is_difference_logic(m, lemmas.size(), lemmas.c_ptr())) {
                 IF_VERBOSE(1, 
@@ -364,8 +387,7 @@ namespace pdr {
         m_core->append(lemmas);
     }
 
-    lbool prop_solver::check_assumptions(const expr_ref_vector & atoms)
-    {
+    lbool prop_solver::check_assumptions(const expr_ref_vector & atoms) {
         return check_assumptions_and_formula(atoms, m.mk_true());
     }
 
@@ -392,6 +414,11 @@ namespace pdr {
 
     void prop_solver::collect_statistics(statistics& st) const {
     }
+
+    void prop_solver::reset_statistics() {
+    }
+
+    
 
 
 }

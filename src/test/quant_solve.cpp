@@ -1,5 +1,5 @@
 #include "ast.h"
-#include "front_end_params.h"
+#include "smt_params.h"
 #include "qe.h"
 #include "arith_decl_plugin.h"
 #include "ast_pp.h"
@@ -28,7 +28,7 @@ static void validate_quant_solution(ast_manager& m, expr* fml, expr* guard, qe::
     (*rep)(fml1);
     expr_ref tmp(m);
     tmp = m.mk_not(m.mk_implies(guard, fml1));
-    front_end_params fp;
+    smt_params fp;
     smt::kernel solver(m, fp);
     solver.assert_expr(tmp);
     lbool res = solver.check();
@@ -63,7 +63,7 @@ static void validate_quant_solutions(app* x, expr* fml, expr_ref_vector& guards)
     std::cout << mk_pp(fml2, m) << "\n";
     tmp = m.mk_not(m.mk_iff(fml2, tmp));
     std::cout << mk_pp(tmp, m) << "\n";
-    front_end_params fp;
+    smt_params fp;
     smt::kernel solver(m, fp);
     solver.assert_expr(tmp);
     lbool res = solver.check();
@@ -77,8 +77,8 @@ static void validate_quant_solutions(app* x, expr* fml, expr_ref_vector& guards)
 #endif
 
 
-static void test_quant_solver(ast_manager& m, unsigned sz, app*const* xs, expr* fml) {
-    front_end_params params;
+static void test_quant_solver(ast_manager& m, unsigned sz, app*const* xs, expr* fml, bool validate) {
+    smt_params params;
     qe::expr_quant_elim qe(m, params);
     qe::guarded_defs defs(m);
     bool success = qe.solve_for_vars(sz, xs, fml, defs);
@@ -86,7 +86,8 @@ static void test_quant_solver(ast_manager& m, unsigned sz, app*const* xs, expr* 
     std::cout << mk_pp(fml, m) << "\n";
     if (success) {        
         defs.display(std::cout);
-        for (unsigned i = 0; i < defs.size(); ++i) {     
+        
+        for (unsigned i = 0; validate && i < defs.size(); ++i) {     
             validate_quant_solution(m, fml, defs.guard(i), defs.defs(i));
         }
     }
@@ -97,8 +98,7 @@ static void test_quant_solver(ast_manager& m, unsigned sz, app*const* xs, expr* 
 
 static expr_ref parse_fml(ast_manager& m, char const* str) {
     expr_ref result(m);
-    front_end_params fp;
-    cmd_context ctx(&fp, false, &m);
+    cmd_context ctx(false, &m);
     ctx.set_ignore_check(true);
     std::ostringstream buffer;
     buffer << "(declare-const x Int)\n"
@@ -106,6 +106,10 @@ static expr_ref parse_fml(ast_manager& m, char const* str) {
            << "(declare-const z Int)\n"
            << "(declare-const a Int)\n"
            << "(declare-const b Int)\n"
+           << "(declare-const P Bool)\n"
+           << "(declare-const Q Bool)\n"
+           << "(declare-const r1 Real)\n"
+           << "(declare-const r2 Real)\n"
            << "(declare-datatypes () ((IList (nil) (cons (car Int) (cdr IList)))))\n"
            << "(declare-const l1 IList)\n"
            << "(declare-const l2 IList)\n"
@@ -140,21 +144,21 @@ static void parse_fml(char const* str, app_ref_vector& vars, expr_ref& fml) {
     }
 }
 
-static void test_quant_solver(ast_manager& m, app* x, char const* str) {
+static void test_quant_solver(ast_manager& m, app* x, char const* str, bool validate = true) {
     expr_ref fml = parse_fml(m, str);
-    test_quant_solver(m, 1, &x, fml);
+    test_quant_solver(m, 1, &x, fml, validate);
 }
 
-static void test_quant_solver(ast_manager& m, unsigned sz, app*const* xs, char const* str) {
+static void test_quant_solver(ast_manager& m, unsigned sz, app*const* xs, char const* str, bool validate = true) {
     expr_ref fml = parse_fml(m, str);
-    test_quant_solver(m, sz, xs, fml);
+    test_quant_solver(m, sz, xs, fml, validate);
 }
 
-static void test_quant_solver(ast_manager& m, char const* str) {
+static void test_quant_solver(ast_manager& m, char const* str, bool validate = true) {
     expr_ref fml(m);
     app_ref_vector vars(m);
     parse_fml(str, vars, fml);
-    test_quant_solver(m, vars.size(), vars.c_ptr(), fml);
+    test_quant_solver(m, vars.size(), vars.c_ptr(), fml, validate);
 }
 
 
@@ -222,9 +226,18 @@ static void test_quant_solve1() {
 
     test_quant_solver(m, "(exists ((c Cell)) (= c null))");
     test_quant_solver(m, "(exists ((c Cell)) (= c (cell null c1)))");
-    //TBD:
-    //test_quant_solver(m, "(exists ((c Cell)) (= (cell c c) c1))");
-    //test_quant_solver(m, "(exists ((c Cell)) (not (= c null)))");
+
+    test_quant_solver(m, "(exists ((c Cell)) (not (= c null)))", false);
+    test_quant_solver(m, "(exists ((c Cell)) (= (cell c c) c1))", false);
+    test_quant_solver(m, "(exists ((c Cell)) (= (cell c (cdr c1)) c1))", false);
+
+    test_quant_solver(m, "(exists ((t Tuple)) (= (tuple a P r1) t))");
+    test_quant_solver(m, "(exists ((t Tuple)) (= a (first t)))");
+    test_quant_solver(m, "(exists ((t Tuple)) (= P (second t)))");
+    test_quant_solver(m, "(exists ((t Tuple)) (= r2 (third t)))");
+    test_quant_solver(m, "(exists ((t Tuple)) (not (= a (first t))))");
+    test_quant_solver(m, "(exists ((t Tuple)) (not (= P (second t))))");
+    test_quant_solver(m, "(exists ((t Tuple)) (not (= r2 (third t))))");
 }
 
 

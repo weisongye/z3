@@ -36,7 +36,6 @@ Notes:
 #include"ast_pp.h"
 #include"cmd_context.h"
 #include"smt2parser.h"
-#include"front_end_params.h"
 
 expr_pattern_match::expr_pattern_match(ast_manager & manager):
     m_manager(manager), m_precompiled(manager) {        
@@ -205,14 +204,10 @@ expr_pattern_match::match(expr* a, unsigned init, subst& s)
             // substitution s contains registers with matching declarations.
             return true;
         case CHECK_TERM:
-            TRACE("expr_pattern_match", display(tout, pc);
-                  ast_pp(tout, m_regs[pc.m_reg], m_manager) << "\n";);
             ok = (pc.m_pat == m_regs[pc.m_reg]);
             break;
         case SET_VAR: 
         case CHECK_VAR: {
-            TRACE("expr_pattern_match", display(tout, pc);
-                  ast_pp(tout, m_regs[pc.m_reg], m_manager) << "\n";);
             app* app1 = to_app(pc.m_pat);
             a   = m_regs[pc.m_reg];
             if (a->get_kind() != AST_APP) {
@@ -237,8 +232,6 @@ expr_pattern_match::match(expr* a, unsigned init, subst& s)
             break;
         }
         case SET_BOUND: {
-            TRACE("expr_pattern_match", display(tout, pc);
-                  ast_pp(tout, m_regs[pc.m_reg], m_manager) << "\n";);
             a = m_regs[pc.m_reg];
             if (a->get_kind() != AST_VAR) {
                 break;
@@ -329,15 +322,6 @@ expr_pattern_match::match(expr* a, unsigned init, subst& s)
             if (k < fac*num_args) {
                 bstack.push_back(instr(CHOOSE_AC, pc.m_offset, pc.m_next, app2, k+1));
             }
-            TRACE("expr_pattern_match",
-                  {
-                      tout << "fac: " << fac << " num_args:" << num_args << " k:" << k << "\n";
-                      for (unsigned i = 0; i < num_args; ++i) {
-                          ast_pp(tout, m_regs[pc.m_offset + i], m_manager);
-                          tout << " ";
-                      }
-                      tout << "\n";
-                  });
             break;
         }
         case BACKTRACK:
@@ -403,8 +387,7 @@ expr_pattern_match::initialize(char const * spec_string) {
     m_instrs.push_back(instr(BACKTRACK));
 
     std::istringstream is(spec_string);
-    front_end_params p;
-    cmd_context      ctx(&p, true, &m_manager);
+    cmd_context      ctx(true, &m_manager);
     VERIFY(parse_smt2_commands(ctx, is));
 
     ptr_vector<expr>::const_iterator it  = ctx.begin_assertions();
@@ -430,24 +413,24 @@ expr_pattern_match::display(std::ostream& out, instr const& pc) const {
         break;
     case BIND:
         out << "bind       ";
-        ast_pp(out, to_app(pc.m_pat)->get_decl(), m_manager) << " ";
-        ast_pp(out, pc.m_pat, m_manager) << "\n";
+        out << mk_pp(to_app(pc.m_pat)->get_decl(), m_manager) << " ";
+        out << mk_pp(pc.m_pat, m_manager) << "\n";
         out << "next:      " << pc.m_next << "\n";
         out << "offset:    " << pc.m_offset << "\n";
         out << "reg:       " << pc.m_reg << "\n";
         break;
     case BIND_AC:
         out << "bind_ac    ";
-        ast_pp(out, to_app(pc.m_pat)->get_decl(), m_manager) << " ";
-        ast_pp(out, pc.m_pat, m_manager) << "\n";
+        out << mk_pp(to_app(pc.m_pat)->get_decl(), m_manager) << " ";
+        out << mk_pp(pc.m_pat, m_manager) << "\n";
         out << "next:      " << pc.m_next << "\n";
         out << "offset:    " << pc.m_offset << "\n";
         out << "reg:       " << pc.m_reg << "\n";
         break;
     case BIND_C:
         out << "bind_c     ";
-        ast_pp(out, to_app(pc.m_pat)->get_decl(), m_manager) << " ";
-        ast_pp(out, pc.m_pat, m_manager) << "\n";
+        out << mk_pp(to_app(pc.m_pat)->get_decl(), m_manager) << " ";
+        out << mk_pp(pc.m_pat, m_manager) << "\n";
         out << "next:      " << pc.m_next << "\n";
         out << "offset:    " << pc.m_offset << "\n";
         out << "reg:       " << pc.m_reg << "\n";
@@ -464,23 +447,23 @@ expr_pattern_match::display(std::ostream& out, instr const& pc) const {
         break;
     case CHECK_VAR:
         out << "check_var  ";
-        ast_pp(out, pc.m_pat, m_manager) << "\n";
+        out << mk_pp(pc.m_pat, m_manager) << "\n";
         out << "next:      " << pc.m_next << "\n";
         out << "reg:       " << pc.m_reg << "\n";
         out << "other_reg: " << pc.m_other_reg << "\n";
         break;
     case CHECK_TERM:
         out << "check      ";
-            ast_pp(out, pc.m_pat, m_manager) << "\n";
-            out << "next:      " << pc.m_next << "\n";
-            out << "reg:       " << pc.m_reg << "\n";
-            break;
+        out << mk_pp(pc.m_pat, m_manager) << "\n";
+        out << "next:      " << pc.m_next << "\n";
+        out << "reg:       " << pc.m_reg << "\n";
+        break;
     case YIELD:
         out << "yield\n";
         break;
     case SET_VAR:
         out << "set_var    ";
-        ast_pp(out, pc.m_pat, m_manager) << "\n";
+        out << mk_pp(pc.m_pat, m_manager) << "\n";
         out << "next:      " << pc.m_next << "\n";
         break;
     default:

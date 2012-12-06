@@ -23,8 +23,11 @@ Small example:
 >>> s.add(y == x + 1)
 >>> s.check()
 sat
->>> s.model()
-[y = 2, x = 1]
+>>> m = s.model()
+>>> m[x]
+1
+>>> m[y]
+2
 
 Z3 exceptions:
 
@@ -48,6 +51,22 @@ def enable_trace(msg):
 
 def disable_trace(msg):
     Z3_disable_trace(msg)
+
+def get_version_string():
+  major = ctypes.c_uint(0)
+  minor = ctypes.c_uint(0)
+  build = ctypes.c_uint(0)
+  rev = ctypes.c_uint(0)
+  Z3_get_version(major, minor, build, rev)
+  return "%s.%s.%s" % (major.value, minor.value, build.value)
+
+def get_version():
+  major = ctypes.c_uint(0)
+  minor = ctypes.c_uint(0)
+  build = ctypes.c_uint(0)
+  rev = ctypes.c_uint(0)
+  Z3_get_version(major, minor, build, rev)
+  return (major.value, minor.value, build.value, rev.value)
 
 # We use _z3_assert instead of the assert command because we want to
 # produce nice error messages in Z3Py at rise4fun.com
@@ -153,28 +172,6 @@ class Context:
         """
         Z3_interrupt(self.ref())
         
-    def set(self, *args, **kws):
-        """Set global configuration options. 
-
-        Z3 command line options can be set using this method. 
-        The option names can be specified in different ways:
-        
-        >>> ctx = Context()
-        >>> ctx.set('WELL_SORTED_CHECK', True)
-        >>> ctx.set(':well-sorted-check', True)
-        >>> ctx.set(well_sorted_check=True)
-        """
-        if __debug__:
-            _z3_assert(len(args) % 2 == 0, "Argument list must have an even number of elements.")
-        for key, value in kws.iteritems():
-            Z3_update_param_value(self.ctx, str(key).upper(), _to_param_value(value))
-        prev = None
-        for a in args:
-            if prev == None:
-                prev = a
-            else:
-                Z3_update_param_value(self.ctx, str(prev), _to_param_value(a))
-                prev = None
 
 # Global Z3 context
 _main_ctx = None
@@ -204,16 +201,48 @@ def _get_ctx(ctx):
     else:
         return ctx
 
-def set_option(*args, **kws):
-    """Update parameters of the global context `main_ctx()`, and global configuration options of Z3Py. See `Context.set()`.
-    
-    >>> set_option(precision=10)
+def set_param(*args, **kws):
+    """Set Z3 global (or module) parameters.
+
+    >>> set_param(precision=10)
     """
+    if __debug__:
+        _z3_assert(len(args) % 2 == 0, "Argument list must have an even number of elements.")
     new_kws = {}
     for k, v in kws.iteritems():
         if not set_pp_option(k, v):
             new_kws[k] = v
-    main_ctx().set(*args, **new_kws)
+    for key, value in new_kws.iteritems():
+        Z3_global_param_set(str(key).upper(), _to_param_value(value))
+    prev = None
+    for a in args:
+        if prev == None:
+            prev = a
+        else:
+            Z3_global_param_set(str(prev), _to_param_value(a))
+            prev = None
+
+def reset_params():
+    """Reset all global (or module) parameters.
+    """
+    Z3_global_param_reset_all()
+
+def set_option(*args, **kws):
+    """Alias for 'set_param' for backward compatibility.
+    """
+    return set_param(*args, **kws)
+
+def get_param(name):
+    """Return the value of a Z3 global (or module) parameter
+
+    >>> get_param('nlsat.reorder')
+    'true'
+    """
+    ptr = (ctypes.c_char_p * 1)()
+    if Z3_global_param_get(str(name), ptr):
+        r = str(ptr[0])
+        return r
+    raise Z3Exception("failed to retrieve value for '%s'" % name)
 
 #########################################
 #
@@ -616,10 +645,10 @@ class FuncDeclRef(AstRef):
         >>> f(x, x)
         f(x, ToReal(x))
         """
-	args = _get_args(args)
+        args = _get_args(args)
         num = len(args)
         if __debug__:
-            _z3_assert(num == self.arity(), "Incorrect number of arguments")
+            _z3_assert(num == self.arity(), "Incorrect number of arguments to %s" % self)
         _args = (Ast * num)()
         saved = []
         for i in range(num):
@@ -809,7 +838,7 @@ class ExprRef(AstRef):
         if is_app(self):
             return [self.arg(i) for i in range(self.num_args())]
         else:
-            return [] 
+            return []
 
 def _to_expr_ref(a, ctx):
     if isinstance(a, Pattern):
@@ -1702,10 +1731,11 @@ def Exists(vs, body, weight=1, qid="", skid="", patterns=[], no_patterns=[]):
     >>> q = Exists([x, y], f(x, y) >= x, skid="foo")
     >>> q
     Exists([x, y], f(x, y) >= x)
-    >>> Tactic('nnf')(q)
-    [[f(x!foo!1, y!foo!0) >= x!foo!1]]
-    >>> Tactic('nnf')(q).as_expr()
-    f(x!foo!3, y!foo!2) >= x!foo!3
+    >>> is_quantifier(q)
+    True
+    >>> r = Tactic('nnf')(q).as_expr()
+    >>> is_quantifier(r)
+    False
     """
     return _mk_quantifier(False, vs, body, weight, qid, skid, patterns, no_patterns)
 
@@ -1719,7 +1749,7 @@ class ArithSortRef(SortRef):
     """Real and Integer sorts."""
 
     def is_real(self):
-        """Return `True` if `self` is the integer sort.
+        """Return `True` if `self` is of the sort Real.
         
         >>> x = Real('x')
         >>> x.is_real()
@@ -1733,7 +1763,7 @@ class ArithSortRef(SortRef):
         return self.kind() == Z3_REAL_SORT
 
     def is_int(self):
-        """Return `True` if `self` is the real sort.
+        """Return `True` if `self` is of the sort Integer.
         
         >>> x = Int('x')
         >>> x.is_int()
@@ -4368,8 +4398,8 @@ def args2params(arguments, keywords, ctx=None):
     """Convert python arguments into a Z3_params object.
     A ':' is added to the keywords, and '_' is replaced with '-'
 
-    >>> args2params([':model', True, ':relevancy', 2], {'elim_and' : True})
-    (params :model 1 :relevancy 2 :elim-and 1)
+    >>> args2params(['model', True, 'relevancy', 2], {'elim_and' : True})
+    (params model 1 relevancy 2 elim_and 1)
     """
     if __debug__:
         _z3_assert(len(arguments) % 2 == 0, "Argument list must have an even number of elements.")
@@ -4382,7 +4412,6 @@ def args2params(arguments, keywords, ctx=None):
             r.set(prev, a)
             prev = None
     for k, v in keywords.iteritems():
-        k = ':' + k.replace('_', '-')
         r.set(k, v)
     return r
 
@@ -5743,7 +5772,37 @@ class Solver(Z3PPObject):
         [x > 0, x < 2]
         """
         self.assert_exprs(*args)
+
+    def assert_and_track(self, a, p):
+        """Assert constraint `a` and track it in the unsat core using the Boolean constant `p`.
         
+        If `p` is a string, it will be automatically converted into a Boolean constant.
+        
+        >>> x = Int('x')
+        >>> p3 = Bool('p3')
+        >>> s = Solver()
+        >>> s.set(unsat_core=True)
+        >>> s.assert_and_track(x > 0,  'p1')
+        >>> s.assert_and_track(x != 1, 'p2')
+        >>> s.assert_and_track(x < 0,  p3)
+        >>> print s.check()
+        unsat
+        >>> c = s.unsat_core()
+        >>> len(c)
+        2
+        >>> Bool('p1') in c
+        True
+        >>> Bool('p2') in c
+        False
+        >>> p3 in c
+        True
+        """
+        if isinstance(p, str):
+            p = Bool(p, self.ctx)
+        _z3_assert(isinstance(a, BoolRef), "Boolean expression expected")
+        _z3_assert(isinstance(p, BoolRef) and is_const(p), "Boolean expression expected")
+        Z3_solver_assert_and_track(self.ctx.ref(), self.solver, a.as_ast(), p.as_ast())
+
     def check(self, *assumptions):
         """Check whether the assertions in the given solver plus the optional assumptions are consistent or not.
         
@@ -6079,7 +6138,6 @@ class Fixedpoint(Z3PPObject):
         """Add property to predicate for the level'th unfolding. -1 is treated as infinity (infinity)"""
         Z3_fixedpoint_add_cover(self.ctx.ref(), self.fixedpoint, level, predicate.ast, property.ast)
 
-
     def register_relation(self, *relations):
 	"""Register relation as recursive"""
 	relations = _get_args(relations)
@@ -6096,16 +6154,39 @@ class Fixedpoint(Z3PPObject):
 	    args[i] = representations[i]
 	Z3_fixedpoint_set_predicate_representation(self.ctx.ref(), self.fixedpoint, f.ast, sz, args)
 
+    def parse_string(self, s):
+	"""Parse rules and queries from a string"""
+	return AstVector(Z3_fixedpoint_from_string(self.ctx.ref(), self.fixedpoint, s), self.ctx)
+	
+    def parse_file(self, f):
+	"""Parse rules and queries from a file"""
+	return AstVector(Z3_fixedpoint_from_file(self.ctx.ref(), self.fixedpoint, f), self.ctx)
+
+    def get_rules(self):
+	"""retrieve rules that have been added to fixedpoint context"""
+	return AstVector(Z3_fixedpoint_get_rules(self.ctx.ref(), self.fixedpoint), self.ctx)
+
+    def get_assertions(self):
+	"""retrieve assertions that have been added to fixedpoint context"""
+	return AstVector(Z3_fixedpoint_get_assertions(self.ctx.ref(), self.fixedpoint), self.ctx)
+
     def __repr__(self):
         """Return a formatted string with all added rules and constraints."""
 	return self.sexpr()
 
     def sexpr(self):
-        """Return a formatted string (in Lisp-like format) with all added constraints. We say the string is in s-expression format.
-        
+        """Return a formatted string (in Lisp-like format) with all added constraints. We say the string is in s-expression format.        
         """
-        return Z3_fixedpoint_to_string(self.ctx.ref(), self.fixedpoint, 0, (Ast * 0)())    
+        return Z3_fixedpoint_to_string(self.ctx.ref(), self.fixedpoint, 0, (Ast * 0)())
 
+    def to_string(self, queries):
+	"""Return a formatted string (in Lisp-like format) with all added constraints.
+           We say the string is in s-expression format.
+	   Include also queries.
+        """
+	args, len = _to_ast_array(queries)
+        return Z3_fixedpoint_to_string(self.ctx.ref(), self.fixedpoint, len, args)
+    
     def statistics(self):
         """Return statistics for the last `query()`.
 	"""
@@ -6911,9 +6992,9 @@ def solve(*args, **keywords):
     configure it using the options in `keywords`, adds the constraints
     in `args`, and invokes check.
     
-    >>> a, b = Ints('a b')
-    >>> solve(a + b == 3, Or(a == 0, a == 1), a != 0)
-    [b = 2, a = 1]
+    >>> a = Int('a')
+    >>> solve(a > 0, a < 2)
+    [a = 1]
     """
     s = Solver()
     s.set(**keywords)

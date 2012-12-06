@@ -33,7 +33,6 @@ Revision History:
 #include"for_each_expr.h"
 #include"used_vars.h"
 #include"var_subst.h"
-#include"expr_abstract.h"
 #include"rewriter_def.h"
 #include"th_rewriter.h"
 #include"ast_smt2_pp.h"
@@ -41,6 +40,7 @@ Revision History:
 #include"quant_hoist.h"
 #include"expr_replacer.h"
 #include"bool_rewriter.h"
+#include"qe_lite.h"
 
 namespace datalog {
 
@@ -290,30 +290,7 @@ namespace datalog {
     }
 
     void rule_manager::bind_variables(expr* fml, bool is_forall, expr_ref& result) {
-        app_ref_vector const& vars = m_ctx.get_variables();
-        if (vars.empty()) {
-            result = fml;
-        }
-        else {
-            ptr_vector<sort> sorts;
-            expr_abstract(m, 0, vars.size(), reinterpret_cast<expr*const*>(vars.c_ptr()), fml, result);
-            get_free_vars(result, sorts);
-            if (sorts.empty()) {
-                result = fml;
-            }
-            else {
-                svector<symbol> names;
-                for (unsigned i = 0; i < sorts.size(); ++i) {
-                    if (!sorts[i]) {
-                        sorts[i] = m.mk_bool_sort();
-                    }
-                    names.push_back(symbol(i));
-                }
-                quantifier_ref q(m);
-                q = m.mk_quantifier(is_forall, sorts.size(), sorts.c_ptr(), names.c_ptr(), result); 
-                elim_unused_vars(m, q, result);
-            }
-        }
+        result = m_ctx.bind_variables(fml, is_forall);
     }
 
     void rule_manager::flatten_body(app_ref_vector& body) {
@@ -525,7 +502,7 @@ namespace datalog {
         }
     }
 
-    rule * rule_manager::mk(app * head, unsigned n, app * const * tail, bool const * is_negated, symbol const& name) {
+    rule * rule_manager::mk(app * head, unsigned n, app * const * tail, bool const * is_negated, symbol const& name, bool normalize) {
         DEBUG_CODE(check_valid_rule(head, n, tail););
         unsigned sz     = rule::get_obj_size(n);
         void * mem      = m.get_allocator().allocate(sz);
@@ -587,7 +564,9 @@ namespace datalog {
             r->m_positive_cnt = r->m_uninterp_cnt;
         }
 
-        r->norm_vars(*this);
+        if (normalize) {
+            r->norm_vars(*this);
+        }
         return r;
     }
 
@@ -613,14 +592,65 @@ namespace datalog {
         return r;
     }
 
+    void rule_manager::reduce_unbound_vars(rule_ref& r) {
+        unsigned ut_len = r->get_uninterpreted_tail_size();
+        unsigned t_len = r->get_tail_size();
+        ptr_vector<sort> vars;
+        uint_set index_set;
+        qe_lite qe(m);
+        expr_ref_vector conjs(m);
+
+        if (ut_len == t_len) {
+            return;
+        }
+
+        get_free_vars(r->get_head(), vars);
+        for (unsigned i = 0; i < ut_len; ++i) {
+            get_free_vars(r->get_tail(i), vars);
+        }
+        for (unsigned i = ut_len; i < t_len; ++i) {
+            conjs.push_back(r->get_tail(i));
+        }
+
+        for (unsigned i = 0; i < vars.size(); ++i) {
+            if (vars[i]) {
+                index_set.insert(i);
+            }
+        }
+        qe(index_set, false, conjs);
+        bool change = conjs.size() != t_len - ut_len;
+        for (unsigned i = 0; !change && i < conjs.size(); ++i) {
+            change = r->get_tail(ut_len+i) != conjs[i].get();
+        }
+        if (change) {
+            app_ref_vector tail(m);
+            svector<bool> tail_neg;
+            for (unsigned i = 0; i < ut_len; ++i) {
+                tail.push_back(r->get_tail(i));
+                tail_neg.push_back(r->is_neg_tail(i));
+            }
+            for (unsigned i = 0; i < conjs.size(); ++i) {
+                tail.push_back(ensure_app(conjs[i].get()));
+            }
+            tail_neg.resize(tail.size(), false);
+            r = mk(r->get_head(), tail.size(), tail.c_ptr(), tail_neg.c_ptr());
+            TRACE("dl", r->display(m_ctx, tout << "reduced rule\n"););
+        }
+    }
+
     void rule_manager::fix_unbound_vars(rule_ref& r, bool try_quantifier_elimination) {
+
+        reduce_unbound_vars(r);
 
         if (!m_ctx.fix_unbound_vars()) {
             return;
         }
 
-        if (r->get_uninterpreted_tail_size() == r->get_tail_size()) {
-            //no interpreted tail to fix
+        unsigned ut_len = r->get_uninterpreted_tail_size();
+        unsigned t_len = r->get_tail_size();
+
+        if (ut_len == t_len) {
+            // no interpreted tail to fix
             return;
         }
 
@@ -633,7 +663,7 @@ namespace datalog {
         get_free_vars(r, free_rule_vars);
         vctr.count_vars(m, head);
 
-        unsigned ut_len = r->get_uninterpreted_tail_size();
+
         for (unsigned i = 0; i < ut_len; i++) {
             app * t = r->get_tail(i);
             vctr.count_vars(m, t);
@@ -642,11 +672,9 @@ namespace datalog {
         }
 
         ptr_vector<sort> interp_vars;
-        //var_idx_set interp_vars;
         var_idx_set unbound_vars;
         expr_ref_vector tails_with_unbound(m);
 
-        unsigned t_len = r->get_tail_size();
         for (unsigned i = ut_len; i < t_len; i++) {
             app * t = r->get_tail(i);
             interp_vars.reset();
@@ -773,7 +801,7 @@ namespace datalog {
             new_tail.push_back(to_app(tmp));
             tail_neg.push_back(r->is_neg_tail(i));
         }
-        r = mk(new_head.get(), new_tail.size(), new_tail.c_ptr(), tail_neg.c_ptr(), r->name());
+        r = mk(new_head.get(), new_tail.size(), new_tail.c_ptr(), tail_neg.c_ptr(), r->name(), false);
 
         // keep old variable indices around so we can compose with substitutions. 
         // r->norm_vars(*this);
@@ -986,7 +1014,7 @@ namespace datalog {
         out << '.';
         if (ctx.output_profile()) {
             out << " {";
-            output_profile(ctx, out);
+            output_profile(out);
             out << '}';
         }
         out << '\n';
@@ -1018,24 +1046,25 @@ namespace datalog {
         us(fml);
         sorts.reverse();
         
-        for (unsigned i = 0; i < sorts.size(); ) {
+        for (unsigned i = 0; i < sorts.size(); ++i) {
             if (!sorts[i]) {
                 sorts[i] = m.mk_bool_sort();
             }
-            for (unsigned j = 0; i < sorts.size(); ++j) {
-                for (char c = 'A'; i < sorts.size() && c <= 'Z'; ++c) {
-                    func_decl_ref f(m);
-                    std::stringstream _name;
-                    _name << c;
-                    if (j > 0) _name << j;
-                    symbol name(_name.str().c_str());
-                    if (!us.contains(name)) {
-                        names.push_back(name);
-                        ++i;
-                    }
+        }
+
+        for (unsigned j = 0, i = 0; i < sorts.size(); ++j) {
+            for (char c = 'A'; i < sorts.size() && c <= 'Z'; ++c) {
+                func_decl_ref f(m);
+                std::stringstream _name;
+                _name << c;
+                if (j > 0) _name << j;
+                symbol name(_name.str().c_str());
+                if (!us.contains(name)) {
+                    names.push_back(name);
+                    ++i;
                 }
             }
-        }
+        }        
         fml = m.mk_forall(sorts.size(), sorts.c_ptr(), names.c_ptr(), fml); 
     }
 

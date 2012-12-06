@@ -1,3 +1,4 @@
+#include<vector>
 #include"z3++.h"
 using namespace z3;
 
@@ -142,7 +143,7 @@ void prove_example2() {
 void nonlinear_example1() {
     std::cout << "nonlinear example 1\n";
     config cfg;
-    cfg.set(":auto-config", true);
+    cfg.set("auto_config", true);
     context c(cfg);
 
     expr x = c.real_const("x");
@@ -157,12 +158,13 @@ void nonlinear_example1() {
     std::cout << s.check() << "\n";
     model m = s.get_model();
     std::cout << m << "\n";
-    c.set(":pp-decimal", true); // set decimal notation
+    set_param("pp.decimal", true); // set decimal notation
     std::cout << "model in decimal notation\n";
     std::cout << m << "\n";
-    c.set(":pp-decimal-precision", 50); // increase number of decimal places to 50.
+    set_param("pp.decimal-precision", 50); // increase number of decimal places to 50.
     std::cout << "model using 50 decimal places\n";
     std::cout << m << "\n";
+    set_param("pp.decimal", false); // disable decimal notation
 }
 
 /**
@@ -336,11 +338,46 @@ void ite_example() {
 }
 
 /**
+   \brief Small example using quantifiers.
+*/
+void quantifier_example() {
+    std::cout << "quantifier example\n";
+    context c;
+    
+    expr x = c.int_const("x");
+    expr y = c.int_const("y");
+    sort I = c.int_sort();
+    func_decl f = function("f", I, I, I);
+    
+    solver s(c);
+    
+    // making sure model based quantifier instantiation is enabled.
+    params p(c);
+    p.set("mbqi", true);
+    s.set(p);
+
+    s.add(forall(x, y, f(x, y) >= 0));
+    expr a = c.int_const("a");
+    s.add(f(a, a) < a);
+    std::cout << s << "\n";
+    std::cout << s.check() << "\n";
+    std::cout << s.get_model() << "\n";
+    s.add(a < 0);
+    std::cout << s.check() << "\n";
+}
+
+/**
    \brief Unsat core example
 */
-void unsat_core_example() {
-    std::cout << "unsat core example\n";
+void unsat_core_example1() {
+    std::cout << "unsat core example1\n";
     context c;
+    // We use answer literals to track assertions.
+    // An answer literal is essentially a fresh Boolean marker
+    // that is used to track an assertion.
+    // For example, if we want to track assertion F, we 
+    // create a fresh Boolean variable p and assert (p => F)
+    // Then we provide p as an argument for the check method.
     expr p1 = c.bool_const("p1");
     expr p2 = c.bool_const("p2");
     expr p3 = c.bool_const("p3");
@@ -362,6 +399,92 @@ void unsat_core_example() {
     // Trying again without p2
     expr assumptions2[2] = { p1, p3 };
     std::cout << s.check(2, assumptions2) << "\n";
+}
+
+/**
+   \brief Unsat core example 2
+*/
+void unsat_core_example2() {
+    std::cout << "unsat core example 2\n";
+    context c;
+    // The answer literal mechanism, described in the previous example,
+    // tracks assertions. An assertion can be a complicated
+    // formula containing containing the conjunction of many subformulas.
+    expr p1 = c.bool_const("p1");
+    expr x  = c.int_const("x");
+    expr y  = c.int_const("y");
+    solver s(c);
+    expr F  = x > 10 && y > x && y < 5 && y > 0;
+    s.add(implies(p1, F));
+    expr assumptions[1] = { p1 };
+    std::cout << s.check(1, assumptions) << "\n";
+    expr_vector core = s.unsat_core();
+    std::cout << core << "\n";
+    std::cout << "size: " << core.size() << "\n";
+    for (unsigned i = 0; i < core.size(); i++) {
+        std::cout << core[i] << "\n";
+    }
+    // The core is not very informative, since p1 is tracking the formula F
+    // that is a conjunction of subformulas.
+    // Now, we use the following piece of code to break this conjunction
+    // into individual subformulas. First, we flat the conjunctions by
+    // using the method simplify.
+    std::vector<expr> qs; // auxiliary vector used to store new answer literals.
+    assert(F.is_app()); // I'm assuming F is an application.
+    if (F.decl().decl_kind() == Z3_OP_AND) {
+        // F is a conjunction
+        std::cout << "F num. args (before simplify): " << F.num_args() << "\n";
+        F = F.simplify();
+        std::cout << "F num. args (after simplify):  " << F.num_args() << "\n";
+        for (unsigned i = 0; i < F.num_args(); i++) {
+            std::cout << "Creating answer literal q" << i << " for " << F.arg(i) << "\n";
+            std::stringstream qname; qname << "q" << i;
+            expr qi = c.bool_const(qname.str().c_str()); // create a new answer literal
+            s.add(implies(qi, F.arg(i)));
+            qs.push_back(qi);
+        }
+    }
+    // The solver s already contains p1 => F
+    // To disable F, we add (not p1) as an additional assumption
+    qs.push_back(!p1);
+    std::cout << s.check(qs.size(), &qs[0]) << "\n";
+    expr_vector core2 = s.unsat_core();
+    std::cout << core2 << "\n";
+    std::cout << "size: " << core2.size() << "\n";
+    for (unsigned i = 0; i < core2.size(); i++) {
+        std::cout << core2[i] << "\n";
+    }
+}
+
+/**
+   \brief Unsat core example 3
+*/
+void unsat_core_example3() {
+    // Extract unsat core using tracked assertions
+    std::cout << "unsat core example 3\n";
+    context c;
+    expr x  = c.int_const("x");
+    expr y  = c.int_const("y");
+    solver s(c);
+
+    // enabling unsat core tracking
+    params p(c);
+    p.set("unsat_core", true);
+    s.set(p);
+
+    // The following assertion will not be tracked.
+    s.add(x > 0);
+
+    // The following assertion will be tracked using Boolean variable p1.
+    // The C++ wrapper will automatically create the Boolean variable.
+    s.add(y > 0, "p1");
+
+    // Asserting other tracked assertions.
+    s.add(x < 10, "p2");
+    s.add(y < 0,  "p3");
+
+    std::cout << s.check() << "\n";
+    std::cout << s.unsat_core() << "\n";
 }
 
 void tactic_example1() {
@@ -463,7 +586,7 @@ void tactic_example4() {
     std::cout << "tactic example 4\n";
     context c;
     params p(c);
-    p.set(":mul2concat", true);
+    p.set("mul2concat", true);
     tactic t = 
         with(tactic(c, "simplify"), p) &
         tactic(c, "solve-eqs") &
@@ -506,8 +629,8 @@ void tactic_example6() {
     std::cout << "tactic example 6\n";
     context c;
     params p(c);
-    p.set(":arith-lhs", true);
-    p.set(":som", true); // sum-of-monomials normal form
+    p.set("arith_lhs", true);
+    p.set("som", true); // sum-of-monomials normal form
     solver s = 
         (with(tactic(c, "simplify"), p) &
          tactic(c, "normalize-bounds") &
@@ -647,11 +770,8 @@ void tactic_qe() {
     expr x = c.int_const("x");
     expr f = implies(x <= a, x < b);
     
-    // We have to use the C API directly for creating quantified formulas.
-    Z3_app vars[] = {(Z3_app) x};
-    expr qf = to_expr(c, Z3_mk_forall_const(c, 0, 1, vars,
-                                            0, 0, // no pattern
-                                            f));
+    expr qf = forall(x, f);
+
     std::cout << qf << "\n";
     
     s.add(qf);
@@ -707,7 +827,10 @@ int main() {
         error_example(); std::cout << "\n";
         numeral_example(); std::cout << "\n";
         ite_example(); std::cout << "\n";
-        unsat_core_example(); std::cout << "\n";
+        quantifier_example(); std::cout << "\n";
+        unsat_core_example1(); std::cout << "\n";
+        unsat_core_example2(); std::cout << "\n";
+        unsat_core_example3(); std::cout << "\n";
         tactic_example1(); std::cout << "\n";
         tactic_example2(); std::cout << "\n";
         tactic_example3(); std::cout << "\n";

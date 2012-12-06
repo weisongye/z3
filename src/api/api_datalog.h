@@ -21,7 +21,7 @@ Revision History:
 
 #include"z3.h"
 #include"ast.h"
-#include"front_end_params.h"
+#include"smt_params.h"
 #include"dl_external_relation.h"
 #include"dl_decl_plugin.h"
 #include"smt_kernel.h"
@@ -40,7 +40,7 @@ namespace api {
         datalog::context             m_context;    
         ast_ref_vector               m_trail;        
     public:
-        fixedpoint_context(ast_manager& m, front_end_params& p);
+        fixedpoint_context(ast_manager& m, smt_params& p);
         virtual ~fixedpoint_context() {}
         family_id get_family_id() const { return const_cast<datalog::context&>(m_context).get_decl_util().get_family_id(); }
         void set_state(void* state);
@@ -62,9 +62,6 @@ namespace api {
         void collect_param_descrs(param_descrs & p) { m_context.collect_params(p); }
         void updt_params(params_ref const& p) { m_context.updt_params(p); }
 
-        void simplify_rules(
-            unsigned num_rules, expr* const* rules, 
-            unsigned num_outputs,  func_decl* const* outputs, expr_ref_vector& result);
     };
 };
 
