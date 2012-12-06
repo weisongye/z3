@@ -42,6 +42,7 @@ namespace mcsat {
 
         virtual void reset();
 
+        virtual void assert_expr(expr * t, expr * a);
         virtual void assert_expr(expr * t);
         virtual void push();
         virtual void pop(unsigned n);

@@ -101,6 +101,9 @@ namespace mcsat {
     void solver::assert_expr(expr * t) {
     }
 
+    void solver::assert_expr(expr * t, expr * a) {
+    }
+
     void solver::push() {
     }
 

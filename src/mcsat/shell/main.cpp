@@ -24,6 +24,8 @@ Revision History:
 #include"cmd_context.h"
 #include"smt2parser.h"
 #include"mcsat_solver.h"
+#include"gparams.h"
+#include"env_params.h"
 
 char const *         g_input_file          = 0;
 bool                 g_display_statistics  = false;
@@ -54,6 +56,7 @@ void display_usage() {
     std::cout << "  -nw         disable warning messages.\n";
     std::cout << "  -st         display statistics.\n";
     std::cout << "  -t:secs     set timeout.\n";
+    std::cout << "  -p          display gloabal and module parameters.\n";
 #if defined(Z3DEBUG) || defined(_TRACE)
     std::cout << "\nDebugging support:\n";
 #endif
@@ -72,6 +75,8 @@ void parse_cmd_line_args(int argc, char ** argv) {
 
         if (arg[0] == '-') {
             char * opt_name = arg + 1;
+            if (*opt_name == '-')
+                opt_name++;
             char * opt_arg  = 0;
             char * colon    = strchr(arg, ':');
             if (colon) {
@@ -83,10 +88,7 @@ void parse_cmd_line_args(int argc, char ** argv) {
                 exit(0);
             }
             if (strcmp(opt_name, "version") == 0) {
-                std::cout
-                    << Z3_MAJOR_VERSION << " " 
-                    << Z3_MINOR_VERSION << " "
-                    << Z3_BUILD_NUMBER << "\n";
+                std::cout << "Z3 version " << Z3_MAJOR_VERSION << "." << Z3_MINOR_VERSION << "." << Z3_BUILD_NUMBER << "\n";
                 exit(0);
             }
             else if (strcmp(opt_name, "st") == 0) {
@@ -103,6 +105,10 @@ void parse_cmd_line_args(int argc, char ** argv) {
                     error("option argument (-t:timeout) is missing.");
                 long tm = strtol(opt_arg, 0, 10);
                 set_timeout(tm * 1000);
+            }
+            else if (strcmp(opt_name, "p") == 0) {
+                gparams::display(std::cout, 0, false, false);
+                exit(0);
             }
 #ifdef _TRACE
             else if (strcmp(opt_name, "tr") == 0) {
@@ -191,11 +197,12 @@ unsigned read_smtlib2_commands(char const * file_name) {
 int main(int argc, char ** argv) {
     try {
         memory::initialize(0);
+        memory::exit_when_out_of_memory(true, "(error \"out of memory\")");
         parse_cmd_line_args(argc, argv);
+        env_params::updt_params();
         if (!g_input_file) {
             error("input file was not specified.");
         }
-        memory::exit_when_out_of_memory(true, "(error \"out of memory\")");
         return read_smtlib2_commands(g_input_file);
     }
     catch (z3_exception & ex) {
