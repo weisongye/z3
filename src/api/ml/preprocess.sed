@@ -1,7 +1,7 @@
 # attempt to clean up the mess with 'unsigned'
-s/__in unsigned __/__in __/g
-s/__out unsigned __/__out __/g
-s/__out_opt unsigned __/__out_opt __/g
+s/ unsigned/ unsigned int/g
+s/unsigned int long/unsigned long/g
+s/unsigned int __/unsigned __/g
 
 
 # '@name ' -> 'Section: '
@@ -43,7 +43,7 @@ s/\\ / /g
 s/\\c \([^ .,:]*\)/[\1]/g
 
 # '#Z3_' -> 'Z3.'
-s/#Z3_\([^ \n\.\t,)]*\)/{!Z3.\1}/g
+s/#Z3_\([^ \.,)	]*\)/{!Z3.\1}/g
 
 # '/*@}*/' -> ''
 s/\/\*@{\*\///g

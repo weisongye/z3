@@ -43,7 +43,7 @@ Revision History:
    #define CLOCKID CLOCK_PROCESS_CPUTIME_ID
    #else
    // FreeBSD does not support CLOCK_PROCESS_CPUTIME_ID 
-   #define CLOCKID CLOCK_PROF
+   #define CLOCKID CLOCK_MONOTONIC
    #endif
 #define SIG     SIGRTMIN
 // ---------
@@ -58,6 +58,7 @@ Revision History:
 #endif
 #include"util.h"
 #include<limits.h>
+#include"z3_omp.h"
 
 struct scoped_timer::imp {
     event_handler *  m_eh;
