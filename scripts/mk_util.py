@@ -216,7 +216,7 @@ def find_java_home():
     if JAVA_HOME != None:
         if is_verbose():
             print "Checking jni.h..."
-        if os.path.exists('%s%sinclude%sjni.h' % (JAVA_HOME, os.sep, os.sep)):
+        if os.path.exists(os.path.join(JAVA_HOME, 'include', 'jni.h')):
             return
     if is_verbose():
         print "Finding JAVA_HOME..."
@@ -238,8 +238,8 @@ def find_java_home():
             path = string.join(tmp[:len(tmp) - 3], os.sep)
             if is_verbose():
                 print "Checking jni.h..."
-            if not os.path.exists('%s%sinclude%sjni.h' % (path, os.sep, os.sep)):
-                raise MKException("Failed to detect jni.h at '%s%sinclude'" % (path, os.sep))
+            if not os.path.exists(os.path.join(path, 'include', 'jni.h')):
+                raise MKException("Failed to detect jni.h at '%s'" % os.path.join(path, 'include'))
             JAVA_HOME = path
             return
     raise MKException('Failed to find JAVA_HOME')
@@ -1298,6 +1298,10 @@ def mk_config():
         else:
             CXXFLAGS = '%s -D_NO_OMP_' % CXXFLAGS
             SLIBEXTRAFLAGS = ''
+        if DEBUG_MODE:
+            CXXFLAGS     = '%s -g -Wall' % CXXFLAGS
+        else:
+            CXXFLAGS     = '%s -O3 -D _EXTERNAL_RELEASE -fomit-frame-pointer' % CXXFLAGS
         sysname = os.uname()[0]
         if sysname == 'Darwin':
             SO_EXT    = '.dylib'
@@ -1331,10 +1335,6 @@ def mk_config():
             CPPFLAGS     = '%s -DZ3DEBUG' % CPPFLAGS
         if TRACE or DEBUG_MODE:
             CPPFLAGS     = '%s -D_TRACE' % CPPFLAGS
-        if DEBUG_MODE:
-            CXXFLAGS     = '%s -g -Wall' % CXXFLAGS
-        else:
-            CXXFLAGS     = '%s -O3 -D _EXTERNAL_RELEASE -fomit-frame-pointer' % CXXFLAGS
         CXXFLAGS         = '%s -msse -msse2' % CXXFLAGS
         config.write('PREFIX=%s\n' % PREFIX)
         config.write('CC=%s\n' % CC)
@@ -1507,7 +1507,7 @@ def def_module_params(module_name, export, params, class_name=None, description=
     out.write('  params_ref const & p;\n')
     if export:
         out.write('  params_ref g;\n')
-    out.write('  %s(params_ref const & _p = params_ref()):\n' % class_name)
+    out.write('  %s(params_ref const & _p = params_ref::get_empty()):\n' % class_name)
     out.write('     p(_p)')
     if export:
         out.write(', g(gparams::get_module("%s"))' % module_name)
