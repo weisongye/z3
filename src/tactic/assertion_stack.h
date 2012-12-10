@@ -77,7 +77,8 @@ public:
   
     bool is_well_sorted() const;
 
-    bool is_forbidden(func_decl * f) const;
+    void freeze(func_decl * f);
+    bool is_frozen(func_decl * f) const;
     void add_filter(func_decl * f);
     void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
 

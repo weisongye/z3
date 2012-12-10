@@ -23,6 +23,10 @@ Revision History:
 #include"expr_replacer.h"
 #include"model.h"
 #include"expr_substitution.h"
+#include"for_each_expr.h"
+
+#define MC_TAG_EXTENSION 0
+#define MC_TAG_FILTER    1
 
 struct assertion_stack::imp {
     ast_manager &                m_manager;
@@ -30,15 +34,15 @@ struct assertion_stack::imp {
     bool                         m_proofs_enabled;  // proof production is enabled. m_manager.proofs_enabled() must be true if m_proofs_enabled == true
     bool                         m_core_enabled;    // unsat core extraction is enabled.
     bool                         m_inconsistent; 
-    ptr_vector<expr>             m_forms;
-    ptr_vector<proof>            m_proofs;
-    ptr_vector<expr_dependency>  m_deps;
-    unsigned                     m_form_qhead; // position of first uncommitted assertion
+    expr_ref_vector              m_forms;
+    proof_ref_vector             m_proofs;
+    expr_dependency_ref_vector   m_deps;
+    unsigned                     m_forms_qhead; // position of first uncommitted assertion
     unsigned                     m_mc_qhead;
 
     // Set of declarations that can't be eliminated
-    obj_hashtable<func_decl>     m_forbidden_set;
-    func_decl_ref_vector         m_forbidden;
+    obj_hashtable<func_decl>     m_frozen_set;
+    func_decl_ref_vector         m_frozen;
     
     // Limited model converter support, it supports only extensions and filters.
     // It should be viewed as combination of extension_model_converter and 
@@ -48,12 +52,12 @@ struct assertion_stack::imp {
     // Model converter is just two sequences: func_decl and tag.
     // Tag 0 (extension) func_decl was eliminated, and its definition is in m_vsubst or m_fsubst.
     // Tag 1 (filter) func_decl was introduced by tactic, and must be removed from model.
-    ptr_vector<func_decl>        m_mc;      
+    func_decl_ref_vector         m_mc;      
     char_vector                  m_mc_tag;
     
     struct scope {
         unsigned                 m_forms_lim;
-        unsigned                 m_forbidden_lim;
+        unsigned                 m_frozen_lim;
         unsigned                 m_mc_lim;
         bool                     m_inconsistent_old;
     };
@@ -62,15 +66,23 @@ struct assertion_stack::imp {
 
     imp(ast_manager & m, bool models_enabled, bool core_enabled):
         m_manager(m),
-        m_forbidden(m),
-        m_csubst(m, core_enabled) {
+        m_forms(m),
+        m_proofs(m),
+        m_deps(m),
+        m_frozen(m),
+        m_csubst(m, core_enabled),
+        m_mc(m) {
         init(m.proofs_enabled(), models_enabled, core_enabled);
     }
 
     imp(ast_manager & m, bool proofs_enabled, bool models_enabled, bool core_enabled):
         m_manager(m),
-        m_forbidden(m),
-        m_csubst(m, core_enabled, proofs_enabled) {
+        m_forms(m),
+        m_proofs(m),
+        m_deps(m),
+        m_frozen(m),
+        m_csubst(m, core_enabled, proofs_enabled),
+        m_mc(m) {
         init(proofs_enabled, models_enabled, core_enabled);
     }
 
@@ -79,13 +91,13 @@ struct assertion_stack::imp {
         m_proofs_enabled = proofs_enabled;
         m_core_enabled   = core_enabled;
         m_inconsistent   = false;
-        m_form_qhead     = 0;
+        m_forms_qhead    = 0;
+        m_mc_qhead       = 0;
     }
 
     ~imp() {
-        reset();
     }
-
+    
     ast_manager & m() const { return m_manager; }
 
     bool models_enabled() const { return m_models_enabled; }
@@ -98,41 +110,27 @@ struct assertion_stack::imp {
 
     unsigned size() const { return m_forms.size(); }
 
-    unsigned qhead() const { return m_form_qhead; }
+    unsigned qhead() const { return m_forms_qhead; }
 
-    expr * form(unsigned i) const { return m_forms[i];  }
+    expr * form(unsigned i) const { return m_forms.get(i); }
 
     proof * pr(unsigned i) const { 
         if (proofs_enabled())
-            return m_proofs[i];
+            return m_proofs.get(i);
         else
             return 0;
     }
 
     expr_dependency * dep(unsigned i) const { 
         if (unsat_core_enabled())
-            return m_deps[i];
+            return m_deps.get(i);
         else
             return 0;
     }
 
-    void reset() {
-        m_inconsistent = false;
-        m_form_qhead   = 0;
-        m_mc_qhead     = 0;
-        dec_ref_collection_values(m_manager, m_forms);
-        dec_ref_collection_values(m_manager, m_proofs);
-        dec_ref_collection_values(m_manager, m_deps);
-        dec_ref_collection_values(m_manager, m_forbidden);
-        m_forbidden_set.reset();
-        dec_ref_collection_values(m_manager, m_mc);
-        m_mc_tag.reset();
-        m_csubst.reset();
-        m_scopes.reset();
-    }
-    
     void expand(expr * f, proof * pr, expr_dependency * dep, expr_ref & new_f, proof_ref & new_pr, expr_dependency_ref & new_dep) {
         scoped_ptr<expr_replacer> r = mk_default_expr_replacer(m());
+        r->set_substitution(&m_csubst);
         (*r)(f, new_f, new_pr, new_dep);
         // new_pr   is a proof for  f == new_f
         // new_dep  are the dependencies for showing f == new_f
@@ -153,23 +151,17 @@ struct assertion_stack::imp {
         else {
             SASSERT(!m_inconsistent);
         }
-        m().inc_ref(f);
         m_forms.push_back(f);
-        if (proofs_enabled()) {
-            m().inc_ref(pr);
+        if (proofs_enabled())
             m_proofs.push_back(pr);
-        }
-        if (unsat_core_enabled()) {
-            m().inc_ref(d);
+        if (unsat_core_enabled())
             m_deps.push_back(d);
-        }
     }
 
     void quick_process(bool save_first, expr * & f, expr_dependency * d) {
         if (!m().is_and(f) && !(m().is_not(f) && m().is_or(to_app(f)->get_arg(0)))) {
-            if (!save_first) {
+            if (!save_first)
                 push_back(f, 0, d);
-            }
             return; 
         }
         typedef std::pair<expr *, bool> expr_pol;
@@ -275,7 +267,7 @@ struct assertion_stack::imp {
     }
     
     void update(unsigned i, expr * f, proof * pr, expr_dependency * d) {
-        SASSERT(i >= m_form_qhead);
+        SASSERT(i >= m_forms_qhead);
         SASSERT(proofs_enabled() == (pr != 0 && !m().is_undef_proof(pr)));
         if (m_inconsistent)
             return;
@@ -288,19 +280,10 @@ struct assertion_stack::imp {
                     push_back(out_f, out_pr, d);
                 }
                 else {
-                    m().inc_ref(out_f);
-                    m().dec_ref(m_forms[i]);
-                    m_forms[i] = out_f;
-                    
-                    m().inc_ref(out_pr);
-                    m().dec_ref(m_proofs[i]);
-                    m_proofs[i] = out_pr;
-                    
-                    if (unsat_core_enabled()) {
-                        m().inc_ref(d);
-                        m().dec_ref(m_deps[i]);
-                        m_deps[i] = d;
-                    }
+                    m_forms.set(i, out_f);
+                    m_proofs.set(i, out_pr);
+                    if (unsat_core_enabled())
+                        m_deps.set(i, d);
                 }
             }
         }
@@ -311,22 +294,16 @@ struct assertion_stack::imp {
                     push_back(f, 0, d);
                 }
                 else {
-                    m().inc_ref(f);
-                    m().dec_ref(m_forms[i]);
-                    m_forms[i] = f;
-                    
-                    if (unsat_core_enabled()) {
-                        m().inc_ref(d);
-                        m().dec_ref(m_deps[i]);
-                        m_deps[i] = d;
-                    }
+                    m_forms.set(i, f);
+                    if (unsat_core_enabled())
+                        m_deps.set(i, d);
                 }
             }
         }
     }
     
     void expand_and_update(unsigned i, expr * f, proof * pr, expr_dependency * d) {
-        SASSERT(i >= m_form_qhead);
+        SASSERT(i >= m_forms_qhead);
         SASSERT(proofs_enabled() == (pr != 0 && !m().is_undef_proof(pr)));
         if (m_inconsistent)
             return;
@@ -340,30 +317,120 @@ struct assertion_stack::imp {
         m_scopes.push_back(scope());
         scope & s            = m_scopes.back();
         s.m_forms_lim        = m_forms.size();
-        s.m_forbidden_lim    = m_forbidden.size();
+        s.m_frozen_lim       = m_frozen.size();
         s.m_mc_lim           = m_mc.size();
         s.m_inconsistent_old = m_inconsistent;
     }
-    
-    void pop(unsigned num_scopes) {
+
+    void restore_mc(unsigned old_size) {
+        unsigned sz  = m_mc.size();
+        SASSERT(sz >= old_size);
+        for (unsigned i = old_size; i < sz; i++) {
+            if (m_mc_tag[i] == MC_TAG_EXTENSION) {
+                func_decl * f = m_mc.get(i);
+                if (f->get_arity() == 0) {
+                    expr_ref c(m().mk_const(f), m());
+                    SASSERT(m_csubst.contains(c));
+                    m_csubst.erase(c);
+                }
+                else {
+                    // Arity > 0
+                    // We don't support macros yet.
+                }
+            }
+        }
+        m_mc.shrink(old_size);
+        m_mc_tag.shrink(old_size);
+        m_mc_qhead = old_size;
     }
-    
+
+    void restore_frozen(unsigned old_size) {
+        unsigned sz  = m_frozen.size();
+        SASSERT(sz >= old_size);
+        for (unsigned i = old_size; i < sz; i++) {
+            m_frozen_set.erase(m_frozen.get(i));
+        }
+        m_frozen.shrink(old_size);
+    }
+
+    void restore_forms(unsigned old_size) {
+        m_forms.shrink(old_size);
+        if (proofs_enabled())
+            m_proofs.shrink(old_size);
+        if (unsat_core_enabled())
+            m_deps.shrink(old_size);
+        m_forms_qhead = old_size;
+    }
+
+    void pop(unsigned num_scopes) {
+        unsigned new_lvl    = m_scopes.size() - num_scopes;
+        scope & s           = m_scopes[new_lvl];
+        m_inconsistent      = s.m_inconsistent_old;
+        restore_frozen(s.m_frozen_lim);
+        restore_mc(s.m_mc_lim);
+        restore_forms(s.m_forms_lim);
+        m_scopes.shrink(new_lvl);
+    }
+
+    struct freeze_proc {
+        obj_hashtable<func_decl>  &  m_frozen_set;
+        func_decl_ref_vector      &  m_frozen; 
+        freeze_proc(obj_hashtable<func_decl> & s, func_decl_ref_vector & f):m_frozen_set(s), m_frozen(f) {}
+        void operator()(var * n) {}
+        void operator()(quantifier * n) {}
+        void operator()(app * n) {
+            if (is_uninterp(n)) {
+                func_decl * f = n->get_decl();
+                if (!m_frozen_set.contains(f)) {
+                    m_frozen_set.insert(f);
+                    m_frozen.push_back(f);
+                }
+            }
+        }
+    };
+
     void commit() {
+        expr_fast_mark1 uf_visited; // marks for updating frozen
+        freeze_proc p(m_frozen_set, m_frozen);
+        unsigned sz = m_forms.size();
+        for (unsigned i = m_forms_qhead; i < sz; i++)
+            quick_for_each_expr(p, uf_visited, m_forms.get(i));
+        sz = m_mc.size();
+        for (unsigned i = m_mc_qhead; i < sz; i++) {
+            if (m_mc_tag[i] == MC_TAG_EXTENSION) {
+                func_decl * f = m_mc.get(i);
+                if (f->get_arity() == 0) {
+                    expr_ref c(m().mk_const(f), m());
+                    expr * def; proof * pr; expr_dependency * dep;
+                    VERIFY(m_csubst.find(c, def, pr, dep));
+                    quick_for_each_expr(p, uf_visited, def);
+                }
+                else {
+                    // Arity > 0
+                    // We don't support macros yet.
+                }
+            }
+        }
+        m_forms_qhead = m_forms.size();
+        m_mc_qhead    = m_mc.size();
     }
 
     unsigned scope_lvl() const { 
         return m_scopes.size(); 
     }
 
-    bool is_forbidden(func_decl * f) const { 
-        return m_forbidden_set.contains(f); 
+    void freeze(func_decl * f) {
+        if (m_frozen_set.contains(f))
+            return;
+        m_frozen_set.insert(f);
+        m_frozen.push_back(f);
+    }
+
+    bool is_frozen(func_decl * f) const { 
+        return m_frozen_set.contains(f); 
     }
     
-#define MC_TAG_EXTENSION 0
-#define MC_TAG_FILTER    1
-    
     void add_filter(func_decl * f) {
-        m().inc_ref(f);
         m_mc.push_back(f);
         m_mc_tag.push_back(MC_TAG_FILTER);
     }
@@ -373,7 +440,6 @@ struct assertion_stack::imp {
         SASSERT(!m_csubst.contains(c));
         m_csubst.insert(c, def, pr, dep);
         func_decl * d = c->get_decl();
-        m().inc_ref(d);
         m_mc.push_back(d);
         m_mc_tag.push_back(MC_TAG_EXTENSION);
     }
@@ -386,7 +452,7 @@ struct assertion_stack::imp {
         unsigned sz = size();
         for (unsigned i = 0; i < sz; i++) {
             out << "\n  ";
-            if (i == m_form_qhead) 
+            if (i == m_forms_qhead) 
                 out << "==>\n";
             out << mk_ismt2_pp(form(i), m(), 2);
         }
@@ -417,7 +483,12 @@ assertion_stack::~assertion_stack() {
 }
 
 void assertion_stack::reset() {
-    m_imp->reset();
+    ast_manager & m     = m_imp->m_manager;
+    bool models_enabled = m_imp->m_models_enabled;
+    bool proofs_enabled = m_imp->m_proofs_enabled;
+    bool core_enabled   = m_imp->m_core_enabled;
+    dealloc(m_imp);
+    m_imp = alloc(imp, m, proofs_enabled, models_enabled, core_enabled);
 }
 
 ast_manager & assertion_stack::m() const { 
@@ -496,9 +567,12 @@ bool assertion_stack::is_well_sorted() const {
     return m_imp->is_well_sorted();
 }
 
+void assertion_stack::freeze(func_decl * f) {
+    m_imp->freeze(f);
+}
 
-bool assertion_stack::is_forbidden(func_decl * f) const {
-    return m_imp->is_forbidden(f);
+bool assertion_stack::is_frozen(func_decl * f) const {
+    return m_imp->is_frozen(f);
 }
 
 void assertion_stack::add_filter(func_decl * f) {
