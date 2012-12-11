@@ -24,6 +24,8 @@ Revision History:
 #include"model.h"
 #include"expr_substitution.h"
 #include"for_each_expr.h"
+#include"extension_model_converter.h"
+#include"filter_model_converter.h"
 
 #define MC_TAG_EXTENSION 0
 #define MC_TAG_FILTER    1
@@ -64,6 +66,8 @@ struct assertion_stack::imp {
     
     svector<scope>               m_scopes;
 
+    extension_model_converter *  m_emc; // auxiliary field
+
     imp(ast_manager & m, bool models_enabled, bool core_enabled):
         m_manager(m),
         m_forms(m),
@@ -93,6 +97,7 @@ struct assertion_stack::imp {
         m_inconsistent   = false;
         m_forms_qhead    = 0;
         m_mc_qhead       = 0;
+        m_emc            = 0;
     }
 
     ~imp() {
@@ -444,7 +449,66 @@ struct assertion_stack::imp {
         m_mc_tag.push_back(MC_TAG_EXTENSION);
     }
 
-    void convert(model_ref & m) {
+    void set_cancel(bool f) {
+        if (m_emc != 0 && f)
+            m_emc->cancel();
+    }
+
+    void convert(model_ref & md) {
+        unsigned top = static_cast<unsigned>(m_mc.size());
+        if (top > 0) {
+            top--;
+            while (true) {
+                if (m_mc_tag[top] == MC_TAG_EXTENSION) {
+                    extension_model_converter emc(m());
+                    #pragma omp critical (assertion_stack)
+                    {
+                        m_emc = &emc;
+                    }
+                    while (true) {
+                        SASSERT(m_mc_tag[top] == MC_TAG_EXTENSION);
+                        func_decl * f = m_mc.get(top);
+                        if (f->get_arity() == 0) {
+                            expr_ref c(m().mk_const(f), m());
+                            expr * def; proof * pr; expr_dependency * dep;
+                            VERIFY(m_csubst.find(c, def, pr, dep));
+                            emc.insert(f, def);
+                        }
+                        else {
+                            // arity > 0
+                            // we don't support macros yet
+                        }
+                        if (top == 0)
+                            break;
+                        top--;
+                        if (m_mc_tag[top] != MC_TAG_EXTENSION)
+                            break;
+                    }
+                    emc(md, 0);
+                    #pragma omp critical (assertion_stack)
+                    {
+                        m_emc = 0;
+                    }
+                }
+                else {
+                    SASSERT(m_mc_tag[top] == MC_TAG_FILTER);
+                    filter_model_converter fm(m());
+                    while (true) {
+                        SASSERT(m_mc_tag[top] == MC_TAG_FILTER);
+                        func_decl * f = m_mc.get(top);
+                        fm.insert(f);
+                        if (top == 0)
+                            break;
+                        top--;
+                        if (m_mc_tag[top] != MC_TAG_FILTER)
+                            break;
+                    }
+                    fm(md, 0);
+                }
+                if (top == 0)
+                    return;
+            }
+        }
     }
     
     void display(std::ostream & out, char const * header) const {
@@ -487,8 +551,11 @@ void assertion_stack::reset() {
     bool models_enabled = m_imp->m_models_enabled;
     bool proofs_enabled = m_imp->m_proofs_enabled;
     bool core_enabled   = m_imp->m_core_enabled;
-    dealloc(m_imp);
-    m_imp = alloc(imp, m, proofs_enabled, models_enabled, core_enabled);
+    #pragma omp critical (assertion_stack)
+    {
+        dealloc(m_imp);
+        m_imp = alloc(imp, m, proofs_enabled, models_enabled, core_enabled);
+    }
 }
 
 ast_manager & assertion_stack::m() const { 
@@ -589,4 +656,11 @@ void assertion_stack::convert(model_ref & m) {
 
 void assertion_stack::display(std::ostream & out, char const * header) const {
     m_imp->display(out, header);
+}
+
+void assertion_stack::set_cancel(bool f) {
+    #pragma omp critical (assertion_stack)
+    {
+        m_imp->set_cancel(f);
+    }
 }

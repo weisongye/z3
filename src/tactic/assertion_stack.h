@@ -84,6 +84,8 @@ public:
 
     void convert(model_ref & m);
     void display(std::ostream & out, char const * header = "assertion-stack") const;
+
+    void set_cancel(bool f);
 };
 
 #endif
