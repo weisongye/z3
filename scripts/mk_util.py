@@ -68,6 +68,7 @@ VS_PROJ = False
 TRACE = False
 DOTNET_ENABLED=False
 JAVA_ENABLED=False
+ML_ENABLED=False
 STATIC_LIB=False
 VER_MAJOR=None
 VER_MINOR=None
@@ -392,12 +393,12 @@ def display_help(exit_code):
 # Parse configuration option for mk_make script
 def parse_options():
     global VERBOSE, DEBUG_MODE, IS_WINDOWS, VS_X64, ONLY_MAKEFILES, SHOW_CPPS, VS_PROJ, TRACE
-    global DOTNET_ENABLED, JAVA_ENABLED, STATIC_LIB, PREFIX, GMP, PYTHON_PACKAGE_DIR
+    global DOTNET_ENABLED, JAVA_ENABLED, ML_ENABLED, STATIC_LIB, PREFIX, GMP, PYTHON_PACKAGE_DIR
     try:
         options, remainder = getopt.gnu_getopt(sys.argv[1:], 
                                                'b:dsxhmcvtnp:gjy:', 
                                                ['build=', 'debug', 'silent', 'x64', 'help', 'makefiles', 'showcpp', 'vsproj',
-                                                'trace', 'nodotnet', 'staticlib', 'prefix=', 'gmp', 'java', 'pydir='])
+                                                'trace', 'nodotnet', 'staticlib', 'prefix=', 'gmp', 'java', 'ml', 'pydir='])
     except:
         print "ERROR: Invalid command line option"
         display_help(1)
@@ -438,6 +439,8 @@ def parse_options():
             GMP = True
         elif opt in ('-j', '--java'):
             JAVA_ENABLED = True
+        elif opt in ('', '--ml'):
+            ML_ENABLED = True
         else:
             print "ERROR: Invalid command line option '%s'" % opt
             display_help(1)
@@ -523,6 +526,9 @@ def is_verbose():
 
 def is_java_enabled():
     return JAVA_ENABLED
+
+def is_ml_enabled():
+    return ML_ENABLED
 
 def is_compiler(given, expected):
     """ 
@@ -1042,6 +1048,26 @@ class JavaDLLComponent(Component):
     def main_component(self):
         return is_java_enabled()
 
+class MLComponent(Component):
+    def __init__(self, name, lib_name, path, deps):
+        Component.__init__(self, name, path, deps)
+        if lib_name == None:
+            lib_name = name
+        self.lib_name     = lib_name
+
+    def mk_makefile(self, out):
+        if is_ml_enabled():
+            mk_dir(os.path.join(BUILD_DIR, 'api', 'ml'))
+            libfile = '%s$(LIB_EXT)' % self.lib_name
+            out.write('%s: libz3$(SO_EXT) %s\n' % (libfile, os.path.join(self.to_src_dir, 'z3_native.c')))
+            out.write('\t$(CXX) $(CXXFLAGS) $(CXX_OUT_FLAG)api/ml/z3_native$(OBJ_EXT) %s/z3_native.c\n' % self.to_src_dir)
+            out.write('\t$(SLINK) $(SLINK_OUT_FLAG)libz3ml$(LIB_EXT) $(SLINK_FLAGS) %s$(OBJ_EXT) libz3$(SO_EXT)\n' %  os.path.join('api', 'ml', 'z3_native'))
+            out.write('ml: %s\n' % libfile)
+            out.write('\n')
+    
+    def main_component(self):
+        return is_ml_enabled()
+
 
 class ExampleComponent(Component):
     def __init__(self, name, path):
@@ -1204,6 +1230,10 @@ def add_java_dll(name, deps=[], path=None, dll_name=None, package_name=None, man
     c = JavaDLLComponent(name, dll_name, package_name, manifest_file, path, deps)
     reg_component(name, c)
 
+def add_ml_lib(name, deps=[], path=None, lib_name=None):
+    c = MLComponent(name, lib_name, path, deps)
+    reg_component(name, c)
+
 def add_cpp_example(name, path=None):
     c = CppExampleComponent(name, path)
     reg_component(name, c)
@@ -1282,6 +1312,7 @@ def mk_config():
         # End of Windows VS config.mk
         if is_verbose():
             print '64-bit:         %s' % is64()
+            print 'ML API:         %s' % is_ml_enabled()
             if is_java_enabled():
                 print 'Java Home:      %s' % JAVA_HOME
                 print 'Java Compiler:  %s' % JAVAC
@@ -1374,6 +1405,7 @@ def mk_config():
             print 'OpenMP:         %s' % HAS_OMP
             print 'Prefix:         %s' % PREFIX
             print '64-bit:         %s' % is64()
+            print 'ML API:         %s' % is_ml_enabled()
             if is_java_enabled():
                 print 'Java Home:      %s' % JAVA_HOME
                 print 'Java Compiler:  %s' % JAVAC
