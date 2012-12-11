@@ -60,3 +60,6 @@ src/util/version.h
 src/api/java/Native.cpp
 src/api/java/Native.java
 src/api/java/enumerations/*.java
+src/api/ml/z3_native.c
+src/api/ml/z3_native.ml
+src/api/ml/z3_enums.ml
