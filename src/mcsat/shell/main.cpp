@@ -169,7 +169,7 @@ unsigned read_smtlib2_commands(char const * file_name) {
     signal(SIGINT, on_ctrl_c);
     cmd_context ctx;
 
-    solver * s = alloc(mcsat::solver);
+    solver * s = mk_mcsat_solver();
     ctx.set_solver(s);
 
     g_cmd_context = &ctx;

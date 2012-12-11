@@ -39,6 +39,10 @@ namespace mcsat {
         
         ast_manager & m() const;
 
+        bool models_enabled() const;
+        bool proofs_enabled() const;
+        bool unsat_core_enabled() const;
+        
         /**
            \brief Add a tactic to be applied before required transformations (e.g., nnf)
         */
@@ -54,6 +58,7 @@ namespace mcsat {
         void commit();
         void push();
         void pop(unsigned num_scopes);
+        unsigned scope_lvl() const;
 
         void set_cancel(bool f);
         

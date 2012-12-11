@@ -66,6 +66,10 @@ namespace mcsat {
             m_stack.pop(num_scopes);
         }
 
+        unsigned scope_lvl() const {
+            return m_stack.scope_lvl();
+        }
+
         static void set_cancel(sref_vector<tactic> & ts, bool f) {
             for (unsigned i = 0; i < ts.size(); i++) {
                 ts[i]->set_cancel(f);
@@ -84,6 +88,18 @@ namespace mcsat {
 
     preprocessor::~preprocessor() {
         dealloc(m_imp);
+    }
+
+    bool preprocessor::models_enabled() const { 
+        return m_imp->m_stack.models_enabled(); 
+    }
+
+    bool preprocessor::proofs_enabled() const { 
+        return m_imp->m_stack.proofs_enabled(); 
+    }
+
+    bool preprocessor::unsat_core_enabled() const { 
+        return m_imp->m_stack.unsat_core_enabled(); 
     }
     
     ast_manager & preprocessor::m() const {
@@ -116,6 +132,10 @@ namespace mcsat {
 
     void preprocessor::pop(unsigned num_scopes) {
         m_imp->pop(num_scopes);
+    }
+
+    unsigned preprocessor::scope_lvl() const {
+        return m_imp->scope_lvl();
     }
     
     unsigned preprocessor::size() const {
