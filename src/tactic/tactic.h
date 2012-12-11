@@ -30,6 +30,7 @@ Notes:
 #include"lbool.h"
 
 class progress_callback;
+class assertion_stack;
 
 typedef ptr_buffer<goal> goal_buffer;
 
@@ -96,6 +97,14 @@ public:
 
     // translate tactic to the given manager
     virtual tactic * translate(ast_manager & m) = 0;
+
+    /**
+       \brief Apply the tactic to the given assertion stack.
+       
+       An exception is thrown if the tactic does not support assertion
+       stacks.
+    */
+    virtual void operator()(assertion_stack & s);
 };
 
 typedef ref<tactic>         tactic_ref;

@@ -23,7 +23,7 @@ Revision History:
 namespace mcsat {
 
     struct preprocessor::imp {
-        assertion_stack     m_stack;
+        assertion_stack      m_stack;
         sref_vector<tactic>  m_before_tactics;
         sref_vector<tactic>  m_after_tactics;
         
@@ -41,8 +41,15 @@ namespace mcsat {
             m_after_tactics.push_back(t);
         }
 
+        static void apply_tactics(sref_vector<tactic> & ts, assertion_stack & s) {
+            for (unsigned i = 0; i < ts.size(); i++) {
+                (*ts[i])(s);
+            }
+        }
+
         void apply_tactics() {
-            // TODO
+            apply_tactics(m_before_tactics, m_stack);
+            apply_tactics(m_after_tactics, m_stack);
         }
 
         void commit() {
@@ -59,6 +66,16 @@ namespace mcsat {
             m_stack.pop(num_scopes);
         }
 
+        static void set_cancel(sref_vector<tactic> & ts, bool f) {
+            for (unsigned i = 0; i < ts.size(); i++) {
+                ts[i]->set_cancel(f);
+            }
+        }
+        
+        void set_cancel(bool f) {
+            set_cancel(m_before_tactics, f);
+            set_cancel(m_after_tactics, f);
+        }
     };
 
     preprocessor::preprocessor(ast_manager & m, bool proofs_enabled, bool models_enabled, bool core_enabled) {
@@ -127,6 +144,10 @@ namespace mcsat {
 
     void preprocessor::display(std::ostream & out) const {
         m_imp->m_stack.display(out, "solver");
+    }
+
+    void preprocessor::set_cancel(bool f) {
+        m_imp->set_cancel(f);
     }
 
 };

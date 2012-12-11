@@ -36,6 +36,10 @@ void tactic::reset_cancel() {
     }
 }
 
+void tactic::operator()(assertion_stack & s) {
+    throw tactic_exception("tactic does not support assertion stacks");
+}
+
 struct tactic_report::imp {
     char const *    m_id;
     goal const &    m_goal;
