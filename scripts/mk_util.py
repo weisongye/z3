@@ -933,10 +933,8 @@ class DLLComponent(Component):
             mk_dir(os.path.join(dist_path, 'bin'))
             shutil.copy('%s.dll' % os.path.join(build_path, self.dll_name),
                         '%s.dll' % os.path.join(dist_path, 'bin', self.dll_name))
-            if self.static:
-                mk_dir(os.path.join(dist_path, 'bin'))
-                shutil.copy('%s.lib' % os.path.join(build_path, self.dll_name),
-                            '%s.lib' % os.path.join(dist_path, 'bin', self.dll_name))
+            shutil.copy('%s.lib' % os.path.join(build_path, self.dll_name),
+                        '%s.lib' % os.path.join(dist_path, 'bin', self.dll_name))
 
 class DotNetDLLComponent(Component):
     def __init__(self, name, dll_name, path, deps, assembly_info_dir):
@@ -1042,6 +1040,11 @@ class JavaDLLComponent(Component):
     def main_component(self):
         return is_java_enabled()
 
+    def mk_win_dist(self, build_path, dist_path):
+        if JAVA_ENABLED:
+            mk_dir(os.path.join(dist_path, 'bin'))
+            shutil.copy('%s.jar' % os.path.join(build_path, self.package_name),
+                        '%s.jar' % os.path.join(dist_path, 'bin', self.package_name))
 
 class ExampleComponent(Component):
     def __init__(self, name, path):
