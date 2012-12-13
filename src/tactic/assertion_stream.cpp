@@ -84,6 +84,10 @@ void assertion_stack2stream::assert_expr(expr * f, proof * pr, expr_dependency *
 void assertion_stack2stream::assert_expr(expr * f) {
     m_stack.assert_expr(f);
 }
+
+void assertion_stack2stream::reset_after_qhead() {
+    m_stack.reset_after_qhead();
+}
     
 expr * assertion_stack2stream::form(unsigned i) const {
     return m_stack.form(i);
@@ -174,6 +178,10 @@ void goal2stream::assert_expr(expr * f, proof * pr, expr_dependency * d) {
 
 void goal2stream::assert_expr(expr * f) {
     m_goal.assert_expr(f);
+}
+
+void goal2stream::reset_after_qhead() {
+    m_goal.reset();
 }
     
 expr * goal2stream::form(unsigned i) const {

@@ -753,6 +753,10 @@ void assertion_stack::assert_expr(expr * f) {
     assert_expr(f, proofs_enabled() ? m().mk_asserted(f) : 0, 0);
 }
 
+void assertion_stack::reset_after_qhead() {
+    m_imp->shrink(qhead());
+}
+        
 void assertion_stack::update(unsigned i, expr * f, proof * pr, expr_dependency * d) {
     m_imp->update(i, f, pr, d);
 }

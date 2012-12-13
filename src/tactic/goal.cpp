@@ -473,7 +473,10 @@ unsigned goal::num_exprs() const {
 }
 
 void goal::shrink(unsigned j) {
+    SASSERT(!inconsistent());
     SASSERT(j <= size());
+    if (j == 0)
+        reset();
     unsigned sz = size();
     for (unsigned i = j; i < sz; i++)
         m().pop_back(m_forms);

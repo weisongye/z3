@@ -71,6 +71,8 @@ public:
     void update(unsigned i, expr * f, proof * pr = 0, expr_dependency * dep = 0);
     void expand_and_update(unsigned i, expr * f, proof * pr = 0, expr_dependency * d = 0);
 
+    void reset_after_qhead();
+
     void elim_true();
     void elim_redundancies(bool use_before_qhead = false);
 

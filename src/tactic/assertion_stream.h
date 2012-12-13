@@ -51,6 +51,9 @@ public:
     virtual void assert_expr(expr * f, proof * pr, expr_dependency * d) = 0;
     virtual void assert_expr(expr * f) = 0;
     
+    // Remove all elements after qhead()
+    virtual void reset_after_qhead() = 0;
+
     virtual expr * form(unsigned i) const = 0;
     virtual proof * pr(unsigned i) const = 0;
     virtual expr_dependency * dep(unsigned i) const = 0;
@@ -89,6 +92,8 @@ public:
     
     virtual void assert_expr(expr * f, proof * pr, expr_dependency * d);
     virtual void assert_expr(expr * f);
+
+    virtual void reset_after_qhead();
     
     virtual expr * form(unsigned i) const;
     virtual proof * pr(unsigned i) const;
@@ -129,6 +134,8 @@ public:
     
     virtual void assert_expr(expr * f, proof * pr, expr_dependency * d);
     virtual void assert_expr(expr * f);
+
+    virtual void reset_after_qhead();
     
     virtual expr * form(unsigned i) const;
     virtual proof * pr(unsigned i) const;
