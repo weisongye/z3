@@ -31,5 +31,7 @@ tactic * mk_nnf_tactic(ast_manager & m, params_ref const & p = params_ref());
   ADD_TACTIC("nnf", "put goal in negation normal form.", "mk_nnf_tactic(m, p)")
 */
 
+MK_SIMPLE_TACTIC_FACTORY(nnf_tactic_factory, mk_nnf_tactic(m, p));
+
 #endif
 

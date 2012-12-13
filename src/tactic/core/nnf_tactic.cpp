@@ -19,6 +19,7 @@ Revision History:
 #include"nnf.h"
 #include"tactical.h"
 #include"filter_model_converter.h"
+#include"assertion_stream.h"
 
 class nnf_tactic : public tactic {
     params_ref    m_params;
@@ -59,18 +60,12 @@ public:
 
     virtual void collect_param_descrs(param_descrs & r) { nnf::get_param_descrs(r); }
 
-    virtual void operator()(goal_ref const & g, 
-                            goal_ref_buffer & result, 
-                            model_converter_ref & mc, 
-                            proof_converter_ref & pc,
-                            expr_dependency_ref & core) {
-        TRACE("nnf", tout << "params: " << m_params << "\n"; g->display(tout););
-        SASSERT(g->is_well_sorted());
-        mc = 0; pc = 0; core = 0;
-        tactic_report report("nnf", *g);
-        bool produce_proofs = g->proofs_enabled();
-
-        ast_manager & m = g->m();
+    void apply(assertion_stream & g) {
+        SASSERT(g.is_well_sorted());
+        stream_report report("nnf", g);
+        bool produce_proofs = g.proofs_enabled();
+        
+        ast_manager & m = g.m();
         defined_names dnames(m);
         nnf local_nnf(m, dnames, m_params);
         set_nnf setter(*this, local_nnf);
@@ -81,35 +76,48 @@ public:
         expr_ref   new_curr(m);
         proof_ref  new_pr(m);
         
-        unsigned sz = g->size();
-        for (unsigned i = 0; i < sz; i++) {
-            expr * curr = g->form(i);
+        unsigned sz = g.size();
+        for (unsigned i = g.qhead(); i < sz; i++) {
+            expr * curr = g.form(i);
             local_nnf(curr, defs, def_prs, new_curr, new_pr);
             if (produce_proofs) {
-                proof * pr = g->pr(i);
+                proof * pr = g.pr(i);
                 new_pr     = m.mk_modus_ponens(pr, new_pr);
             }
-            g->update(i, new_curr, new_pr, g->dep(i));
+            g.update(i, new_curr, new_pr, g.dep(i));
         }
         
         sz = defs.size();
         for (unsigned i = 0; i < sz; i++) {
             if (produce_proofs)
-                g->assert_expr(defs.get(i), def_prs.get(i), 0);
+                g.assert_expr(defs.get(i), def_prs.get(i), 0);
             else
-                g->assert_expr(defs.get(i), 0, 0);
+                g.assert_expr(defs.get(i), 0, 0);
         }
-        g->inc_depth();
-        result.push_back(g.get());
+        g.inc_depth();
         unsigned num_extra_names = dnames.get_num_names();
-        if (num_extra_names > 0) {
-            filter_model_converter * fmc = alloc(filter_model_converter, m);
-            mc = fmc;
-            for (unsigned i = 0; i < num_extra_names; i++)
-                fmc->insert(dnames.get_name_decl(i));
-        }
-        TRACE("nnf", g->display(tout););
-        SASSERT(g->is_well_sorted());
+        for (unsigned i = 0; i < num_extra_names; i++)
+            g.add_filter(dnames.get_name_decl(i));
+        TRACE("nnf", g.display(tout););
+        SASSERT(g.is_well_sorted());
+    }
+
+    virtual void operator()(goal_ref const & g, 
+                            goal_ref_buffer & result, 
+                            model_converter_ref & mc, 
+                            proof_converter_ref & pc,
+                            expr_dependency_ref & core) {
+        TRACE("nnf", tout << "params: " << m_params << "\n"; g->display(tout););
+        mc = 0; pc = 0; core = 0;
+        goal_and_fmc2stream s(*(g.get()));
+        apply(s);
+        mc = s.mc();
+        result.push_back(g.get());
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        apply(strm);
     }
     
     virtual void cleanup() {}

@@ -22,6 +22,7 @@ Revision History:
 #define _ASSERTION_STREAM_H_
 
 #include"ast.h"
+#include"ref.h"
 class assertion_stack;
 class goal;
 class extension_model_converter;
@@ -105,6 +106,7 @@ public:
 };
 
 class goal2stream : public assertion_stream {
+protected:
     goal & m_goal;
 public:
     goal2stream(goal & g);
@@ -144,19 +146,21 @@ public:
 };
 
 class goal_and_emc2stream : public goal2stream {
-    extension_model_converter & m_mc;
+    ref<extension_model_converter> m_mc;
 public:
-    goal_and_emc2stream(goal & g, extension_model_converter & mc);
+    goal_and_emc2stream(goal & g);
     virtual ~goal_and_emc2stream();
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
+    extension_model_converter * mc() const { return m_mc.get(); }
 };
 
 class goal_and_fmc2stream : public goal2stream {
-    filter_model_converter & m_mc;
+    ref<filter_model_converter> m_mc;
 public:
-    goal_and_fmc2stream(goal & g, filter_model_converter & mc);
+    goal_and_fmc2stream(goal & g);
     virtual ~goal_and_fmc2stream();
     virtual void add_filter(func_decl * f);
+    filter_model_converter * mc() const { return m_mc.get(); }
 };
 
 class stream_report {

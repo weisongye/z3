@@ -214,26 +214,30 @@ void goal2stream::display(std::ostream & out) {
     m_goal.display(out);
 }
 
-goal_and_emc2stream::goal_and_emc2stream(goal & g, extension_model_converter & mc):
-goal2stream(g), m_mc(mc) {
+goal_and_emc2stream::goal_and_emc2stream(goal & g):
+goal2stream(g) {
 }
 
 goal_and_emc2stream::~goal_and_emc2stream() {
 }
 
 void goal_and_emc2stream::add_definition(app * c, expr * def, proof * pr, expr_dependency * dep) {
-    m_mc.insert(c->get_decl(), def);
+    if (!m_mc)
+        m_mc = alloc(extension_model_converter, m_goal.m());
+    m_mc->insert(c->get_decl(), def);
 }
 
-goal_and_fmc2stream::goal_and_fmc2stream(goal & g, filter_model_converter & mc):
-goal2stream(g), m_mc(mc) {
+goal_and_fmc2stream::goal_and_fmc2stream(goal & g):
+goal2stream(g) {
 }
 
 goal_and_fmc2stream::~goal_and_fmc2stream() {
 }
 
 void goal_and_fmc2stream::add_filter(func_decl * f) {
-    m_mc.insert(f);
+    if (!m_mc)
+        m_mc = alloc(filter_model_converter, m_goal.m());
+    m_mc->insert(f);
 }
 
 struct stream_report::imp {
