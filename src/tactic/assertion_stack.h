@@ -92,12 +92,4 @@ public:
     void set_cancel(bool f);
 };
 
-class assertion_stack_report {
-    struct imp;
-    imp * m_imp;
-public:
-    assertion_stack_report(char const * id, assertion_stack & s);
-    ~assertion_stack_report();
-};
-
 #endif

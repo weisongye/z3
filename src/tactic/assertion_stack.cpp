@@ -16,7 +16,6 @@ Author:
 Revision History:
 
 --*/
-#include<iomanip>
 #include"assertion_stack.h"
 #include"well_sorted.h"
 #include"ast_smt2_pp.h"
@@ -27,8 +26,6 @@ Revision History:
 #include"for_each_expr.h"
 #include"extension_model_converter.h"
 #include"filter_model_converter.h"
-#include"tactic.h"
-#include"stopwatch.h"
 
 #define MC_TAG_EXTENSION 0
 #define MC_TAG_FILTER    1
@@ -823,40 +820,3 @@ void assertion_stack::elim_redundancies(bool use_before_qhead) {
     m_imp->elim_redundancies(use_before_qhead);
 }
 
-struct assertion_stack_report::imp {
-    char const *             m_id;
-    assertion_stack const &  m_stack;
-    stopwatch                m_watch;
-    double                   m_start_memory;
-
-    imp(char const * id, assertion_stack const & s):
-        m_id(id),
-        m_stack(s),
-        m_start_memory(static_cast<double>(memory::get_allocation_size())/static_cast<double>(1024*1024)) {
-        m_watch.start();
-    }
-        
-    ~imp() {
-        m_watch.stop();
-        double end_memory = static_cast<double>(memory::get_allocation_size())/static_cast<double>(1024*1024);
-        verbose_stream() 
-            << "(" << m_id
-            << " :num-exprs " << m_stack.num_exprs()
-            << " :time " << std::fixed << std::setprecision(2) << m_watch.get_seconds()
-            << " :before-memory " << std::fixed << std::setprecision(2) << m_start_memory
-            << " :after-memory " << std::fixed << std::setprecision(2) << end_memory
-            << ")" << std::endl;
-    }
-};
-
-assertion_stack_report::assertion_stack_report(char const * id, assertion_stack & s) {
-    if (get_verbosity_level() >= TACTIC_VERBOSITY_LVL)
-        m_imp = alloc(imp, id, s);
-    else
-        m_imp = 0;
-}
-
-assertion_stack_report::~assertion_stack_report() {
-    if (m_imp)
-        dealloc(m_imp);
-}

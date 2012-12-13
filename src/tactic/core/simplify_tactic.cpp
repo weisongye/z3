@@ -18,7 +18,7 @@ Notes:
 --*/
 #include"simplify_tactic.h"
 #include"th_rewriter.h"
-#include"assertion_stack.h"
+#include"assertion_stream.h"
 #include"ast_smt2_pp.h"
 
 struct simplify_tactic::imp {
@@ -43,16 +43,16 @@ struct simplify_tactic::imp {
         m_num_steps = 0;
     }
 
-    template<typename T>
-    void apply(T & g, unsigned start_idx) {
+    void apply(assertion_stream & g) {
         if (g.inconsistent())
             return;
+        stream_report report("simplifier", g);
         SASSERT(g.is_well_sorted());
         TRACE("before_simplifier", g.display(tout););
         expr_ref   new_curr(m());
         proof_ref  new_pr(m());
         unsigned size = g.size();
-        for (unsigned idx = start_idx; idx < size; idx++) {
+        for (unsigned idx = g.qhead(); idx < size; idx++) {
             if (g.inconsistent())
                 break;
             expr * curr = g.form(idx);
@@ -71,15 +71,15 @@ struct simplify_tactic::imp {
     }
 
     void operator()(goal & g) {
-        tactic_report report("simplifier", g);
         m_num_steps = 0;
-        apply(g, 0);
+        goal2stream strm(g);
+        apply(strm);
         TRACE("after_simplifier_detail", g.display_with_dependencies(tout););
     }
 
     void operator()(assertion_stack & s) {
-        assertion_stack_report report("simplifier", s);
-        apply(s, s.qhead());
+        assertion_stack2stream strm(s);
+        apply(strm);
     }
 
     unsigned get_num_steps() const { return m_num_steps; }
