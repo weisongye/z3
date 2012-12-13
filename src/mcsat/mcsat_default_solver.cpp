@@ -20,11 +20,13 @@ Revision History:
 #include"mcsat_default_solver.h"
 #include"simplify_tactic.h"
 #include"nnf_tactic.h"
+#include"der_tactic.h"
 
 namespace mcsat {
     default_solver_factory::default_solver_factory() {
         add_tactic_after(alloc(simplify_tactic_factory));
         add_tactic_after(alloc(nnf_tactic_factory));
+        add_tactic_after(alloc(der_tactic_factory));
     }
     
     default_solver_factory::~default_solver_factory() {

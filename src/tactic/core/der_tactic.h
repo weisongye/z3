@@ -26,4 +26,6 @@ tactic * mk_der_tactic(ast_manager & m);
   ADD_TACTIC("der", "destructive equality resolution.", "mk_der_tactic(m)")
 */
 
+MK_SIMPLE_TACTIC_FACTORY(der_tactic_factory, mk_der_tactic(m));
+
 #endif /* _DER_TACTIC_H_ */

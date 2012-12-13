@@ -16,6 +16,7 @@ Author:
 --*/
 #include"der.h"
 #include"tactical.h"
+#include"assertion_stream.h"
 
 class der_tactic : public tactic {
     struct imp {
@@ -37,15 +38,15 @@ class der_tactic : public tactic {
             m_r.reset();
         }
         
-        void operator()(goal & g) {
+        void operator()(assertion_stream & g) {
             SASSERT(g.is_well_sorted());
             bool proofs_enabled = g.proofs_enabled();
-            tactic_report report("der", g);
+            stream_report report("der", g);
             TRACE("before_der", g.display(tout););
             expr_ref   new_curr(m());
             proof_ref  new_pr(m());
             unsigned size = g.size();
-            for (unsigned idx = 0; idx < size; idx++) {
+            for (unsigned idx = g.qhead(); idx < size; idx++) {
                 if (g.inconsistent())
                     break;
                 expr * curr = g.form(idx);
@@ -83,9 +84,15 @@ public:
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
         mc = 0; pc = 0; core = 0;
-        (*m_imp)(*(in.get()));
+        goal2stream s(*(in.get()));
+        (*m_imp)(s);
         in->inc_depth();
         result.push_back(in.get());
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        (*m_imp)(strm);
     }
 
     virtual void cleanup() {
