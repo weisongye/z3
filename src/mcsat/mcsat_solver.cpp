@@ -16,155 +16,89 @@ Author:
 Revision History:
 
 --*/
-#include"solver.h"
+#include"mcsat_solver.h"
 #include"mcsat_preprocessor.h"
 #include"mcsat_kernel.h"
+#include"tactic.h"
 #include"params.h"
+#include"scoped_ptr_vector.h"
 
 namespace mcsat {
 
     class solver : public ::solver {
+        ast_manager & m_manager;
+        preprocessor  m_preprocessor;
+        // kernel        m_kernel;
+
+        friend class solver_factory;
         
-        struct imp {
-            ast_manager & m_manager;
-            preprocessor  m_preprocessor;
-            // kernel        m_kernel;
-            
-            imp(ast_manager & m, bool produce_proofs, bool produce_models, bool produce_unsat_cores, params_ref const & p):
-                m_manager(m),
-                m_preprocessor(m, produce_proofs, produce_models, produce_unsat_cores) {
-            }
-                
-            ast_manager & m() const {
-                return m_manager;
-            }
-            
-            void updt_params(params_ref const & p) {
-            }
-            
-            void set_cancel(bool f) {
-                m_preprocessor.set_cancel(f);
-            }
-
-            void assert_expr(expr * t, expr * a) {
-                proof * pr = m_preprocessor.proofs_enabled() ? m().mk_asserted(t) : 0;
-                expr_dependency * dep = (a && m_preprocessor.unsat_core_enabled()) ? m().mk_leaf(a) : 0;
-                m_preprocessor.assert_expr(t, pr, dep);
-            }
-
-            void assert_expr(expr * t) {
-                proof * pr = m_preprocessor.proofs_enabled() ? m().mk_asserted(t) : 0;
-                m_preprocessor.assert_expr(t, pr, 0);
-            }
-
-            void push() {
-                m_preprocessor.push();
-            }
-
-            void pop(unsigned n) {
-                m_preprocessor.pop(n);
-            }
-            
-            unsigned get_scope_level() const {
-                return m_preprocessor.scope_lvl();
-            }
-
-            void display(std::ostream & out) const {
-                m_preprocessor.display(out);
-            }
-        };
-
-        ast_manager * m_manager;
-        bool          m_produce_models;
-        bool          m_produce_proofs;
-        bool          m_produce_unsat_cores;
-        params_ref    m_params;
-        imp *         m_imp;
-        
-        imp & get_imp() {
-            SASSERT(m_manager);
-            if (!m_imp) {
-                #pragma omp critical (mcsat_solver)
-                {
-                    m_imp = alloc(imp, *m_manager, m_produce_proofs, m_produce_models, m_produce_unsat_cores, m_params);
-                }
-            }
-            return *m_imp;
-        }
-
     public:
-        solver():
-            m_manager(0),
-            m_produce_models(true),
-            m_produce_proofs(false),
-            m_produce_unsat_cores(false),
-            m_imp(0) {
+        solver(ast_manager & m, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores):
+            m_manager(m),
+            m_preprocessor(m, produce_proofs, produce_models, produce_unsat_cores) {
         }
 
-        ~solver() {
-            if (m_imp) 
-                dealloc(m_imp);
+        ast_manager & m() const {
+            return m_manager;
         }
         
-        virtual void updt_params(params_ref const & p) {
-            m_params = p;
-            if (m_imp)
-                m_imp->updt_params(p);
+        virtual ~solver() {
         }
-        
+
         virtual void collect_param_descrs(param_descrs & r) {
             // do nothing
         }
-        
-        virtual void set_produce_proofs(bool f) {
-            m_produce_proofs = f;
-        }
 
         virtual void set_produce_models(bool f) {
-            m_produce_models = f;
+            // do nothing, mcsat always produce models.
         }
 
-        virtual void set_produce_unsat_cores(bool f) {
-            m_produce_unsat_cores = f;
+        virtual void set_progress_callback(progress_callback * callback) {
+            // TODO
+        }
+       
+        virtual void updt_params(params_ref const & p) {
         }
         
-        virtual void init(ast_manager & m, symbol const & logic) {
-            m_manager = &m;
-        }
-
-        virtual void reset() {
-            if (m_imp) {
-                #pragma omp critical (mcsat_solver)
-                {
-                    dealloc(m_imp);
-                    m_imp = 0;
-                }
-            }
+        virtual void set_cancel(bool f) {
+            m_preprocessor.set_cancel(f);
         }
         
-        virtual void assert_expr(expr * t, expr * a) {
-            get_imp().assert_expr(t, a);
+        virtual unsigned get_num_assertions() const {
+            return m_preprocessor.size();
         }
-
-        virtual void assert_expr(expr * t) {
-            get_imp().assert_expr(t);
+        
+        virtual expr * get_assertion(unsigned idx) const {
+            return m_preprocessor.form(idx);
         }
-
-        virtual void push() {
-            get_imp().push();
-        }
-
-        virtual void pop(unsigned n) {
-            get_imp().pop(n);
+        
+        virtual void display(std::ostream & out) const {
+            m_preprocessor.display(out);
         }
 
         virtual unsigned get_scope_level() const {
-            if (m_imp)
-                return m_imp->get_scope_level();
-            else
-                return 0;
+            return m_preprocessor.scope_lvl();
         }
 
+        virtual void push() {
+            m_preprocessor.push();
+        }
+        
+        virtual void pop(unsigned n) {
+            m_preprocessor.pop(n);
+        }
+        
+        virtual void assert_expr(expr * t, expr * a) {
+            proof * pr = m_preprocessor.proofs_enabled() ? m().mk_asserted(t) : 0;
+            expr_dependency * dep = (a && m_preprocessor.unsat_core_enabled()) ? m().mk_leaf(a) : 0;
+            m_preprocessor.assert_expr(t, pr, dep);
+        }
+        
+        virtual void assert_expr(expr * t) {
+            proof * pr = m_preprocessor.proofs_enabled() ? m().mk_asserted(t) : 0;
+            m_preprocessor.assert_expr(t, pr, 0);
+        }
+        
         virtual lbool check_sat(unsigned num_assumptions, expr * const * assumptions) {
             // TODO
             return l_undef;
@@ -193,42 +127,43 @@ namespace mcsat {
         virtual void get_labels(svector<symbol> & r) {
             throw default_exception("mcsat does not support get_labels");
         }
-
-        virtual void set_cancel(bool f) {
-            #pragma omp critical (mcsat_solver)
-            {
-                if (m_imp) {
-                    m_imp->set_cancel(f);
-                }
-            }
-        }
-
-        virtual void set_progress_callback(progress_callback * callback) {
-            // TODO
-        }
-
-        virtual unsigned get_num_assertions() const {
-            if (m_imp)
-                return m_imp->m_preprocessor.size();
-            else
-                return 0;
-        }
-        
-        virtual expr * get_assertion(unsigned idx) const {
-            SASSERT(idx < get_num_assertions());
-            SASSERT(m_imp);
-            return m_imp->m_preprocessor.form(idx);
-        }
-
-        virtual void display(std::ostream & out) const {
-            if (m_imp)
-                m_imp->display(out);
-            else
-                out << "(solver)";
-        }
     };
+
+    struct solver_factory::imp {
+        scoped_ptr_vector<tactic_factory> m_before_tactics;
+        scoped_ptr_vector<tactic_factory> m_after_tactics;
+    };
+    
+    solver_factory::solver_factory() {
+        m_imp = alloc(imp);
+    }
+    
+    solver_factory::~solver_factory() {
+        dealloc(m_imp);
+    }
+    
+    void solver_factory::add_before_tactic(tactic_factory * f) {
+        m_imp->m_before_tactics.push_back(f);
+    }
+    
+    void solver_factory::add_after_tactic(tactic_factory * f) {
+        m_imp->m_after_tactics.push_back(f);
+    }
+    
+    ::solver * solver_factory::operator()(ast_manager & m, params_ref const & p, bool proofs_enabled, bool models_enabled, bool unsat_core_enabled, symbol const & logic) {
+        solver * r = alloc(solver, m, p, proofs_enabled, models_enabled, unsat_core_enabled);
+        unsigned sz = m_imp->m_before_tactics.size();
+        for (unsigned i = 0; i < sz; i++) {
+            tactic_factory & f = *(m_imp->m_before_tactics[i]);
+            r->m_preprocessor.add_before_tactic(f(m, p));
+        }
+        sz = m_imp->m_after_tactics.size();
+        for (unsigned i = 0; i < sz; i++) {
+            tactic_factory & f = *(m_imp->m_after_tactics[i]);
+            r->m_preprocessor.add_after_tactic(f(m, p));
+        }
+        return r;
+    }
+
 };
 
-solver * mk_mcsat_solver() {
-    return alloc(mcsat::solver);
-}

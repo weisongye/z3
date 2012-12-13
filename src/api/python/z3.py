@@ -6007,6 +6007,14 @@ def SimpleSolver(ctx=None):
     ctx = _get_ctx(ctx)
     return Solver(Z3_mk_simple_solver(ctx.ref()), ctx)
 
+class MCSat(Solver):
+    """
+    A Solver object based on the "model-constructing satisfiability calculus"
+    """
+    def __init__(self, ctx=None):
+        ctx    = _get_ctx(ctx)
+        Solver.__init__(self, Z3_mk_mcsat_solver(ctx.ref()), ctx)
+
 #########################################
 #
 # Fixedpoint

@@ -6615,6 +6615,13 @@ END_MLAPI_EXCLUDE
     Z3_solver Z3_API Z3_mk_solver_from_tactic(__in Z3_context c, __in Z3_tactic t);
 
     /**
+       \brief Create a mcsat solver instance.
+       
+       def_API('Z3_mk_mcsat_solver', SOLVER, (_in(CONTEXT),))
+    */
+    Z3_solver Z3_API Z3_mk_mcsat_solver(__in Z3_context c);
+
+    /**
        \brief Return a string describing all solver available parameters.
 
        def_API('Z3_solver_get_help', STRING, (_in(CONTEXT), _in(SOLVER)))

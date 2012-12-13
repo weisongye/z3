@@ -23,6 +23,7 @@ Revision History:
 #include"timeout.h"
 #include"cmd_context.h"
 #include"smt2parser.h"
+#include"cmd_context.h"
 #include"mcsat_solver.h"
 #include"gparams.h"
 #include"env_params.h"
@@ -169,8 +170,8 @@ unsigned read_smtlib2_commands(char const * file_name) {
     signal(SIGINT, on_ctrl_c);
     cmd_context ctx;
 
-    solver * s = mk_mcsat_solver();
-    ctx.set_solver(s);
+    mcsat::solver_factory * f = alloc(mcsat::solver_factory);
+    ctx.set_solver_factory(f);
 
     g_cmd_context = &ctx;
     register_on_timeout_proc(on_timeout);
