@@ -19,6 +19,7 @@ Revision History:
 #include"tactical.h"
 #include"expr2polynomial.h"
 #include"rewriter_def.h"
+#include"assertion_stream.h"
 
 class factor_tactic : public tactic {
 
@@ -259,34 +260,40 @@ class factor_tactic : public tactic {
         void updt_params(params_ref const & p) {
             m_rw.cfg().updt_params(p);
         }
+
+        void apply(assertion_stream & g) {
+            SASSERT(g.is_well_sorted());
+            stream_report report("factor", g);
+            bool produce_proofs = g.proofs_enabled();
+
+            expr_ref   new_curr(m);
+            proof_ref  new_pr(m);
+            unsigned   size = g.size();
+            for (unsigned idx = g.qhead(); idx < size; idx++) {
+                expr * curr = g.form(idx);
+                m_rw(curr, new_curr, new_pr);
+                if (produce_proofs) {
+                    proof * pr = g.pr(idx);
+                    new_pr     = m.mk_modus_ponens(pr, new_pr);
+                }
+                g.update(idx, new_curr, new_pr, g.dep(idx));
+            }
+            g.inc_depth();
+            SASSERT(g.is_well_sorted());
+            TRACE("factor", g.display(tout););
+        }
         
         void operator()(goal_ref const & g, 
                         goal_ref_buffer & result, 
                         model_converter_ref & mc, 
                         proof_converter_ref & pc,
                         expr_dependency_ref & core) {
-            SASSERT(g->is_well_sorted());
             mc = 0; pc = 0; core = 0;
-            tactic_report report("factor", *g);
-            bool produce_proofs = g->proofs_enabled();
-
-            expr_ref   new_curr(m);
-            proof_ref  new_pr(m);
-            unsigned   size = g->size();
-            for (unsigned idx = 0; idx < size; idx++) {
-                expr * curr = g->form(idx);
-                m_rw(curr, new_curr, new_pr);
-                if (produce_proofs) {
-                    proof * pr = g->pr(idx);
-                    new_pr     = m.mk_modus_ponens(pr, new_pr);
-                }
-                g->update(idx, new_curr, new_pr, g->dep(idx));
-            }
-            g->inc_depth();
+            goal2stream s(*(g.get()));
+            apply(s);
             result.push_back(g.get());
-            TRACE("factor", g->display(tout););
-            SASSERT(g->is_well_sorted());
         }
+        
     };
     
     imp *      m_imp;
@@ -330,6 +337,11 @@ public:
         catch (z3_exception & ex) {
             throw tactic_exception(ex.msg());
         }
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        m_imp->apply(strm);
     }
     
     virtual void cleanup() {

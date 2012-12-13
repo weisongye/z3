@@ -27,4 +27,7 @@ tactic * mk_factor_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
   ADD_TACTIC("factor", "polynomial factorization.", "mk_factor_tactic(m, p)")
 */
+
+MK_SIMPLE_TACTIC_FACTORY(factor_tactic_factory, mk_factor_tactic(m, p));
+
 #endif
