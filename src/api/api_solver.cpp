@@ -31,7 +31,7 @@ Revision History:
 #include"smt_strategic_solver.h"
 #include"smt_solver.h"
 #include"smt_implied_equalities.h"
-#include"mcsat_solver.h"
+#include"mcsat_default_solver.h"
 
 extern "C" {
 
@@ -96,7 +96,7 @@ extern "C" {
         Z3_TRY;
         LOG_Z3_mk_mcsat_solver(c);
         RESET_ERROR_CODE();
-        Z3_solver_ref * s = alloc(Z3_solver_ref, alloc(mcsat::solver_factory));
+        Z3_solver_ref * s = alloc(Z3_solver_ref, alloc(mcsat::default_solver_factory));
         mk_c(c)->save_object(s);
         Z3_solver r = of_solver(s);
         RETURN_Z3(r);

@@ -974,9 +974,13 @@ public:
                             model_converter_ref & mc, 
                             proof_converter_ref & pc, 
                             expr_dependency_ref & core) {
-        m_t->operator()(in, result, mc, pc, core);
+        (*m_t)(in, result, mc, pc, core);
     }
-   
+
+    virtual void operator()(assertion_stack & s) {
+        (*m_t)(s);
+    }
+
     virtual void cleanup(void) { m_t->cleanup(); }
     virtual void collect_statistics(statistics & st) const { m_t->collect_statistics(st); }
     virtual void reset_statistics() { m_t->reset_statistics(); }    

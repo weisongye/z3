@@ -24,9 +24,9 @@ Revision History:
 #include"cmd_context.h"
 #include"smt2parser.h"
 #include"cmd_context.h"
-#include"mcsat_solver.h"
 #include"gparams.h"
 #include"env_params.h"
+#include"mcsat_default_solver.h"
 
 char const *         g_input_file          = 0;
 bool                 g_display_statistics  = false;
@@ -170,7 +170,7 @@ unsigned read_smtlib2_commands(char const * file_name) {
     signal(SIGINT, on_ctrl_c);
     cmd_context ctx;
 
-    mcsat::solver_factory * f = alloc(mcsat::solver_factory);
+    mcsat::solver_factory * f = alloc(mcsat::default_solver_factory);
     ctx.set_solver_factory(f);
 
     g_cmd_context = &ctx;

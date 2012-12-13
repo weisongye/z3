@@ -22,6 +22,8 @@ Notes:
 #include"tactic.h"
 #include"tactical.h"
 
+class assertion_stack;
+
 class simplify_tactic : public tactic {
     struct     imp;
     imp *      m_imp;
@@ -39,6 +41,8 @@ public:
                             model_converter_ref & mc, 
                             proof_converter_ref & pc,
                             expr_dependency_ref & core);
+
+    virtual void operator()(assertion_stack & s);
     
     virtual void cleanup();
 
@@ -55,5 +59,7 @@ tactic * mk_elim_and_tactic(ast_manager & m, params_ref const & p = params_ref()
   ADD_TACTIC("simplify", "apply simplification rules.", "mk_simplify_tactic(m, p)")
   ADD_TACTIC("elim-and", "convert (and a b) into (not (or (not a) (not b))).", "mk_elim_and_tactic(m, p)")
 */
+
+MK_SIMPLE_TACTIC_FACTORY(simplify_tactic_factory, mk_simplify_tactic(m, p));
 
 #endif

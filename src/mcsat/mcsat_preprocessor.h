@@ -44,13 +44,13 @@ namespace mcsat {
         bool unsat_core_enabled() const;
         
         /**
-           \brief Add a tactic to be applied before required transformations (e.g., nnf)
+           \brief Add a tactic to be applied before the existing ones.
         */
-        void add_before_tactic(tactic * t);
+        void add_tactic_before(tactic * t);
         /**
-           \brief Add a tactic to be applied after required transformations.
+           \brief Add a tactic to be applied after the existing ones.
         */
-        void add_after_tactic(tactic * t);
+        void add_tactic_after(tactic * t);
 
         void assert_expr(expr * f, proof * pr, expr_dependency * d);
         void assert_expr(expr * f);

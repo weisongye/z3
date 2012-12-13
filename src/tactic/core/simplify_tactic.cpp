@@ -18,6 +18,7 @@ Notes:
 --*/
 #include"simplify_tactic.h"
 #include"th_rewriter.h"
+#include"assertion_stack.h"
 #include"ast_smt2_pp.h"
 
 struct simplify_tactic::imp {
@@ -42,17 +43,16 @@ struct simplify_tactic::imp {
         m_num_steps = 0;
     }
 
-    void operator()(goal & g) {
-        SASSERT(g.is_well_sorted());
-        tactic_report report("simplifier", g);
-        TRACE("before_simplifier", g.display(tout););
-        m_num_steps = 0;
+    template<typename T>
+    void apply(T & g, unsigned start_idx) {
         if (g.inconsistent())
             return;
+        SASSERT(g.is_well_sorted());
+        TRACE("before_simplifier", g.display(tout););
         expr_ref   new_curr(m());
         proof_ref  new_pr(m());
         unsigned size = g.size();
-        for (unsigned idx = 0; idx < size; idx++) {
+        for (unsigned idx = start_idx; idx < size; idx++) {
             if (g.inconsistent())
                 break;
             expr * curr = g.form(idx);
@@ -67,8 +67,19 @@ struct simplify_tactic::imp {
         TRACE("after_simplifier_bug", g.display(tout););
         g.elim_redundancies();
         TRACE("after_simplifier", g.display(tout););
-        TRACE("after_simplifier_detail", g.display_with_dependencies(tout););
         SASSERT(g.is_well_sorted());
+    }
+
+    void operator()(goal & g) {
+        tactic_report report("simplifier", g);
+        m_num_steps = 0;
+        apply(g, 0);
+        TRACE("after_simplifier_detail", g.display_with_dependencies(tout););
+    }
+
+    void operator()(assertion_stack & s) {
+        assertion_stack_report report("simplifier", s);
+        apply(s, s.qhead());
     }
 
     unsigned get_num_steps() const { return m_num_steps; }
@@ -130,6 +141,10 @@ void simplify_tactic::cleanup() {
 
 unsigned simplify_tactic::get_num_steps() const {
     return m_imp->get_num_steps();
+}
+
+void simplify_tactic::operator()(assertion_stack & s) {
+    (*m_imp)(s);
 }
 
 tactic * mk_simplify_tactic(ast_manager & m, params_ref const & p) {

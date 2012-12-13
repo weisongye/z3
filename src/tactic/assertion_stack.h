@@ -61,6 +61,7 @@ public:
     
     unsigned size() const;
     unsigned qhead() const;
+    unsigned num_exprs() const;
     expr * form(unsigned i) const;
     proof * pr(unsigned i) const;
     expr_dependency * dep(unsigned i) const;
@@ -69,7 +70,10 @@ public:
     void assert_expr(expr * f);
     void update(unsigned i, expr * f, proof * pr = 0, expr_dependency * dep = 0);
     void expand_and_update(unsigned i, expr * f, proof * pr = 0, expr_dependency * d = 0);
-    
+
+    void elim_true();
+    void elim_redundancies(bool use_before_qhead = false);
+
     void commit();
     void push();
     void pop(unsigned num_scopes);
@@ -86,6 +90,14 @@ public:
     void display(std::ostream & out, char const * header = "assertion-stack") const;
 
     void set_cancel(bool f);
+};
+
+class assertion_stack_report {
+    struct imp;
+    imp * m_imp;
+public:
+    assertion_stack_report(char const * id, assertion_stack & s);
+    ~assertion_stack_report();
 };
 
 #endif

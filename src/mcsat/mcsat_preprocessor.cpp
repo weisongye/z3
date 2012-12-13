@@ -33,23 +33,24 @@ namespace mcsat {
 
         ast_manager & m() const { return m_stack.m(); }
 
-        void add_before_tactic(tactic * t) {
+        void add_tactic_before(tactic * t) {
             m_before_tactics.push_back(t);
         }
 
-        void add_after_tactic(tactic * t) {
+        void add_tactic_after(tactic * t) {
             m_after_tactics.push_back(t);
         }
 
-        static void apply_tactics(sref_vector<tactic> & ts, assertion_stack & s) {
-            for (unsigned i = 0; i < ts.size(); i++) {
-                (*ts[i])(s);
-            }
-        }
-
         void apply_tactics() {
-            apply_tactics(m_before_tactics, m_stack);
-            apply_tactics(m_after_tactics, m_stack);
+            unsigned i = m_before_tactics.size();
+            while (i > 0) {
+                --i;
+                (*m_before_tactics[i])(m_stack);
+            }
+
+            for (unsigned i = 0; i < m_after_tactics.size(); i++) {
+                (*m_after_tactics[i])(m_stack);
+            }
         }
 
         void commit() {
@@ -106,12 +107,12 @@ namespace mcsat {
         return m_imp->m();
     }
 
-    void preprocessor::add_before_tactic(tactic * t) {
-        m_imp->add_before_tactic(t);
+    void preprocessor::add_tactic_before(tactic * t) {
+        m_imp->add_tactic_before(t);
     }
     
-    void preprocessor::add_after_tactic(tactic * t) {
-        m_imp->add_after_tactic(t);
+    void preprocessor::add_tactic_after(tactic * t) {
+        m_imp->add_tactic_after(t);
     }
 
     void preprocessor::assert_expr(expr * f, proof * pr, expr_dependency * d) {

@@ -142,11 +142,11 @@ namespace mcsat {
         dealloc(m_imp);
     }
     
-    void solver_factory::add_before_tactic(tactic_factory * f) {
+    void solver_factory::add_tactic_before(tactic_factory * f) {
         m_imp->m_before_tactics.push_back(f);
     }
     
-    void solver_factory::add_after_tactic(tactic_factory * f) {
+    void solver_factory::add_tactic_after(tactic_factory * f) {
         m_imp->m_after_tactics.push_back(f);
     }
     
@@ -155,12 +155,12 @@ namespace mcsat {
         unsigned sz = m_imp->m_before_tactics.size();
         for (unsigned i = 0; i < sz; i++) {
             tactic_factory & f = *(m_imp->m_before_tactics[i]);
-            r->m_preprocessor.add_before_tactic(f(m, p));
+            r->m_preprocessor.add_tactic_before(f(m, p));
         }
         sz = m_imp->m_after_tactics.size();
         for (unsigned i = 0; i < sz; i++) {
             tactic_factory & f = *(m_imp->m_after_tactics[i]);
-            r->m_preprocessor.add_after_tactic(f(m, p));
+            r->m_preprocessor.add_tactic_after(f(m, p));
         }
         return r;
     }
