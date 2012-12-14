@@ -23,13 +23,14 @@ Revision History:
 #include"ast_smt2_pp.h"
 #include"expr_substitution.h"
 #include"goal_shared_occs.h"
+#include"assertion_stream.h"
 
 class propagate_values_tactic : public tactic {
     struct     imp {
         ast_manager &                 m_manager;
         th_rewriter                   m_r;
         scoped_ptr<expr_substitution> m_subst;
-        goal *                        m_goal;
+        assertion_stream *            m_stream;
         goal_shared_occs              m_occs;
         unsigned                      m_idx;
         unsigned                      m_max_rounds;
@@ -38,7 +39,7 @@ class propagate_values_tactic : public tactic {
         imp(ast_manager & m, params_ref const & p):
             m_manager(m),
             m_r(m, p),
-            m_goal(0),
+            m_stream(0),
             m_occs(m, true /* track atoms */) {
             updt_params_core(p);
         }
@@ -88,14 +89,14 @@ class propagate_values_tactic : public tactic {
         }
         
         void push_result(expr * new_curr, proof * new_pr) {
-            if (m_goal->proofs_enabled()) {
-                proof * pr = m_goal->pr(m_idx);
+            if (m_stream->proofs_enabled()) {
+                proof * pr = m_stream->pr(m_idx);
                 new_pr     = m().mk_modus_ponens(pr, new_pr);
             }
             
             expr_dependency_ref new_d(m());
-            if (m_goal->unsat_core_enabled()) {
-                new_d = m_goal->dep(m_idx);
+            if (m_stream->unsat_core_enabled()) {
+                new_d = m_stream->dep(m_idx);
                 expr_dependency * used_d = m_r.get_used_dependencies();
                 if (used_d != 0) {
                     new_d = m().mk_join(new_d, used_d);
@@ -103,7 +104,7 @@ class propagate_values_tactic : public tactic {
                 }
             }
             
-            m_goal->update(m_idx, new_curr, new_pr, new_d);
+            m_stream->update(m_idx, new_curr, new_pr, new_d);
         
             if (is_shared(new_curr)) {
                 m_subst->insert(new_curr, m().mk_true(), m().mk_iff_true(new_pr), new_d);
@@ -120,7 +121,7 @@ class propagate_values_tactic : public tactic {
         }
         
         void process_current() {
-            expr * curr = m_goal->form(m_idx);
+            expr * curr = m_stream->form(m_idx);
             expr_ref   new_curr(m());
             proof_ref  new_pr(m());
             
@@ -139,78 +140,85 @@ class propagate_values_tactic : public tactic {
                 m_modified = true;
         }
 
-        void operator()(goal_ref const & g, 
-                        goal_ref_buffer & result, 
-                        model_converter_ref & mc, 
-                        proof_converter_ref & pc,
-                        expr_dependency_ref & core) {
-            SASSERT(g->is_well_sorted());
-            mc = 0; pc = 0; core = 0;
-            tactic_report report("propagate-values", *g);
-            m_goal = g.get();
-
+        void apply_core() {
+            stream_report report("propagate-values", *m_stream);
             bool forward   = true;
             expr_ref   new_curr(m());
             proof_ref  new_pr(m());
-            unsigned size  = m_goal->size();
-            m_idx          = 0;
+            unsigned size  = m_stream->size();
+            unsigned qhead = m_stream->qhead();
+            m_idx          = qhead;
             m_modified     = false;
             unsigned round = 0;
 
-            if (m_goal->inconsistent())
-                goto end;
+            if (m_stream->inconsistent())
+                return;
 
-            m_subst = alloc(expr_substitution, m(), g->unsat_core_enabled(), g->proofs_enabled());
+            m_subst = alloc(expr_substitution, m(), m_stream->unsat_core_enabled(), m_stream->proofs_enabled());
             m_r.set_substitution(m_subst.get());
-            m_occs(*m_goal);
+            m_occs(*m_stream);
 
             while (true) {
-                TRACE("propagate_values", m_goal->display(tout););
+                TRACE("propagate_values", m_stream->display(tout););
                 if (forward) {
                     for (; m_idx < size; m_idx++) {
                         process_current();
-                        if (m_goal->inconsistent()) 
-                            goto end;
+                        if (m_stream->inconsistent()) 
+                            return;
                     }
                     if (m_subst->empty() && !m_modified)
-                        goto end;
-                    m_occs(*m_goal);
-                    m_idx        = m_goal->size();
+                        return;
+                    m_occs(*m_stream);
+                    m_idx        = m_stream->size();
                     forward      = false;
                     m_subst->reset();
                     m_r.set_substitution(m_subst.get()); // reset, but keep substitution
                 }
                 else {
-                    while (m_idx > 0) {
+                    while (m_idx > qhead) {
                         m_idx--;
                         process_current();
-                        if (m_goal->inconsistent()) 
-                            goto end;
+                        if (m_stream->inconsistent()) 
+                            return;
                     }
                     if (!m_modified)
-                        goto end;
+                        return;
                     m_subst->reset();
                     m_r.set_substitution(m_subst.get()); // reset, but keep substitution
                     m_modified   = false;
-                    m_occs(*m_goal);
-                    m_idx        = 0;
-                    size         = m_goal->size();
+                    m_occs(*m_stream);
+                    m_idx        = qhead;
+                    size         = m_stream->size();
                     forward      = true;
                 }
                 round++;
                 if (round >= m_max_rounds)
                     break;
-                IF_VERBOSE(100, verbose_stream() << "starting new round, goal size: " << m_goal->num_exprs() << std::endl;);
-                TRACE("propgate_values", tout << "round finished\n"; m_goal->display(tout); tout << "\n";);
+                IF_VERBOSE(100, verbose_stream() << "starting new round, goal size: " << m_stream->num_exprs() << std::endl;);
+                TRACE("propgate_values", tout << "round finished\n"; m_stream->display(tout); tout << "\n";);
             }
-        end:
-            m_goal->elim_redundancies();
-            m_goal->inc_depth();
-            result.push_back(m_goal);
-            SASSERT(m_goal->is_well_sorted());
-            TRACE("propagate_values", m_goal->display(tout););
-            TRACE("propagate_values_core", m_goal->display_with_dependencies(tout););
-            m_goal = 0;
+        }
+
+        void apply(assertion_stream & s) {
+            m_stream = &s;
+            apply_core();
+            m_stream->elim_redundancies();
+            m_stream->inc_depth();
+            SASSERT(m_stream->is_well_sorted());
+            TRACE("propagate_values", m_stream->display(tout););
+            m_stream = 0;
+        }
+
+        void operator()(goal_ref const & g, 
+                        goal_ref_buffer & result, 
+                        model_converter_ref & mc, 
+                        proof_converter_ref & pc,
+                        expr_dependency_ref & core) {
+            mc = 0; pc = 0; core = 0;
+            goal2stream s(*(g.get()));
+            apply(s);
+            result.push_back(g.get());
+            TRACE("propagate_values_core", g->display_with_dependencies(tout););
         }
     };
     
@@ -251,6 +259,11 @@ public:
         catch (rewriter_exception & ex) {
             throw tactic_exception(ex.msg());
         }
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        m_imp->apply(strm);
     }
     
     virtual void cleanup() {

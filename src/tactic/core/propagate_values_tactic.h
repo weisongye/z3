@@ -30,4 +30,6 @@ tactic * mk_propagate_values_tactic(ast_manager & m, params_ref const & p = para
   ADD_TACTIC("propagate-values", "propagate constants.", "mk_propagate_values_tactic(m, p)")
 */
 
+MK_SIMPLE_TACTIC_FACTORY(propagate_values_tactic_factory, mk_propagate_values_tactic(m, p));
+
 #endif

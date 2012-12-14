@@ -26,12 +26,14 @@ Revision History:
 #include"distribute_forall_tactic.h"
 #include"elim_term_ite_tactic.h"
 #include"ctx_simplify_tactic.h"
+#include"propagate_values_tactic.h"
 
 namespace mcsat {
     default_solver_factory::default_solver_factory() {
         // This configuration is meaningless at this point.
         // I'm just testing different tactics.
         add_tactic_after(alloc(simplify_tactic_factory));
+        add_tactic_after(alloc(propagate_values_tactic_factory));
         add_tactic_after(alloc(nnf_tactic_factory));
         add_tactic_after(alloc(der_tactic_factory));
         add_tactic_after(alloc(factor_tactic_factory));
