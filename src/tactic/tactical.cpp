@@ -136,6 +136,11 @@ public:
     and_then_tactical(tactic * t1, tactic * t2):binary_tactical(t1, t2) {}
     virtual ~and_then_tactical() {}
 
+    virtual void operator()(assertion_stack & s) {
+        m_t1->operator()(s);
+        m_t2->operator()(s);
+    }
+
     virtual void operator()(goal_ref const & in, 
                             goal_ref_buffer & result, 
                             model_converter_ref & mc, 
@@ -977,10 +982,6 @@ public:
         (*m_t)(in, result, mc, pc, core);
     }
 
-    virtual void operator()(assertion_stack & s) {
-        (*m_t)(s);
-    }
-
     virtual void cleanup(void) { m_t->cleanup(); }
     virtual void collect_statistics(statistics & st) const { m_t->collect_statistics(st); }
     virtual void reset_statistics() { m_t->reset_statistics(); }    
@@ -1189,6 +1190,11 @@ class cleanup_tactical : public unary_tactical {
 public:
     cleanup_tactical(tactic * t):unary_tactical(t) {}
 
+    virtual void operator()(assertion_stack & s) {
+        m_t->operator()(s);
+        m_t->cleanup();
+    }
+
     virtual void operator()(goal_ref const & in, 
                             goal_ref_buffer & result, 
                             model_converter_ref & mc, 
@@ -1241,6 +1247,10 @@ class using_params_tactical : public unary_tactical {
 public:
     using_params_tactical(tactic * t, params_ref const & p):unary_tactical(t), m_params(p) {
         t->updt_params(p);
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        (*m_t)(s);
     }
 
     virtual void updt_params(params_ref const & p) {

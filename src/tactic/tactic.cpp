@@ -238,26 +238,39 @@ lbool check_sat(tactic & t, goal_ref & g, model_ref & md, proof_ref & pr, expr_d
     }
 }
 
-void fail_if_proof_generation(char const * tactic_name, goal_ref const & in) {
-    if (in->proofs_enabled()) {
+void fail_if_proof_generation(char const * tactic_name, bool proofs_enabled) {
+    if (proofs_enabled) {
         std::string msg = tactic_name;
         msg += " does not support proof production";
         throw tactic_exception(msg.c_str());
     }
 }
 
-void fail_if_unsat_core_generation(char const * tactic_name, goal_ref const & in) {
-    if (in->unsat_core_enabled()) {
+void fail_if_unsat_core_generation(char const * tactic_name, bool unsat_core_enabled) {
+    if (unsat_core_enabled) {
         std::string msg = tactic_name;
         msg += " does not support unsat core production";
         throw tactic_exception(msg.c_str());
     }
 }
 
-void fail_if_model_generation(char const * tactic_name, goal_ref const & in) {
-    if (in->models_enabled()) {
+void fail_if_model_generation(char const * tactic_name, bool models_enabled) {
+    if (models_enabled) {
         std::string msg = tactic_name;
         msg += " does not generate models";
         throw tactic_exception(msg.c_str());
     }
 }
+
+void fail_if_proof_generation(char const * tactic_name, goal_ref const & in) {
+    fail_if_proof_generation(tactic_name, in->proofs_enabled());
+}
+
+void fail_if_unsat_core_generation(char const * tactic_name, goal_ref const & in) {
+    fail_if_unsat_core_generation(tactic_name, in->unsat_core_enabled());
+}
+
+void fail_if_model_generation(char const * tactic_name, goal_ref const & in) {
+    fail_if_model_generation(tactic_name, in->models_enabled());
+}
+

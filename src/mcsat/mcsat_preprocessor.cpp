@@ -24,8 +24,8 @@ namespace mcsat {
 
     struct preprocessor::imp {
         assertion_stack      m_stack;
-        sref_vector<tactic>  m_before_tactics;
-        sref_vector<tactic>  m_after_tactics;
+        tactic_ref_vector    m_before_tactics;
+        tactic_ref_vector    m_after_tactics;
         
         imp(ast_manager & m, bool proofs_enabled, bool models_enabled, bool core_enabled):
             m_stack(m, proofs_enabled, models_enabled, core_enabled) {

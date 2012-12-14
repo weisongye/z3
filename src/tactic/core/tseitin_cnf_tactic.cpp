@@ -50,6 +50,7 @@ Notes:
 
 --*/
 #include"tactical.h"
+#include"assertion_stream.h"
 #include"goal_shared_occs.h"
 #include"filter_model_converter.h"
 #include"bool_rewriter.h"
@@ -88,7 +89,7 @@ class tseitin_cnf_tactic : public tactic {
         expr_ref_vector            m_cache_domain;
         goal_shared_occs           m_occs;
         expr_ref_vector            m_fresh_vars;
-        ref<mc>                    m_mc;
+        assertion_stream *         m_stream;
         expr_ref_vector            m_clauses;
         expr_dependency_ref_vector m_deps;
         bool_rewriter              m_rw;
@@ -345,8 +346,8 @@ class tseitin_cnf_tactic : public tactic {
             m_num_aux_vars++;
             app * v = m.mk_fresh_const(0, m.mk_bool_sort());
             m_fresh_vars.push_back(v);
-            if (m_mc)
-                m_mc->insert(v->get_decl());
+            if (m_stream)
+                m_stream->add_filter(v->get_decl());
             return v;
         }
         
@@ -803,38 +804,33 @@ class tseitin_cnf_tactic : public tactic {
             m_cache_domain.reset();
         }
 
-        void operator()(goal_ref const & g, 
-                        goal_ref_buffer & result, 
-                        model_converter_ref & mc, 
-                        proof_converter_ref & pc,
-                        expr_dependency_ref & core) {
-            SASSERT(g->is_well_sorted());
-            mc = 0; pc = 0; core = 0;
-            tactic_report report("tseitin-cnf", *g);
-            fail_if_proof_generation("tseitin-cnf", g);
-            m_produce_models      = g->models_enabled();
-            m_produce_unsat_cores = g->unsat_core_enabled(); 
+        void apply(assertion_stream & g) {
+            SASSERT(g.is_well_sorted());
+            fail_if_proof_generation("tseitin-cnf", g.proofs_enabled());
+            stream_report report("tseitin-cnf", g);
+            m_produce_models      = g.models_enabled();
+            m_produce_unsat_cores = g.unsat_core_enabled(); 
+            if (m_produce_models)
+                m_stream = &g;
+            else
+                m_stream = 0;
 
-            m_occs(*g);
+            m_occs(g);
             reset_cache();
             m_deps.reset();
             m_fresh_vars.reset();
             m_frame_stack.reset();
             m_clauses.reset();
-            if (m_produce_models)
-                m_mc = alloc(filter_model_converter, m);
-            else
-                m_mc = 0;
 
-            unsigned size = g->size();
-            for (unsigned idx = 0; idx < size; idx++) {
-                process(g->form(idx), g->dep(idx));
-                g->update(idx, m.mk_true(), 0, 0); // to save memory
+            unsigned size = g.size();
+            for (unsigned idx = g.qhead(); idx < size; idx++) {
+                process(g.form(idx), g.dep(idx));
+                g.update(idx, m.mk_true(), 0, 0); // to save memory
             }
 
             SASSERT(!m_produce_unsat_cores || m_clauses.size() == m_deps.size());
 
-            g->reset();
+            g.reset_after_qhead();
             unsigned sz = m_clauses.size();
             expr_fast_mark1 added;
             for (unsigned i = 0; i < sz; i++) {
@@ -843,18 +839,26 @@ class tseitin_cnf_tactic : public tactic {
                     continue;
                 added.mark(cls);
                 if (m_produce_unsat_cores)
-                    g->assert_expr(cls, 0, m_deps.get(i));
+                    g.assert_expr(cls, 0, m_deps.get(i));
                 else
-                    g->assert_expr(cls);
+                    g.assert_expr(cls);
             }
-            if (m_produce_models && !m_fresh_vars.empty()) 
-                mc = m_mc.get();
-            else
-                mc = 0;
+            TRACE("tseitin_cnf", g.display(tout););
+            SASSERT(g.is_well_sorted());
+        }
+
+        void operator()(goal_ref const & g, 
+                        goal_ref_buffer & result, 
+                        model_converter_ref & mc, 
+                        proof_converter_ref & pc,
+                        expr_dependency_ref & core) {
+            mc = 0; pc = 0; core = 0;
+            goal_and_fmc2stream strm(*(g.get()));
+            apply(strm);
+            if (m_produce_models)
+                mc = strm.mc();
             g->inc_depth();
             result.push_back(g.get());
-            TRACE("tseitin_cnf", g->display(tout););
-            SASSERT(g->is_well_sorted());
         }
     };
     
@@ -896,6 +900,11 @@ public:
         (*m_imp)(in, result, mc, pc, core);
         report_tactic_progress(":cnf-aux-vars", m_imp->m_num_aux_vars);
     }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        m_imp->apply(strm);
+    }
     
     virtual void cleanup() {
         unsigned num_aux_vars = m_imp->m_num_aux_vars;
@@ -936,7 +945,6 @@ tactic * mk_tseitin_cnf_tactic(ast_manager & m, params_ref const & p) {
     params_ref simp_p = p;
     simp_p.set_bool("elim_and", true);
     simp_p.set_bool("blast_distinct", true);
-    return or_else(mk_tseitin_cnf_core_tactic(m, p),
-                   and_then(using_params(mk_simplify_tactic(m, p), simp_p),
-                            mk_tseitin_cnf_core_tactic(m, p)));
+    return and_then(using_params(mk_simplify_tactic(m, p), simp_p),
+                    mk_tseitin_cnf_core_tactic(m, p));
 }

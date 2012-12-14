@@ -22,6 +22,7 @@ Revision History:
 #include"nnf_tactic.h"
 #include"der_tactic.h"
 #include"factor_tactic.h"
+#include"tseitin_cnf_tactic.h"
 
 namespace mcsat {
     default_solver_factory::default_solver_factory() {
@@ -31,6 +32,7 @@ namespace mcsat {
         add_tactic_after(alloc(nnf_tactic_factory));
         add_tactic_after(alloc(der_tactic_factory));
         add_tactic_after(alloc(factor_tactic_factory));
+        add_tactic_after(alloc(tseitin_cnf_tactic_factory));
     }
     
     default_solver_factory::~default_solver_factory() {
