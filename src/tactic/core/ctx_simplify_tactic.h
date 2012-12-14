@@ -44,6 +44,8 @@ public:
                             proof_converter_ref & pc,
                             expr_dependency_ref & core);
 
+    virtual void operator()(assertion_stack & s);
+
     virtual void cleanup();
 protected:
     virtual void set_cancel(bool f);
@@ -56,5 +58,7 @@ inline tactic * mk_ctx_simplify_tactic(ast_manager & m, params_ref const & p = p
 /*
   ADD_TACTIC("ctx-simplify", "apply contextual simplification rules.", "mk_ctx_simplify_tactic(m, p)")
 */
+
+MK_SIMPLE_TACTIC_FACTORY(ctx_simplify_tactic_factory, mk_ctx_simplify_tactic(m, p));
 
 #endif

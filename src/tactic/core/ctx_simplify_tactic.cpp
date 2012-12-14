@@ -19,6 +19,7 @@ Notes:
 #include"ctx_simplify_tactic.h"
 #include"mk_simplified_app.h"
 #include"goal_num_occurs.h"
+#include"assertion_stream.h"
 #include"cooperate.h"
 #include"ast_ll_pp.h"
 #include"ast_smt2_pp.h"
@@ -475,7 +476,7 @@ struct ctx_simplify_tactic::imp {
         }
     }
 
-    void operator()(goal & g) {
+    void apply(assertion_stream & g) {
         SASSERT(g.is_well_sorted());
         bool proofs_enabled = g.proofs_enabled();
         m_occs.reset();
@@ -483,9 +484,9 @@ struct ctx_simplify_tactic::imp {
         m_num_steps = 0;
         expr_ref r(m);
         proof * new_pr = 0;
-        tactic_report report("ctx-simplify", g);
+        stream_report report("ctx-simplify", g);
         unsigned sz = g.size();
-        for (unsigned i = 0; i < sz; i++) {
+        for (unsigned i = g.qhead(); i < sz; i++) {
             if (g.inconsistent())
                 return;
             expr * t = g.form(i);
@@ -499,7 +500,7 @@ struct ctx_simplify_tactic::imp {
         IF_VERBOSE(TACTIC_VERBOSITY_LVL, verbose_stream() << "(ctx-simplify :num-steps " << m_num_steps << ")\n";);
         SASSERT(g.is_well_sorted());
     }
-    
+
 };
 
 ctx_simplify_tactic::ctx_simplify_tactic(ast_manager & m, params_ref const & p):
@@ -528,9 +529,15 @@ void ctx_simplify_tactic::operator()(goal_ref const & in,
                                      proof_converter_ref & pc,
                                      expr_dependency_ref & core) {
     mc = 0; pc = 0; core = 0;
-    (*m_imp)(*(in.get()));
+    goal2stream g(*(in.get()));
+    m_imp->apply(g);
     in->inc_depth();
     result.push_back(in.get());
+}
+
+void ctx_simplify_tactic::operator()(assertion_stack & s) {
+    assertion_stack2stream strm(s);
+    m_imp->apply(strm);
 }
     
 void ctx_simplify_tactic::set_cancel(bool f) {

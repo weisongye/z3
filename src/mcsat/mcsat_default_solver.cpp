@@ -25,6 +25,7 @@ Revision History:
 #include"tseitin_cnf_tactic.h"
 #include"distribute_forall_tactic.h"
 #include"elim_term_ite_tactic.h"
+#include"ctx_simplify_tactic.h"
 
 namespace mcsat {
     default_solver_factory::default_solver_factory() {
@@ -34,6 +35,7 @@ namespace mcsat {
         add_tactic_after(alloc(nnf_tactic_factory));
         add_tactic_after(alloc(der_tactic_factory));
         add_tactic_after(alloc(factor_tactic_factory));
+        add_tactic_after(alloc(ctx_simplify_tactic_factory));
         add_tactic_after(alloc(tseitin_cnf_tactic_factory));
         add_tactic_after(alloc(distribute_forall_tactic_factory));
         add_tactic_after(alloc(elim_term_ite_tactic_factory));

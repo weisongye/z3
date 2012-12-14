@@ -21,6 +21,7 @@ Revision History:
 #include"num_occurs.h"
 
 class goal;
+class assertion_stream;
 
 class goal_num_occurs : public num_occurs { 
 public:
@@ -29,6 +30,7 @@ public:
     }
 
     void operator()(goal const & s);
+    void operator()(assertion_stream const & s, bool from_qhead=true);
 };
 
 
