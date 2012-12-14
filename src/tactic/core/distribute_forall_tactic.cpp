@@ -17,6 +17,7 @@ Author:
 #include"tactical.h"
 #include"rewriter_def.h"
 #include"var_subst.h"
+#include"assertion_stream.h"
 
 class distribute_forall_tactic : public tactic {
 
@@ -88,6 +89,40 @@ class distribute_forall_tactic : public tactic {
 
     rw * m_rw;
 
+    void apply(assertion_stream & g) {
+        SASSERT(g.is_well_sorted());
+        ast_manager & m = g.m();
+        bool produce_proofs = g.proofs_enabled();
+        rw r(m, produce_proofs);
+        #pragma omp critical (tactic_cancel)
+        {
+            m_rw = &r;
+        }
+        stream_report report("distribute-forall", g);
+        
+        expr_ref   new_curr(m);
+        proof_ref  new_pr(m);
+        unsigned size = g.size();
+        for (unsigned idx = g.qhead(); idx < size; idx++) {
+            if (g.inconsistent())
+                break;
+            expr * curr = g.form(idx);
+            r(curr, new_curr, new_pr);
+            if (g.proofs_enabled()) {
+                proof * pr = g.pr(idx);
+                new_pr     = m.mk_modus_ponens(pr, new_pr);
+            }
+            g.update(idx, new_curr, new_pr, g.dep(idx));
+        }
+        g.inc_depth();
+        TRACE("distribute-forall", g.display(tout););
+        SASSERT(g.is_well_sorted());
+        #pragma omp critical (tactic_cancel)
+        {
+            m_rw = 0;
+        }
+    }
+
 public:
     distribute_forall_tactic():m_rw(0) {}
 
@@ -100,42 +135,17 @@ public:
                             model_converter_ref & mc, 
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
-        SASSERT(g->is_well_sorted());
-        ast_manager & m = g->m();
-        bool produce_proofs = g->proofs_enabled();
-        rw r(m, produce_proofs);
-        #pragma omp critical (tactic_cancel)
-        {
-            m_rw = &r;
-        }
         mc = 0; pc = 0; core = 0; result.reset();
-        tactic_report report("distribute-forall", *g);
-        
-        expr_ref   new_curr(m);
-        proof_ref  new_pr(m);
-        unsigned size = g->size();
-        for (unsigned idx = 0; idx < size; idx++) {
-            if (g->inconsistent())
-                break;
-            expr * curr = g->form(idx);
-            r(curr, new_curr, new_pr);
-            if (g->proofs_enabled()) {
-                proof * pr = g->pr(idx);
-                new_pr     = m.mk_modus_ponens(pr, new_pr);
-            }
-            g->update(idx, new_curr, new_pr, g->dep(idx));
-        }
-        
-        g->inc_depth();
+        goal2stream s(*(g.get()));
+        apply(s);
         result.push_back(g.get());
-        TRACE("distribute-forall", g->display(tout););
-        SASSERT(g->is_well_sorted());
-        #pragma omp critical (tactic_cancel)
-        {
-            m_rw = 0;
-        }
     }
 
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        apply(strm);
+    }
+                            
     virtual void set_cancel(bool f) {
         if (m_rw)
             m_rw->set_cancel(f);
