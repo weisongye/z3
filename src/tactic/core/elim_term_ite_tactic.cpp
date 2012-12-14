@@ -21,6 +21,7 @@ Notes:
 #include"defined_names.h"
 #include"rewriter_def.h"
 #include"filter_model_converter.h"
+#include"assertion_stream.h"
 #include"cooperate.h"
 
 class elim_term_ite_tactic : public tactic {
@@ -28,10 +29,8 @@ class elim_term_ite_tactic : public tactic {
     struct rw_cfg : public default_rewriter_cfg {
         ast_manager &               m;
         defined_names               m_defined_names;
-        ref<filter_model_converter> m_mc;
-        goal *                      m_goal;
+        assertion_stream *          m_stream;
         unsigned long long          m_max_memory; // in bytes
-        bool                        m_produce_models;
         unsigned                    m_num_fresh;
 
         bool max_steps_exceeded(unsigned num_steps) const { 
@@ -51,13 +50,9 @@ class elim_term_ite_tactic : public tactic {
             proof_ref new_def_pr(m);
             app_ref _result(m);
             if (m_defined_names.mk_name(new_ite, new_def, new_def_pr, _result, result_pr)) {
-                m_goal->assert_expr(new_def, new_def_pr, 0);
+                m_stream->assert_expr(new_def, new_def_pr, 0);
                 m_num_fresh++;
-                if (m_produce_models) {
-                    if (!m_mc)
-                        m_mc = alloc(filter_model_converter, m);
-                    m_mc->insert(_result->get_decl());
-                }
+                m_stream->add_filter(_result->get_decl());
             }
             result = _result.get();
             return BR_DONE;
@@ -67,7 +62,7 @@ class elim_term_ite_tactic : public tactic {
             m(_m),
             m_defined_names(m, 0 /* don't use prefix */) {
             updt_params(p);
-            m_goal      = 0;
+            m_stream    = 0;
             m_num_fresh = 0;
         }
 
@@ -101,38 +96,42 @@ class elim_term_ite_tactic : public tactic {
         void updt_params(params_ref const & p) {
             m_rw.cfg().updt_params(p);
         }
+
+        void apply(assertion_stream & g) {
+            SASSERT(g.is_well_sorted());
+            stream_report report("elim-term-ite", g);
+            bool produce_proofs = g.proofs_enabled();
+            m_rw.m_cfg.m_stream = &g;
+            m_rw.m_cfg.m_num_fresh = 0;
+            expr_ref   new_curr(m);
+            proof_ref  new_pr(m);
+            unsigned   size = g.size();
+            for (unsigned idx = g.qhead(); idx < size; idx++) {
+                expr * curr = g.form(idx);
+                m_rw(curr, new_curr, new_pr);
+                if (produce_proofs) {
+                    proof * pr = g.pr(idx);
+                    new_pr     = m.mk_modus_ponens(pr, new_pr);
+                }
+                g.update(idx, new_curr, new_pr, g.dep(idx));
+            }
+            g.inc_depth();
+            TRACE("elim_term_ite", g.display(tout););
+            SASSERT(g.is_well_sorted());
+        }
         
         void operator()(goal_ref const & g, 
                         goal_ref_buffer & result, 
                         model_converter_ref & mc, 
                         proof_converter_ref & pc,
                         expr_dependency_ref & core) {
-            SASSERT(g->is_well_sorted());
             mc = 0; pc = 0; core = 0;
-            tactic_report report("elim-term-ite", *g);
-            bool produce_proofs = g->proofs_enabled();
-            m_rw.cfg().m_produce_models = g->models_enabled();
-
-            m_rw.m_cfg.m_num_fresh = 0;
-            m_rw.m_cfg.m_goal = g.get();
-            expr_ref   new_curr(m);
-            proof_ref  new_pr(m);
-            unsigned   size = g->size();
-            for (unsigned idx = 0; idx < size; idx++) {
-                expr * curr = g->form(idx);
-                m_rw(curr, new_curr, new_pr);
-                if (produce_proofs) {
-                    proof * pr = g->pr(idx);
-                    new_pr     = m.mk_modus_ponens(pr, new_pr);
-                }
-                g->update(idx, new_curr, new_pr, g->dep(idx));
-            }
-            mc = m_rw.m_cfg.m_mc.get();
+            goal_and_fmc2stream s(*(g.get()));
+            apply(s);
             report_tactic_progress(":elim-term-ite-consts", m_rw.m_cfg.m_num_fresh);
-            g->inc_depth();
             result.push_back(g.get());
-            TRACE("elim_term_ite", g->display(tout););
-            SASSERT(g->is_well_sorted());
+            if (g->models_enabled())
+                mc = s.mc();
         }
     };
     
@@ -170,6 +169,11 @@ public:
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
         (*m_imp)(in, result, mc, pc, core);
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        m_imp->apply(strm);
     }
     
     virtual void cleanup() {
