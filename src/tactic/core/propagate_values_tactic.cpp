@@ -34,6 +34,7 @@ class propagate_values_tactic : public tactic {
         goal_shared_occs              m_occs;
         unsigned                      m_idx;
         unsigned                      m_max_rounds;
+        bool                          m_from_qhead;
         bool                          m_modified;
         
         imp(ast_manager & m, params_ref const & p):
@@ -46,6 +47,7 @@ class propagate_values_tactic : public tactic {
 
         void updt_params_core(params_ref const & p) {
             m_max_rounds = p.get_uint("max_rounds", 4);
+            m_from_qhead = p.get_bool("from_qhead", true);
         }
         
         void updt_params(params_ref const & p) {
@@ -87,6 +89,21 @@ class propagate_values_tactic : public tactic {
             }
             return false;
         }
+
+        void save_subst(expr * lit, proof * pr, expr_dependency * d) {
+            if (is_shared(lit)) {
+                m_subst->insert(lit, m().mk_true(), m().mk_iff_true(pr), d);
+            }
+            expr * atom;
+            if (is_shared_neg(lit, atom)) {
+                m_subst->insert(atom, m().mk_false(), m().mk_iff_false(pr), d);
+            }
+            expr * lhs, * value;
+            if (is_shared_eq(lit, lhs, value)) {
+                TRACE("shallow_context_simplifier_bug", tout << "found eq:\n" << mk_ismt2_pp(lit, m()) << "\n";);
+                m_subst->insert(lhs, value, pr, d);
+            }
+        }
         
         void push_result(expr * new_curr, proof * new_pr) {
             if (m_stream->proofs_enabled()) {
@@ -105,19 +122,7 @@ class propagate_values_tactic : public tactic {
             }
             
             m_stream->update(m_idx, new_curr, new_pr, new_d);
-        
-            if (is_shared(new_curr)) {
-                m_subst->insert(new_curr, m().mk_true(), m().mk_iff_true(new_pr), new_d);
-            }
-            expr * atom;
-            if (is_shared_neg(new_curr, atom)) {
-                m_subst->insert(atom, m().mk_false(), m().mk_iff_false(new_pr), new_d);
-            }
-            expr * lhs, * value;
-            if (is_shared_eq(new_curr, lhs, value)) {
-                TRACE("shallow_context_simplifier_bug", tout << "found eq:\n" << mk_ismt2_pp(new_curr, m()) << "\n";);
-                m_subst->insert(lhs, value, new_pr, new_d);
-            }
+            save_subst(new_curr, new_pr, new_d);
         }
         
         void process_current() {
@@ -156,8 +161,16 @@ class propagate_values_tactic : public tactic {
 
             m_subst = alloc(expr_substitution, m(), m_stream->unsat_core_enabled(), m_stream->proofs_enabled());
             m_r.set_substitution(m_subst.get());
-            m_occs(*m_stream);
+            m_occs(*m_stream, m_from_qhead);
 
+            if (!m_from_qhead) {
+                // fill m_subst if values from 0 to qhead
+                // this is only relevant if the stream is an assertion stack
+                for (unsigned i = 0; i < qhead; i++) {
+                    save_subst(m_stream->form(i), m_stream->pr(i), m_stream->dep(i));
+                }
+            }
+            
             while (true) {
                 TRACE("propagate_values", m_stream->display(tout););
                 if (forward) {
@@ -246,6 +259,7 @@ public:
     virtual void collect_param_descrs(param_descrs & r) {
         th_rewriter::get_param_descrs(r);
         r.insert("max_rounds", CPK_UINT, "(default: 2) maximum number of rounds.");
+        r.insert("from_qhead", CPK_BOOL, "(default: true) if false, then propagate values using assertions that occur before the queue processing head; it will propagate more, but it may be expensive if a lot of push/pop is used; this parameter is irrelevant for goals since the queue head is always 0.");
     }
     
     virtual void operator()(goal_ref const & in, 
