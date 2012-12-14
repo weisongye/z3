@@ -27,6 +27,7 @@ Revision History:
 #include"elim_term_ite_tactic.h"
 #include"ctx_simplify_tactic.h"
 #include"propagate_values_tactic.h"
+#include"solve_eqs_tactic.h"
 
 namespace mcsat {
     default_solver_factory::default_solver_factory() {
@@ -34,6 +35,7 @@ namespace mcsat {
         // I'm just testing different tactics.
         add_tactic_after(alloc(simplify_tactic_factory));
         add_tactic_after(alloc(propagate_values_tactic_factory));
+        add_tactic_after(alloc(solve_eqs_tactic_factory));
         add_tactic_after(alloc(nnf_tactic_factory));
         add_tactic_after(alloc(der_tactic_factory));
         add_tactic_after(alloc(factor_tactic_factory));

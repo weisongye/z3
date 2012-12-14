@@ -121,6 +121,10 @@ void assertion_stack2stream::elim_redundancies() {
     m_stack.elim_redundancies();
 }
 
+void assertion_stack2stream::elim_true() {
+    m_stack.elim_true();
+}
+
 void assertion_stack2stream::display(std::ostream & out) {
     m_stack.display(out);
 }
@@ -216,6 +220,10 @@ void goal2stream::add_definition(app * c, expr * def, proof * pr, expr_dependenc
 
 void goal2stream::elim_redundancies() {
     m_goal.elim_redundancies();
+}
+
+void goal2stream::elim_true() {
+    m_goal.elim_true();
 }
 
 void goal2stream::display(std::ostream & out) {

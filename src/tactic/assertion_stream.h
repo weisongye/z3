@@ -33,7 +33,7 @@ public:
     virtual ~assertion_stream();
 
     virtual bool is_frozen(func_decl * f) const = 0;
-    bool is_frozen(app * f) { return is_frozen(f); }
+    bool is_frozen(app * f) { return is_frozen(f->get_decl()); }
     
     virtual ast_manager & m() const = 0;
     
@@ -65,7 +65,8 @@ public:
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep) = 0;
     
     virtual void elim_redundancies() = 0;
-
+    virtual void elim_true() = 0;
+    
     virtual void display(std::ostream & out) = 0;
 };
 
@@ -106,6 +107,7 @@ public:
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
 
     virtual void elim_redundancies();
+    virtual void elim_true();
 
     virtual void display(std::ostream & out);
 };
@@ -148,6 +150,7 @@ public:
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
 
     virtual void elim_redundancies();
+    virtual void elim_true();
 
     virtual void display(std::ostream & out);
 };

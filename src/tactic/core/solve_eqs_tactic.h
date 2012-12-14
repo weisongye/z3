@@ -20,8 +20,7 @@ Revision History:
 #define _SOLVE_EQS_TACTIC_H_
 
 #include"params.h"
-class ast_manager;
-class tactic;
+#include"tactic.h"
 class expr_replacer;
 
 tactic * mk_solve_eqs_tactic(ast_manager & m, params_ref const & p = params_ref(), expr_replacer * r = 0);
@@ -29,6 +28,8 @@ tactic * mk_solve_eqs_tactic(ast_manager & m, params_ref const & p = params_ref(
 /*
   ADD_TACTIC("solve-eqs", "eliminate variables by solving equations.", "mk_solve_eqs_tactic(m, p)")
 */
+
+MK_SIMPLE_TACTIC_FACTORY(solve_eqs_tactic_factory, mk_solve_eqs_tactic(m, p));
 
 #endif
 
