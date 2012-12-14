@@ -144,16 +144,21 @@ struct assertion_stack::imp {
     }
 
     void expand(expr * f, proof * pr, expr_dependency * dep, expr_ref & new_f, proof_ref & new_pr, expr_dependency_ref & new_dep) {
-        scoped_ptr<expr_replacer> r = mk_default_expr_replacer(m());
-        r->set_substitution(&m_csubst);
-        (*r)(f, new_f, new_pr, new_dep);
-        // new_pr   is a proof for  f == new_f
-        // new_dep  are the dependencies for showing f == new_f
-        if (proofs_enabled()) {
-            new_pr = m_manager.mk_modus_ponens(pr, new_pr); 
+        if (m_csubst.empty()) {
+            new_f   = f;
+            new_pr  = pr;
+            new_dep = dep;
         }
-        if (unsat_core_enabled()) {
-            new_dep = m().mk_join(dep, new_dep);
+        else {
+            scoped_ptr<expr_replacer> r = mk_default_expr_replacer(m());
+            r->set_substitution(&m_csubst);
+            (*r)(f, new_f, new_pr, new_dep);
+            // new_pr   is a proof for  f == new_f
+            // new_dep  are the dependencies for showing f == new_f
+            if (proofs_enabled())
+                new_pr = m_manager.mk_modus_ponens(pr, new_pr); 
+            if (unsat_core_enabled())
+                new_dep = m().mk_join(dep, new_dep);
         }
     }
     
@@ -275,6 +280,7 @@ struct assertion_stack::imp {
             return;
         expr_ref new_f(m()); proof_ref new_pr(m()); expr_dependency_ref new_d(m());
         expand(f, pr, d, new_f, new_pr, new_d);
+        f = new_f; pr = new_pr; d = new_d;
         if (proofs_enabled())
             slow_process(f, pr, d);
         else
