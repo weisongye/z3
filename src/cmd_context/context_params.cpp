@@ -41,7 +41,7 @@ void context_params::set_bool(bool & opt, char const * param, char const * value
 
 void context_params::set(char const * param, char const * value) {
     std::string p = param;
-    unsigned n = p.size();
+    unsigned n = static_cast<unsigned>(p.size());
     for (unsigned i = 0; i < n; i++) {
         if (p[i] >= 'A' && p[i] <= 'Z')
             p[i] = p[i] - 'A' + 'a';
@@ -131,11 +131,11 @@ params_ref context_params::merge_default_params(params_ref const & p) {
     }
 }
 
-void context_params::init_solver_params(ast_manager & m, solver & s, params_ref const & p) {
-    s.set_produce_proofs(m.proofs_enabled() && m_proof);
-    s.set_produce_models(p.get_bool("model", m_model));
-    s.set_produce_unsat_cores(p.get_bool("unsat_core", m_unsat_core));
-    s.updt_params(merge_default_params(p));
+void context_params::get_solver_params(ast_manager const & m, params_ref & p, bool & proofs_enabled, bool & models_enabled, bool & unsat_core_enabled) {
+    proofs_enabled     = m.proofs_enabled() && p.get_bool("proof", m_proof);
+    models_enabled     = p.get_bool("model", m_model);
+    unsat_core_enabled = p.get_bool("unsat_core", m_unsat_core);
+    p = merge_default_params(p);
 }
 
 ast_manager * context_params::mk_ast_manager() {
