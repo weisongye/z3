@@ -31,7 +31,8 @@ Revision History:
 #include"smt_strategic_solver.h"
 #include"smt_solver.h"
 #include"smt_implied_equalities.h"
-#include"mcsat_default_solver.h"
+#include"mcsat_solver.h"
+#include"assertion_stack.h"
 
 extern "C" {
 
@@ -86,17 +87,6 @@ extern "C" {
         LOG_Z3_mk_solver_from_tactic(c, t);
         RESET_ERROR_CODE();
         Z3_solver_ref * s = alloc(Z3_solver_ref, mk_tactic2solver_factory(to_tactic_ref(t)));
-        mk_c(c)->save_object(s);
-        Z3_solver r = of_solver(s);
-        RETURN_Z3(r);
-        Z3_CATCH_RETURN(0);
-    }
-
-    Z3_solver Z3_API Z3_mk_mcsat_solver(__in Z3_context c) {
-        Z3_TRY;
-        LOG_Z3_mk_mcsat_solver(c);
-        RESET_ERROR_CODE();
-        Z3_solver_ref * s = alloc(Z3_solver_ref, alloc(mcsat::default_solver_factory));
         mk_c(c)->save_object(s);
         Z3_solver r = of_solver(s);
         RETURN_Z3(r);
@@ -386,6 +376,74 @@ extern "C" {
         lbool result = smt::implied_equalities(m, *to_solver_ref(s), num_terms, to_exprs(terms), class_ids);
         return static_cast<Z3_lbool>(result); 
         Z3_CATCH_RETURN(Z3_L_UNDEF);
+    }
+
+    Z3_solver Z3_API Z3_mk_mcsat_solver(__in Z3_context c) {
+        Z3_TRY;
+        LOG_Z3_mk_mcsat_solver(c);
+        RESET_ERROR_CODE();
+        Z3_solver_ref * s = alloc(Z3_solver_ref, alloc(mcsat::solver_factory));
+        s->m_kind = Z3_solver_ref::MCSAT;
+        mk_c(c)->save_object(s);
+        Z3_solver r = of_solver(s);
+        RETURN_Z3(r);
+        Z3_CATCH_RETURN(0);
+    }
+
+    // Check if MCSat solver that can still be configured
+    static void check_configure_mcsat(Z3_solver s) {
+        if (to_solver(s)->m_solver.get() != 0 || to_solver(s)->m_kind != Z3_solver_ref::MCSAT) {
+            throw default_exception("MCSat cannot be configured after assertions were already added, or check or push were invoked.");
+        }
+    }
+
+    static void check_mcsat_tactic(Z3_context c, Z3_tactic t) {
+        tactic * _t = to_tactic_ref(t);
+        assertion_stack s(mk_c(c)->m());
+        try {
+            (*_t)(s);
+        }
+        catch (tactic_exception & ex) {
+            throw default_exception("Given tactic cannot be used as a MCSat preprocessing step.");
+        }
+    }
+
+    struct tactic2tactic_factory : public tactic_factory {
+        tactic_ref m_tactic;
+        tactic2tactic_factory(tactic * t):m_tactic(t) {}
+        virtual ~tactic2tactic_factory() {}
+        virtual tactic * operator()(ast_manager & m, params_ref const & p) { return m_tactic.get(); }
+    };
+
+    void Z3_API Z3_mcsat_add_tactic_before(Z3_context c, Z3_solver s, Z3_tactic t) {
+        Z3_TRY;
+        LOG_Z3_mcsat_add_tactic_before(c, s, t);
+        RESET_ERROR_CODE();
+        check_configure_mcsat(s);
+        check_mcsat_tactic(c, t);
+        mcsat::solver_factory * f = static_cast<mcsat::solver_factory *>(to_solver(s)->m_solver_factory.get());
+        f->add_tactic_before(alloc(tactic2tactic_factory, to_tactic_ref(t)));
+        Z3_CATCH;
+    }
+
+    void Z3_API Z3_mcsat_add_tactic_after(Z3_context c, Z3_solver s, Z3_tactic t) {
+        Z3_TRY;
+        LOG_Z3_mcsat_add_tactic_after(c, s, t);
+        RESET_ERROR_CODE();
+        check_configure_mcsat(s);
+        check_mcsat_tactic(c, t);
+        mcsat::solver_factory * f = static_cast<mcsat::solver_factory *>(to_solver(s)->m_solver_factory.get());
+        f->add_tactic_after(alloc(tactic2tactic_factory, to_tactic_ref(t)));
+        Z3_CATCH;
+    }
+
+    void Z3_API Z3_mcsat_add_plugin(Z3_context c, Z3_solver s, Z3_mcsat_plugin p) {
+        Z3_TRY;
+        LOG_Z3_mcsat_add_plugin(c, s, p);
+        RESET_ERROR_CODE();
+        check_configure_mcsat(s);
+        // TODO
+        Z3_CATCH;
     }
 
 };

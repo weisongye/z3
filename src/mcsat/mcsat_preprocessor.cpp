@@ -57,7 +57,7 @@ namespace mcsat {
             apply_tactics();
             m_stack.commit();
         }
-        
+
         void push() {
             apply_tactics();
             m_stack.push();
@@ -141,6 +141,10 @@ namespace mcsat {
     
     unsigned preprocessor::size() const {
         return m_imp->m_stack.size();
+    }
+
+    unsigned preprocessor::qhead() const {
+        return m_imp->m_stack.qhead();
     }
 
     expr * preprocessor::form(unsigned i) const {

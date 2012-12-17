@@ -50,6 +50,9 @@ public:
                 push_back(0);
         }
     }
+    void swap(scoped_ptr_vector<T> & other) {
+        m_vector.swap(other.m_vector);
+    }
 };
 
 #endif

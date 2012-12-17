@@ -19,6 +19,7 @@ Revision History:
 #include"mcsat_solver.h"
 #include"mcsat_preprocessor.h"
 #include"mcsat_kernel.h"
+#include"mcsat_plugin.h"
 #include"tactic.h"
 #include"params.h"
 #include"scoped_ptr_vector.h"
@@ -28,14 +29,15 @@ namespace mcsat {
     class solver : public ::solver {
         ast_manager & m_manager;
         preprocessor  m_preprocessor;
-        // kernel        m_kernel;
+        kernel        m_kernel;
 
         friend class solver_factory;
         
     public:
         solver(ast_manager & m, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores):
             m_manager(m),
-            m_preprocessor(m, produce_proofs, produce_models, produce_unsat_cores) {
+            m_preprocessor(m, produce_proofs, produce_models, produce_unsat_cores),
+            m_kernel(m, produce_proofs) {
         }
 
         ast_manager & m() const {
@@ -82,10 +84,12 @@ namespace mcsat {
 
         virtual void push() {
             m_preprocessor.push();
+            m_kernel.push();
         }
         
         virtual void pop(unsigned n) {
             m_preprocessor.pop(n);
+            m_kernel.pop(n);
         }
         
         virtual void assert_expr(expr * t, expr * a) {
@@ -132,6 +136,7 @@ namespace mcsat {
     struct solver_factory::imp {
         scoped_ptr_vector<tactic_factory> m_before_tactics;
         scoped_ptr_vector<tactic_factory> m_after_tactics;
+        plugin_ref_vector                 m_plugins;
     };
     
     solver_factory::solver_factory() {
@@ -149,6 +154,10 @@ namespace mcsat {
     void solver_factory::add_tactic_after(tactic_factory * f) {
         m_imp->m_after_tactics.push_back(f);
     }
+
+    void solver_factory::add_plugin(plugin * p) {
+        m_imp->m_plugins.push_back(p);
+    }
     
     ::solver * solver_factory::operator()(ast_manager & m, params_ref const & p, bool proofs_enabled, bool models_enabled, bool unsat_core_enabled, symbol const & logic) {
         solver * r = alloc(solver, m, p, proofs_enabled, models_enabled, unsat_core_enabled);
@@ -161,6 +170,11 @@ namespace mcsat {
         for (unsigned i = 0; i < sz; i++) {
             tactic_factory & f = *(m_imp->m_after_tactics[i]);
             r->m_preprocessor.add_tactic_after(f(m, p));
+        }
+
+        sz = m_imp->m_plugins.size();
+        for (unsigned i = 0; i < sz; i++) {
+            r->m_kernel.add_plugin(m_imp->m_plugins.get(i));
         }
         return r;
     }

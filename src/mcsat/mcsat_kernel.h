@@ -26,6 +26,7 @@ Revision History:
 class statistics;
 
 namespace mcsat {
+    class plugin;
 
     /**
        \brief The kernel implements the search engine in mcsat.
@@ -34,13 +35,13 @@ namespace mcsat {
         struct imp;
         imp * m_imp;
     public:
-        kernel(ast_manager & m, bool proofs_enabled, bool models_enabled, bool core_enabled);
+        kernel(ast_manager & m, bool proofs_enabled);
         ~kernel();
-   
-        ast_manager & m() const;
+
+        void add_plugin(plugin * p);
         
         void assert_expr(expr * f, proof * pr, expr_dependency * d);
-        
+
         void push();
         void pop(unsigned num_scopes);
 

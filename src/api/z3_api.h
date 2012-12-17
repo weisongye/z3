@@ -31,6 +31,7 @@ DEFINE_TYPE(Z3_pattern);
 DEFINE_TYPE(Z3_model);
 DEFINE_TYPE(Z3_constructor);
 DEFINE_TYPE(Z3_constructor_list);
+DEFINE_TYPE(Z3_mcsat_plugin);
 #endif
 #ifdef Conly
 DEFINE_TYPE(Z3_params);
@@ -1176,6 +1177,7 @@ typedef enum
   def_Type('THEORY',           'Z3_theory',           'ctypes.c_void_p')
   def_Type('THEORY_DATA',      'Z3_theory_data',      'ctypes.c_void_p')
   def_Type('SOLVER',           'Z3_solver',           'SolverObj')
+  def_Type('MCSAT_PLUGIN',     'Z3_mcsat_plugin',     'MCSatPluginObj')
   def_Type('GOAL',             'Z3_goal',             'GoalObj')
   def_Type('TACTIC',           'Z3_tactic',           'TacticObj')
   def_Type('PARAMS',           'Z3_params',           'Params')
@@ -6615,13 +6617,6 @@ END_MLAPI_EXCLUDE
     Z3_solver Z3_API Z3_mk_solver_from_tactic(__in Z3_context c, __in Z3_tactic t);
 
     /**
-       \brief Create a mcsat solver instance.
-       
-       def_API('Z3_mk_mcsat_solver', SOLVER, (_in(CONTEXT),))
-    */
-    Z3_solver Z3_API Z3_mk_mcsat_solver(__in Z3_context c);
-
-    /**
        \brief Return a string describing all solver available parameters.
 
        def_API('Z3_solver_get_help', STRING, (_in(CONTEXT), _in(SOLVER)))
@@ -6812,6 +6807,40 @@ END_MLAPI_EXCLUDE
     */
     Z3_string Z3_API Z3_solver_to_string(__in Z3_context c, __in Z3_solver s);
 
+    /**
+       \brief Create a mcsat solver instance.
+       
+       def_API('Z3_mk_mcsat_solver', SOLVER, (_in(CONTEXT),))
+    */
+    Z3_solver Z3_API Z3_mk_mcsat_solver(__in Z3_context c);
+
+    /**
+       \brief Add a tactic (preprocessor) before the existing tactics (preprocessing steps) in the given solver s.
+       The solver \c s must have been created using #Z3_mk_mcsat_solver. 
+       Assertions must not have been added to \c s.
+
+       def_API('Z3_mcsat_add_tactic_before', VOID, (_in(CONTEXT), _in(SOLVER), _in(TACTIC)))
+
+    */
+    void Z3_API Z3_mcsat_add_tactic_before(__in Z3_context c, __in Z3_solver s, __in Z3_tactic t);
+    
+    /**
+       \brief Add a tactic (preprocessor) after the existing tactics (preprocessing steps) in the given solver s.
+       The solver \c s must have been created using #Z3_mk_mcsat_solver. 
+       Assertions must not have been added to \c s.
+
+       def_API('Z3_mcsat_add_tactic_after', VOID, (_in(CONTEXT), _in(SOLVER), _in(TACTIC)))
+    */
+    void Z3_API Z3_mcsat_add_tactic_after(__in Z3_context c, __in Z3_solver s, __in Z3_tactic t);    
+
+    /**
+       \brief Add a mcsat plugin to the given solver.
+       The solver \c s must have been created using #Z3_mk_mcsat_solver. 
+       Assertions must not have been added to \c s.
+
+       def_API('Z3_mcsat_add_plugin', VOID, (_in(CONTEXT), _in(SOLVER), _in(MCSAT_PLUGIN)))
+    */
+    void Z3_API Z3_mcsat_add_plugin(__in Z3_context c, __in Z3_solver s, __in Z3_mcsat_plugin p);
     /*@}*/
 
     /**

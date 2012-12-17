@@ -22,11 +22,13 @@ Revision History:
 #include"solver.h"
 
 struct Z3_solver_ref : public api::object {
+    enum kind { MCSAT, OTHER };
+    kind                       m_kind;
     scoped_ptr<solver_factory> m_solver_factory;
     ref<solver>                m_solver;
     params_ref                 m_params;
     symbol                     m_logic;
-    Z3_solver_ref(solver_factory * f):m_solver_factory(f), m_solver(0), m_logic(symbol::null) {}
+    Z3_solver_ref(solver_factory * f):m_kind(OTHER), m_solver_factory(f), m_solver(0), m_logic(symbol::null) {}
     virtual ~Z3_solver_ref() {}
 };
 

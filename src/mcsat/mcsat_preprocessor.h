@@ -61,7 +61,8 @@ namespace mcsat {
         unsigned scope_lvl() const;
 
         void set_cancel(bool f);
-        
+     
+        unsigned qhead() const;
         unsigned size() const;
         expr * form(unsigned i) const;
         proof * pr(unsigned i) const;

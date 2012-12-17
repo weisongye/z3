@@ -23,6 +23,7 @@ Revision History:
 class tactic_factory;
 
 namespace mcsat {
+    class plugin;
 
     class solver_factory : public ::solver_factory {
         struct imp;
@@ -32,6 +33,7 @@ namespace mcsat {
         virtual ~solver_factory();
         void add_tactic_before(tactic_factory * f);
         void add_tactic_after(tactic_factory * f);
+        void add_plugin(plugin * p);
         virtual ::solver * operator()(ast_manager & m, params_ref const & p, bool proofs_enabled, bool models_enabled, bool unsat_core_enabled, symbol const & logic);
     };
 

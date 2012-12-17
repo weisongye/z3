@@ -18,19 +18,55 @@ Revision History:
 --*/
 #include"mcsat_kernel.h"
 #include"statistics.h"
+#include"mcsat_expr_manager.h"
+#include"mcsat_node_manager.h"
+#include"mcsat_value_manager.h"
+#include"mcsat_node_attribute.h"
+#include"mcsat_plugin.h"
 
 namespace mcsat {
 
     struct kernel::imp {
-        ast_manager & m_manager;
         
-        imp(ast_manager & m, bool proofs_enabled, bool models_enabled, bool core_enabled):
-            m_manager(m) {
+        class _initialization_context : public initialization_context {
+            node_attribute_manager & m_attr_manager;
+        public:
+            _initialization_context(node_attribute_manager & m):m_attr_manager(m) {}
+            virtual node_uint_attribute &   mk_uint_attribute() { return m_attr_manager.mk_uint_attribute(); }
+            virtual node_double_attribute & mk_double_attribute() { return m_attr_manager.mk_double_attribute(); }
+        };
+
+        bool                      m_fresh;
+        expr_manager              m_expr_manager;
+        node_manager              m_node_manager;
+        node_attribute_manager    m_attribute_manager;
+        value_manager             m_value_manager;
+        plugin_ref_vector         m_plugins;
+        ptr_vector<trail>         m_trail_stack;
+        unsigned_vector           m_plugin_qhead;
+        _initialization_context   m_init_ctx;
+
+        imp(ast_manager & m, bool proofs_enabled):
+            m_expr_manager(m),
+            m_attribute_manager(m_node_manager),
+            m_init_ctx(m_attribute_manager) {
+            m_fresh = true;
+        }
+
+        // Return true if the kernel is "fresh" and assertions were not added yet.
+        bool is_fresh() const {
+            return m_fresh;
+        }
+
+        void add_plugin(plugin * p) {
+            SASSERT(is_fresh());
+            p = p->clone();
+            m_plugins.push_back(p);
+            p->init(m_init_ctx);
         }
         
-        ast_manager & m() const { return m_manager; }
-
         void assert_expr(expr * f, proof * pr, expr_dependency * d) {
+            m_fresh = false;
         }
         
         void push() {
@@ -67,16 +103,16 @@ namespace mcsat {
         }
     };
     
-    kernel::kernel(ast_manager & m, bool proofs_enabled, bool models_enabled, bool core_enabled) {
+    kernel::kernel(ast_manager & m, bool proofs_enabled) {
     }
 
     kernel::~kernel() {
     }
-   
-    ast_manager & kernel::m() const {
-        return m_imp->m();
+
+    void kernel::add_plugin(plugin * p) {
+        m_imp->add_plugin(p);
     }
-        
+   
     void kernel::assert_expr(expr * f, proof * pr, expr_dependency * d) {
         m_imp->assert_expr(f, pr, d);
     }

@@ -6022,6 +6022,15 @@ class MCSat(Solver):
         ctx    = _get_ctx(ctx)
         Solver.__init__(self, Z3_mk_mcsat_solver(ctx.ref()), ctx)
 
+    def add_tactic_before(self, t):
+        Z3_mcsat_add_tactic_before(self.ctx.ref(), self.solver, t.tactic)
+
+    def add_tactic_after(self, t):
+        Z3_mcsat_add_tactic_after(self.ctx.ref(), self.solver, t.tactic)
+
+    def add_plugin(self, p):
+        Z3_mcsat_add_plugin(self.ctx.ref(), self.solver, p.plugin)
+
 #########################################
 #
 # Fixedpoint
