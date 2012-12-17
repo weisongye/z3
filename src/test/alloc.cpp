@@ -1,4 +1,5 @@
 #include<iostream>
+#include"vector.h"
 #include"timeit.h"
 #include"region.h"
 #include"small_object_allocator.h"
