@@ -206,6 +206,7 @@ int main(int argc, char ** argv) {
     TST(mpff);
     TST(horn_subsume_model_converter);
     TST(model2expr);
+    TST(alloc);
 }
 
 void initialize_mam() {}
