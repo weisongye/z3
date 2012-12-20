@@ -9,7 +9,7 @@ open Z3native
 module Log = 
 struct
   let m_is_open = false
-    (* CMW: "open" seems to be an invalid function name*)
+  (* CMW: "open" seems to be an invalid function name*)
   let open_ fn = int2lbool(open_log fn) == L_TRUE
   let close = (close_log)
   let append s = (append_log s)
