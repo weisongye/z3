@@ -10,9 +10,7 @@ module Log =
 struct
   let m_is_open = false
   (* CMW: "open" seems to be an invalid function name*)
-  let open_ fn = let rv = (open_log fn) in
-		 Printf.printf "ol returned %d\n" rv ;
-		 ((int2lbool rv) == L_TRUE)
+  let open_ fn = ((int2lbool (open_log fn)) == L_TRUE)
   let close = close_log
   let append s = append_log s
 end
@@ -24,10 +22,11 @@ struct
   let build = let (_, _, x, _) = get_version in x
   let revision = let (_, _, _, x) = get_version in x
   let to_string = 
-    string_of_int major ^ "." ^
-    string_of_int minor ^ "." ^
-    string_of_int build ^ "." ^
-    string_of_int revision ^ "."
+    let (mj, mn, bld, rev) = get_version in
+    string_of_int mj ^ "." ^
+      string_of_int mn ^ "." ^
+      string_of_int bld ^ "." ^
+      string_of_int rev ^ "."
 end
 
 class virtual idisposable = 
@@ -54,7 +53,7 @@ object (self)
     
   method dispose : unit = 
     if m_refCount == 0 then (
-      Printf.printf "Disposing %d \n" (Oo.id self) ;
+      Printf.printf "Disposing context %d \n" (Oo.id self) ;
       (del_context m_n_ctx)
     ) else (
     (* re-queue for finalization? *)
