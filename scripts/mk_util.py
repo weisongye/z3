@@ -7,11 +7,6 @@
 # Author: Leonardo de Moura (leonardo)
 ############################################
 import sys
-
-if sys.version >= "3":
-    print "ERROR: python 2.x required."
-    exit(1)
-
 import os
 import glob
 import re
@@ -140,8 +135,7 @@ def exec_cmd(cmd):
     first = True
     for e in cmd:
         if first:
-            # Allow spaces in the executable name
-	    first = False
+            first = False
             new_cmd.append(e)
         else:
             if e != "":
@@ -172,7 +166,7 @@ def exec_compiler_cmd(cmd):
 
 def test_cxx_compiler(cc):
     if is_verbose():
-        print "Testing %s..." % cc
+        print("Testing %s..." % cc)
     t = TempFile('tst.cpp')
     t.add('#include<iostream>\nint main() { return 0; }\n')
     t.commit()
@@ -180,7 +174,7 @@ def test_cxx_compiler(cc):
 
 def test_c_compiler(cc):
     if is_verbose():
-        print "Testing %s..." % cc
+        print("Testing %s..." % cc)
     t = TempFile('tst.c')
     t.add('#include<stdio.h>\nint main() { return 0; }\n')
     t.commit()
@@ -188,7 +182,7 @@ def test_c_compiler(cc):
 
 def test_gmp(cc):
     if is_verbose():
-        print "Testing GMP..."
+        print("Testing GMP...")
     t = TempFile('tstgmp.cpp')
     t.add('#include<gmp.h>\nint main() { mpz_t t; mpz_init(t); mpz_clear(t); return 0; }\n')
     t.commit()
@@ -196,7 +190,7 @@ def test_gmp(cc):
 
 def test_openmp(cc):
     if is_verbose():
-        print "Testing OpenMP..."
+        print("Testing OpenMP...")
     t = TempFile('tstomp.cpp')
     t.add('#include<omp.h>\nint main() { return omp_in_parallel() ? 1 : 0; }\n')
     t.commit()
@@ -207,12 +201,12 @@ def check_java():
     t.add('public class Hello { public static void main(String[] args) { System.out.println("Hello, World"); }}\n')
     t.commit()
     if is_verbose():
-        print "Testing %s..." % JAVAC
+        print("Testing %s..." % JAVAC)
     r = exec_cmd([JAVAC, 'Hello.java'])
     if r != 0:
         raise MKException('Failed testing Java compiler. Set environment variable JAVAC with the path to the Java compiler')
     if is_verbose():
-        print "Testing %s..." % JAVA
+        print("Testing %s..." % JAVA)
     r = exec_cmd([JAVA, 'Hello'])
     rmf('Hello.class')
     if r != 0:
@@ -230,11 +224,11 @@ def find_java_home():
     global JAVA_HOME
     if JAVA_HOME != None:
         if is_verbose():
-            print "Checking jni.h..."
+            print("Checking jni.h...")
         if os.path.exists(os.path.join(JAVA_HOME, 'include', 'jni.h')):
             return
     if is_verbose():
-        print "Finding JAVA_HOME..."
+        print("Finding JAVA_HOME...")
     t = TempFile('output')
     null = open(os.devnull, 'wb')
     try: 
@@ -248,17 +242,17 @@ def find_java_home():
         m = open_pat.match(line)
         if m:
             # Remove last 3 directives from m.group(1)
-	    print m.group(1)
+            print(m.group(1))
             tmp  = m.group(1).split(os.sep)
             path = string.join(tmp[:len(tmp) - 3], os.sep)
             if is_verbose():
-                print "Checking jni.h..."
+                print("Checking jni.h...")
             jni_dir = find_jni_h(path)
             if not jni_dir:
                 raise MKException("Failed to detect jni.h at '%s'.Possible solution: set JAVA_HOME with the path to JDK." % os.path.join(path, 'include'))
             JAVA_HOME = os.path.split(jni_dir)[0]
             if is_verbose():
-                print 'JAVA_HOME=%s' % JAVA_HOME
+                print('JAVA_HOME=%s' % JAVA_HOME)
             return
     raise MKException('Failed to find JAVA_HOME')
 
@@ -304,7 +298,7 @@ def is64():
 
 def check_ar():
     if is_verbose():
-        print "Testing ar..."
+        print("Testing ar...")
     if which('ar')== None:
         raise MKException('ar (archive tool) was not found')
 
@@ -365,7 +359,7 @@ def dos2unix(fname):
         fout.close()
         shutil.move(fname_new, fname)
         if is_verbose():
-            print "dos2unix '%s'" % fname
+            print("dos2unix '%s'" % fname)
 
 def dos2unix_tree_core(pattern, dir, files):
     for filename in files:
@@ -382,7 +376,7 @@ def check_eol():
         # Linux/OSX/BSD check if the end-of-line is cr/lf
         if is_cr_lf('LICENSE.txt'):
             if is_verbose():
-                print "Fixing end of line..."
+                print("Fixing end of line...")
             dos2unix_tree()
 
 if os.name == 'nt':
@@ -398,47 +392,47 @@ elif os.name == 'posix':
         IS_LINUX=True
 
 def display_help(exit_code):
-    print "mk_make.py: Z3 Makefile generator\n"
-    print "This script generates the Makefile for the Z3 theorem prover."
-    print "It must be executed from the Z3 root directory."
-    print "\nOptions:"
-    print "  -h, --help                    display this message."
-    print "  -s, --silent                  do not print verbose messages."
+    print("mk_make.py: Z3 Makefile generator\n")
+    print("This script generates the Makefile for the Z3 theorem prover.")
+    print("It must be executed from the Z3 root directory.")
+    print("\nOptions:")
+    print("  -h, --help                    display this message.")
+    print("  -s, --silent                  do not print verbose messages.")
     if not IS_WINDOWS:
-        print "  -p <dir>, --prefix=<dir>      installation prefix (default: %s)." % PREFIX
-        print "  -y <dir>, --pydir=<dir>       installation prefix for Z3 python bindings (default: %s)." % PYTHON_PACKAGE_DIR
+        print("  -p <dir>, --prefix=<dir>      installation prefix (default: %s)." % PREFIX)
+        print("  -y <dir>, --pydir=<dir>       installation prefix for Z3 python bindings (default: %s)." % PYTHON_PACKAGE_DIR)
     else:
-        print "  --parallel=num                use cl option /MP with 'num' parallel processes"
-    print "  -b <sudir>, --build=<subdir>  subdirectory where Z3 will be built (default: build)."
-    print "  -d, --debug                   compile Z3 in debug mode."
-    print "  -t, --trace                   enable tracing in release mode."
+        print("  --parallel=num                use cl option /MP with 'num' parallel processes")
+    print("  -b <sudir>, --build=<subdir>  subdirectory where Z3 will be built (default: build).")
+    print("  -d, --debug                   compile Z3 in debug mode.")
+    print("  -t, --trace                   enable tracing in release mode.")
     if IS_WINDOWS:
-        print "  -x, --x64                     create 64 binary when using Visual Studio."
-    print "  -m, --makefiles               generate only makefiles."
+        print("  -x, --x64                     create 64 binary when using Visual Studio.")
+    print("  -m, --makefiles               generate only makefiles.")
     if IS_WINDOWS:
-        print "  -v, --vsproj                  generate Visual Studio Project Files."
+        print("  -v, --vsproj                  generate Visual Studio Project Files.")
     if IS_WINDOWS:
-        print "  -n, --nodotnet                do not generate Microsoft.Z3.dll make rules."
-    print "  -j, --java                    generate Java bindings."
-    print "  --ml                          generate Ocaml bindings."
-    print "  --staticlib                   build Z3 static library."
+        print("  -n, --nodotnet                do not generate Microsoft.Z3.dll make rules.")
+    print("  -j, --java                    generate Java bindinds.")
+    print("  --ml                          generate Ocaml bindings.")
+    print("  --staticlib                   build Z3 static library.")
     if not IS_WINDOWS:
-        print "  -g, --gmp                     use GMP."
-    print ""
-    print "Some influential environment variables:"
+        print("  -g, --gmp                     use GMP.")
+    print("")
+    print("Some influential environment variables:")
     if not IS_WINDOWS:
-        print "  CXX        C++ compiler"
-        print "  CC         C compiler"
-        print "  LDFLAGS    Linker flags, e.g., -L<lib dir> if you have libraries in a non-standard directory"
-        print "  CPPFLAGS   Preprocessor flags, e.g., -I<include dir> if you have header files in a non-standard directory"
-        print "  CXXFLAGS   C++ compiler flags"
-    print "  JAVA       Java virtual machine (only relevant if -j or --java option is provided)"
-    print "  JAVAC      Java compiler (only relevant if -j or --java option is provided)"
-    print "  JAVA_HOME  JDK installation directory (only relevant if -j or --java option is provided)"
-    print "  OCAMLC     Ocaml byte-code compiler (only relevant with --ml)"
-    print "  OCAMLOPT   Ocaml native compiler (only relevant with --ml)"
-    print "  OCAMLBUILD Ocaml build system (only relevant with --ml)"
-    print "  OCAML_LIB  Ocaml library directory (only relevant with --ml)"
+        print("  CXX        C++ compiler")
+        print("  CC         C compiler")
+        print("  LDFLAGS    Linker flags, e.g., -L<lib dir> if you have libraries in a non-standard directory")
+        print("  CPPFLAGS   Preprocessor flags, e.g., -I<include dir> if you have header files in a non-standard directory")
+        print("  CXXFLAGS   C++ compiler flags")
+    print("  JAVA       Java virtual machine (only relevant if -j or --java option is provided)")
+    print("  JAVAC      Java compiler (only relevant if -j or --java option is provided)")
+    print("  JAVA_HOME  JDK installation directory (only relevant if -j or --java option is provided)")
+    print("  OCAMLC     Ocaml byte-code compiler (only relevant with --ml)")
+    print("  OCAMLOPT   Ocaml native compiler (only relevant with --ml)")
+    print("  OCAMLBUILD Ocaml build system (only relevant with --ml)")
+    print("  OCAML_LIB  Ocaml library directory (only relevant with --ml)")
     exit(exit_code)
 
 # Parse configuration option for mk_make script
@@ -451,7 +445,7 @@ def parse_options():
                                                ['build=', 'debug', 'silent', 'x64', 'help', 'makefiles', 'showcpp', 'vsproj',
                                                 'trace', 'nodotnet', 'staticlib', 'prefix=', 'gmp', 'java', 'pydir=', 'parallel=', 'ml'])
     except:
-        print "ERROR: Invalid command line option"
+        print("ERROR: Invalid command line option")
         display_help(1)
 
     for opt, arg in options:
@@ -496,7 +490,7 @@ def parse_options():
         elif opt in ('--ml'):
             ML_ENABLED = True
         else:
-            print "ERROR: Invalid command line option '%s'" % opt
+            print("ERROR: Invalid command line option '%s'" % opt)
             display_help(1)
 
 # Return a list containing a file names included using '#include' in
@@ -547,7 +541,7 @@ def set_z3py_dir(p):
         raise MKException("Python bindings directory '%s' does not exist" % full)
     Z3PY_SRC_DIR = full
     if VERBOSE:
-        print "Python bindings directory was detected."
+        print("Python bindinds directory was detected.")
 
 _UNIQ_ID = 0
 
@@ -837,7 +831,7 @@ def comp_components(c1, c2):
 
 # Sort components based on (reverse) definition time
 def sort_components(cnames):
-    return sorted(cnames, cmp=comp_components)
+    return sorted(cnames, key=lambda c: get_component(c).id, reverse=True)
 
 class ExeComponent(Component):
     def __init__(self, name, exe_name, path, deps, install):
@@ -1313,7 +1307,7 @@ class PythonExampleComponent(ExampleComponent):
         for py in filter(lambda f: f.endswith('.py'), os.listdir(full)):
             shutil.copyfile(os.path.join(full, py), os.path.join(BUILD_DIR, py))
             if is_verbose():
-                print "Copied Z3Py example '%s' to '%s'" % (py, BUILD_DIR)
+                print("Copied Z3Py example '%s' to '%s'" % (py, BUILD_DIR))
         out.write('_ex_%s: \n\n' % self.name)
 
 
@@ -1325,7 +1319,7 @@ def reg_component(name, c):
     _ComponentNames.add(name)
     _Name2Component[name] = c
     if VERBOSE:
-        print "New component: '%s'" % name
+        print("New component: '%s'" % name)
 
 def add_lib(name, deps=[], path=None, includes2install=[]):
     c = LibComponent(name, path, deps, includes2install)
@@ -1440,17 +1434,16 @@ def mk_config():
 
         # End of Windows VS config.mk
         if is_verbose():
-            print '64-bit:         %s' % is64()
-            print 'ML API:         %s' % is_ml_enabled()
+            print('64-bit:         %s' % is64())
             if is_java_enabled():
-                print 'Java Home:      %s' % JAVA_HOME
-                print 'Java Compiler:  %s' % JAVAC
-                print 'Java VM:        %s' % JAVA
+                print('Java Home:      %s' % JAVA_HOME)
+                print('Java Compiler:  %s' % JAVAC)
+                print('Java VM:        %s' % JAVA)
             if is_ml_enabled():
-                print 'Ocaml Compiler: %s' % OCAMLC
-                print 'Ocaml Native:   %s' % OCAMLOPT
-                print 'Ocamlbuild:     %s' % OCAMLBUILD
-                print 'Ocaml Library:  %s' % OCAML_LIB
+                print('Ocaml Compiler: %s' % OCAMLC)
+                print('Ocaml Native:   %s' % OCAMLOPT)
+                print('Ocamlbuild:     %s' % OCAMLBUILD)
+                print('Ocaml Library:  %s' % OCAML_LIB)
     else:
         global CXX, CC, GMP, CPPFLAGS, CXXFLAGS, LDFLAGS
         ARITH = "internal"
@@ -1532,24 +1525,23 @@ def mk_config():
         config.write('SLINK_EXTRA_FLAGS=%s\n' % SLIBEXTRAFLAGS)
         config.write('SLINK_OUT_FLAG=-o \n')
         if is_verbose():
-            print 'Host platform:  %s' % sysname
-            print 'C++ Compiler:   %s' % CXX
-            print 'C Compiler  :   %s' % CC
-            print 'Arithmetic:     %s' % ARITH
-            print 'OpenMP:         %s' % HAS_OMP
-            print 'Prefix:         %s' % PREFIX
-            print '64-bit:         %s' % is64()
-            print 'ML API:         %s' % is_ml_enabled()
+            print('Host platform:  %s' % sysname)
+            print('C++ Compiler:   %s' % CXX)
+            print('C Compiler  :   %s' % CC)
+            print('Arithmetic:     %s' % ARITH)
+            print('OpenMP:         %s' % HAS_OMP)
+            print('Prefix:         %s' % PREFIX)
+            print('64-bit:         %s' % is64())
             if is_java_enabled():
-                print 'Java Home:      %s' % JAVA_HOME
-                print 'Java Compiler:  %s' % JAVAC
-                print 'Java VM:        %s' % JAVA
+                print('Java Home:      %s' % JAVA_HOME)
+                print('Java Compiler:  %s' % JAVAC)
+                print('Java VM:        %s' % JAVA)
             if is_ml_enabled():
-                print 'Ocaml Compiler: %s' % OCAMLC
-                print 'Ocaml Native:   %s' % OCAMLOPT
-                print 'Ocamlbuild:     %s' % OCAMLBUILD
-                print 'Ocaml Library:  %s' % OCAML_LIB
-               
+                print('Ocaml Compiler: %s' % OCAMLC)
+                print('Ocaml Native:   %s' % OCAMLOPT)
+                print('Ocamlbuild:     %s' % OCAMLBUILD)
+                print('Ocaml Library:  %s' % OCAML_LIB)
+
 def mk_install(out):
     out.write('install:\n')
     out.write('\t@mkdir -p %s\n' % os.path.join('$(PREFIX)', 'bin'))
@@ -1574,7 +1566,7 @@ def mk_makefile():
     mk_dir(BUILD_DIR)
     mk_config()
     if VERBOSE:
-        print "Writing %s" % os.path.join(BUILD_DIR, 'Makefile')
+        print("Writing %s" % os.path.join(BUILD_DIR, 'Makefile'))
     out = open(os.path.join(BUILD_DIR, 'Makefile'), 'w')
     out.write('# Automatically generated file.\n')
     out.write('include config.mk\n')
@@ -1602,24 +1594,24 @@ def mk_makefile():
         mk_uninstall(out)
     # Finalize
     if VERBOSE:
-        print "Makefile was successfully generated."
+        print("Makefile was successfully generated.")
         if not IS_WINDOWS:
-            print "  python packages dir:", PYTHON_PACKAGE_DIR
+            print("  python packages dir: %s" % PYTHON_PACKAGE_DIR)
         if DEBUG_MODE:
-            print "  compilation mode: Debug"
+            print("  compilation mode: Debug")
         else:
-            print "  compilation mode: Release"
+            print("  compilation mode: Release")
         if IS_WINDOWS:
             if VS_X64:
-                print "  platform: x64\n"
-                print "To build Z3, open a [Visual Studio x64 Command Prompt], then"
+                print("  platform: x64\n")
+                print("To build Z3, open a [Visual Studio x64 Command Prompt], then")
             else:
-                print "  platform: x86"
-                print "To build Z3, open a [Visual Studio Command Prompt], then"
-            print "type 'cd %s && nmake'\n" % os.path.join(os.getcwd(), BUILD_DIR)
-            print 'Remark: to open a Visual Studio Command Prompt, go to: "Start > All Programs > Visual Studio > Visual Studio Tools"'
+                print("  platform: x86")
+                print("To build Z3, open a [Visual Studio Command Prompt], then")
+            print("type 'cd %s && nmake'\n" % os.path.join(os.getcwd(), BUILD_DIR))
+            print('Remark: to open a Visual Studio Command Prompt, go to: "Start > All Programs > Visual Studio > Visual Studio Tools"')
         else:
-            print "Type 'cd %s; make' to build Z3" % BUILD_DIR
+            print("Type 'cd %s; make' to build Z3" % BUILD_DIR)
         
 # Generate automatically generated source code
 def mk_auto_src():
@@ -1714,7 +1706,7 @@ def def_module_params(module_name, export, params, class_name=None, description=
     out.write('};\n')
     out.write('#endif\n')
     if is_verbose():
-        print "Generated '%s'" % hpp
+        print("Generated '%s'" % hpp)
 
 def max_memory_param():
     return ('max_memory', UINT, UINT_MAX, 'maximum amount of memory in megabytes')
@@ -1728,6 +1720,10 @@ PYG_GLOBALS = { 'UINT' : UINT, 'BOOL' : BOOL, 'DOUBLE' : DOUBLE, 'STRING' : STRI
                 'max_steps_param' : max_steps_param,
                 'def_module_params' : def_module_params }
 
+def _execfile(file, globals=globals(), locals=locals()):
+    with open(file, "r") as fh:
+        exec(fh.read()+"\n", globals, locals)
+
 # Execute python auxiliary scripts that generate extra code for Z3.
 def exec_pyg_scripts():
     global CURR_PYG
@@ -1736,7 +1732,7 @@ def exec_pyg_scripts():
             if f.endswith('.pyg'):
                 script = os.path.join(root, f)
                 CURR_PYG = script
-                execfile(script, PYG_GLOBALS)
+                _execfile(script, PYG_GLOBALS)
 
 # TODO: delete after src/ast/pattern/expr_pattern_match
 # database.smt ==> database.h
@@ -1749,7 +1745,7 @@ def mk_pat_db():
         fout.write('"%s\\n"\n' % line.strip('\n'))
     fout.write(';\n')    
     if VERBOSE:
-        print "Generated '%s'" % os.path.join(c.src_dir, 'database.h')
+        print("Generated '%s'" % os.path.join(c.src_dir, 'database.h'))
 
 # Update version numbers
 def update_version():
@@ -1774,7 +1770,7 @@ def mk_version_dot_h(major, minor, build, revision):
     fout.write('#define Z3_BUILD_NUMBER    %s\n' % build)
     fout.write('#define Z3_REVISION_NUMBER %s\n' % revision)
     if VERBOSE:
-        print "Generated '%s'" % os.path.join(c.src_dir, 'version.h')
+        print("Generated '%s'" % os.path.join(c.src_dir, 'version.h'))
 
 # Update version number in AssemblyInfo.cs files
 def update_all_assembly_infos(major, minor, build, revision):
@@ -1823,13 +1819,13 @@ def update_assembly_info_version(assemblyinfo, major, minor, build, revision, is
         else:
             fout.write(line)
     # if VERBOSE:
-    #    print "%s version numbers updated at '%s'" % (num_updates, assemblyinfo)
+    #    print("%s version numbers updated at '%s'" % (num_updates, assemblyinfo))
     assert num_updates == 2, "unexpected number of version number updates"
     fin.close()
     fout.close()
     shutil.move(tmp, assemblyinfo)
     if VERBOSE:
-        print "Updated '%s'" % assemblyinfo
+        print("Updated '%s'" % assemblyinfo)
 
 ADD_TACTIC_DATA=[]
 ADD_PROBE_DATA=[]
@@ -1871,7 +1867,7 @@ def mk_install_tactic_cpp(cnames, path):
                         added_include = True
                         fout.write('#include"%s"\n' % h_file)
                     try: 
-                        exec line.strip('\n ') in globals()
+                        exec(line.strip('\n '), globals())
                     except:
                         raise MKException("Failed processing ADD_TACTIC command at '%s'\n%s" % (fullname, line))
                 if probe_pat.match(line):
@@ -1879,7 +1875,7 @@ def mk_install_tactic_cpp(cnames, path):
                         added_include = True
                         fout.write('#include"%s"\n' % h_file)
                     try: 
-                        exec line.strip('\n ') in globals()
+                        exec(line.strip('\n '), globals())
                     except:
                         raise MKException("Failed processing ADD_PROBE command at '%s'\n%s" % (fullname, line))
     # First pass will just generate the tactic factories
@@ -1898,7 +1894,7 @@ def mk_install_tactic_cpp(cnames, path):
         fout.write('  ADD_PROBE("%s", "%s", %s);\n' % data)
     fout.write('}\n')
     if VERBOSE:
-        print "Generated '%s'" % fullname
+        print("Generated '%s'" % fullname)
 
 def mk_all_install_tactic_cpps():
     if not ONLY_MAKEFILES:
@@ -1961,7 +1957,7 @@ def mk_mem_initializer_cpp(cnames, path):
         fout.write('\n')
     fout.write('}\n')
     if VERBOSE:
-        print "Generated '%s'" % fullname
+        print("Generated '%s'" % fullname)
 
 def mk_all_mem_initializer_cpps():
     if not ONLY_MAKEFILES:
@@ -2018,7 +2014,7 @@ def mk_gparams_register_modules(cnames, path):
         fout.write('gparams::register_module_descr("%s", "%s");\n' % (mod, descr))
     fout.write('}\n')
     if VERBOSE:
-        print "Generated '%s'" % fullname
+        print("Generated '%s'" % fullname)
 
 def mk_all_gparams_register_modules():
     if not ONLY_MAKEFILES:
@@ -2051,7 +2047,7 @@ def mk_def_file(c):
                     i = i + 1
                 num = num + 1
     if VERBOSE:
-        print "Generated '%s'" % defname
+        print("Generated '%s'" % defname)
 
 def mk_def_files():
     if not ONLY_MAKEFILES:
@@ -2071,7 +2067,7 @@ def cp_z3pyc_to_build():
         shutil.copyfile(os.path.join(Z3PY_SRC_DIR, pyc), os.path.join(BUILD_DIR, pyc))
         os.remove(os.path.join(Z3PY_SRC_DIR, pyc))
         if is_verbose():
-            print "Generated '%s'" % pyc
+            print("Generated '%s'" % pyc)
 
 def mk_bindings(api_files):
     if not ONLY_MAKEFILES:
@@ -2082,7 +2078,7 @@ def mk_bindings(api_files):
         for api_file in api_files:
             api_file_path = api.find_file(api_file, api.name)
             new_api_files.append(os.path.join(api_file_path.src_dir, api_file))
-        g = {}
+        g = globals()
         g["API_FILES"] = new_api_files
         if is_java_enabled():
             check_java()
@@ -2090,7 +2086,7 @@ def mk_bindings(api_files):
         if is_ml_enabled():
             check_ml()
             mk_z3consts_ml(api_files)
-        execfile(os.path.join('scripts', 'update_api.py'), g) # HACK
+        _execfile(os.path.join('scripts', 'update_api.py'), g) # HACK
         cp_z3pyc_to_build()
                           
 # Extract enumeration types from API files, and add python definitions.
@@ -2154,7 +2150,8 @@ def mk_z3consts_py(api_files):
                 if m:
                     name = words[1]
                     z3consts.write('# enum %s\n' % name)
-                    for k, i in decls.iteritems():
+                    for k in decls:
+                        i = decls[k]
                         z3consts.write('%s = %s\n' % (k, i))
                     z3consts.write('\n')
                     mode = SEARCHING
@@ -2168,7 +2165,7 @@ def mk_z3consts_py(api_files):
                     idx = idx + 1
             linenum = linenum + 1
     if VERBOSE:
-        print "Generated '%s'" % os.path.join(Z3PY_SRC_DIR, 'z3consts.py')
+        print("Generated '%s'" % os.path.join(Z3PY_SRC_DIR, 'z3consts.py'))
                 
 
 # Extract enumeration types from z3_api.h, and add .Net definitions
@@ -2238,7 +2235,8 @@ def mk_z3consts_dotnet(api_files):
                         z3consts.write('  /// <summary>%s</summary>\n' % name)
                         z3consts.write('  public enum %s {\n' % name)
                         z3consts.write
-                        for k, i in decls.iteritems():
+                        for k in decls:
+                            i = decls[k]
                             z3consts.write('  %s = %s,\n' % (k, i))
                         z3consts.write('  }\n\n')
                     mode = SEARCHING
@@ -2253,7 +2251,7 @@ def mk_z3consts_dotnet(api_files):
             linenum = linenum + 1
     z3consts.write('}\n');
     if VERBOSE:
-        print "Generated '%s'" % os.path.join(dotnet.src_dir, 'Enumerations.cs')
+        print("Generated '%s'" % os.path.join(dotnet.src_dir, 'Enumerations.cs'))
 
 
 # Extract enumeration types from z3_api.h, and add Java definitions
@@ -2327,7 +2325,8 @@ def mk_z3consts_java(api_files):
                         efile.write('public enum %s {\n' % name)
                         efile.write
                         first = True
-                        for k, i in decls.iteritems():
+                        for k in decls:
+                            i = decls[k]
                             if first:
                                first = False 
                             else:
@@ -2358,7 +2357,7 @@ def mk_z3consts_java(api_files):
                     idx = idx + 1
             linenum = linenum + 1
     if VERBOSE:
-        print "Generated '%s'" % ('%s' % gendir)
+        print("Generated '%s'" % ('%s' % gendir))
 
 # Extract enumeration types from z3_api.h, and add ML definitions
 def mk_z3consts_ml(api_files):
@@ -2540,7 +2539,7 @@ def mk_vs_proj(name, components):
     f.write('  </ImportGroup>\n')
     f.write('</Project>\n')
     if is_verbose():
-        print "Generated '%s'" % proj_name
+        print("Generated '%s'" % proj_name)
 
 def mk_win_dist(build_path, dist_path):
     for c in get_components():
