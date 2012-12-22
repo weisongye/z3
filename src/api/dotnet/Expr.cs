@@ -1302,7 +1302,7 @@ namespace Microsoft.Z3
 
         #region Relational Terms
         /// <summary>
-        /// Indicates whether the term is of an array sort.
+        /// Indicates whether the term is of relation sort.
         /// </summary>
         public bool IsRelation
         {
