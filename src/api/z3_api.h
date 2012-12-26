@@ -1081,6 +1081,7 @@ typedef enum {
     Z3_PK_INVALID
 } Z3_param_kind;
 
+#ifdef CorML3
 /**
    \mlonly {!search_failure} \endmlonly \conly \brief
    The different kinds of search failure types.
@@ -1104,6 +1105,7 @@ typedef enum {
     Z3_THEORY,        
     Z3_QUANTIFIERS
 } Z3_search_failure;
+#endif
 
 /**
    \mlonly {!ast_print_mode} \endmlonly \conly \brief
@@ -6958,12 +6960,15 @@ END_MLAPI_EXCLUDE
         );
 
     /*@}*/
-    
+#endif
+
+
     /**
        @name Deprecated Constraints API
     */
     /*@{*/
 
+#ifdef CorML3
     /**
        \brief Set the SMTLIB logic to be used in the given logical context.
        It is incorrect to invoke this function after invoking
@@ -7145,7 +7150,9 @@ END_MLAPI_EXCLUDE
         __out Z3_model * m, __out Z3_ast* proof, 
         __inout unsigned* core_size, __inout_ecount(num_assumptions) Z3_ast core[]
         );
+#endif
 
+#ifdef CorML4
     /**
        \brief Retrieve congruence class representatives for terms.
 
@@ -7176,7 +7183,9 @@ END_MLAPI_EXCLUDE
         __in_ecount(num_terms) Z3_ast const terms[],
         __out_ecount(num_terms) unsigned class_ids[]
         );
+#endif
 
+#ifdef CorML3
     /**
        \brief Delete a model object.
        
