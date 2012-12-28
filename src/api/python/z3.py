@@ -5848,8 +5848,10 @@ class Solver(Z3PPObject):
         """
         if isinstance(p, str):
             p = Bool(p, self.ctx)
+        s  = BoolSort(self.ctx)
+        a  = s.cast(a)  
         _z3_assert(isinstance(a, BoolRef), "Boolean expression expected")
-        _z3_assert(isinstance(p, BoolRef) and is_const(p), "Boolean expression expected")
+        _z3_assert(isinstance(p, BoolRef) and is_const(p), "Boolean variable expected")
         Z3_solver_assert_and_track(self.ctx.ref(), self.solver, a.as_ast(), p.as_ast())
 
     def add_and_track(self, a, p):
