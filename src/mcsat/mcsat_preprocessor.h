@@ -68,9 +68,15 @@ namespace mcsat {
         proof * pr(unsigned i) const;
         expr_dependency * dep(unsigned i) const;
         
+        bool inconsistent() const;
+
         bool is_well_sorted() const;
         
         void convert(model_ref & m);
+        
+        void freeze(func_decl * f);
+        bool is_frozen(func_decl * f) const;
+        bool is_eliminated(app * x) const;
 
         void display(std::ostream & out) const;
     };

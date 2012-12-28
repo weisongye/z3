@@ -23,6 +23,7 @@ Revision History:
 
 */
 #include"mcsat_expr_manager.h"
+#include"mcsat_exception.h"
 #include"ast_smt2_pp.h"
 
 namespace mcsat {
@@ -98,7 +99,7 @@ namespace mcsat {
 
 #define MK_BEGIN_CORE()                         \
     std::string msg;                            \
-    bool exception = false;                     \
+    bool caught_exception = false;              \
     unsigned error_code = 0;
 
 #define MK_BEGIN()                              \
@@ -114,14 +115,14 @@ namespace mcsat {
     }                                           \
     catch (z3_exception & ex) {                 \
         msg = ex.msg();                         \
-        exception = true;                       \
+        caught_exception = true;                \
     }
 
 #define MK_END_CORE()                           \
     if (error_code != 0)                        \
         throw z3_error(error_code);             \
-    if (exception)                              \
-        throw default_exception(msg.c_str());
+    if (caught_exception)                       \
+        throw exception(msg.c_str());
 
 #define MK_END()                                \
     MK_END_CORE();                              \

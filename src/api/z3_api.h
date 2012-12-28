@@ -6817,6 +6817,14 @@ END_MLAPI_EXCLUDE
     Z3_solver Z3_API Z3_mk_mcsat_solver(__in Z3_context c);
 
     /**
+       \brief Create a mcsat solver instance without any default preprocessor, or extra
+       solver plugins. 
+       
+       def_API('Z3_mk_mcsat_core_solver', SOLVER, (_in(CONTEXT),))
+    */
+    Z3_solver Z3_API Z3_mk_mcsat_core_solver(__in Z3_context c);
+
+    /**
        \brief Add a tactic (preprocessor) before the existing tactics (preprocessing steps) in the given solver s.
        The solver \c s must have been created using #Z3_mk_mcsat_solver. 
        Assertions must not have been added to \c s.
@@ -6843,6 +6851,14 @@ END_MLAPI_EXCLUDE
        def_API('Z3_mcsat_add_plugin', VOID, (_in(CONTEXT), _in(SOLVER), _in(MCSAT_PLUGIN)))
     */
     void Z3_API Z3_mcsat_add_plugin(__in Z3_context c, __in Z3_solver s, __in Z3_mcsat_plugin p);
+
+    /**
+       \brief Mark a variable (i.e., uninterpreted constant) as frozen. Frozen constants
+       can't be removed during preprocessing steps.
+
+       def_API('Z3_mcsat_freeze', VOID, (_in(CONTEXT), _in(SOLVER), _in(AST)))
+    */
+    void Z3_API Z3_mcsat_freeze(__in Z3_context c, __in Z3_solver s, __in Z3_ast x);
     /*@}*/
 
     /**

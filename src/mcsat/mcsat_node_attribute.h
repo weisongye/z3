@@ -52,7 +52,7 @@ namespace mcsat {
         virtual ~node_attribute();
         
         bool contains(node const & n) const;
-        T & get_value(node const & n, T const & def) const;
+        T const & get_value(node const & n, T const & def) const;
         void set(node const & n, T const & v);
     };
 
@@ -72,8 +72,8 @@ namespace mcsat {
         void save(ptr_vector<expr> const & to_save);
         void restore();
     public:
-        node_uint_attribute & mk_uint_attribute() { return mk_attribute<unsigned>(); }
-        node_double_attribute & mk_double_attribute() { return mk_attribute<double>(); }
+        node_uint_attribute & mk_uint_attribute();
+        node_double_attribute & mk_double_attribute();
     };
 
 };

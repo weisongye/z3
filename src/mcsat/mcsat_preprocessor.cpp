@@ -158,9 +158,25 @@ namespace mcsat {
     expr_dependency * preprocessor::dep(unsigned i) const {
         return m_imp->m_stack.dep(i);
     }
+
+    bool preprocessor::inconsistent() const {
+        return m_imp->m_stack.inconsistent();
+    }
     
     bool preprocessor::is_well_sorted() const {
         return m_imp->m_stack.is_well_sorted();
+    }
+
+    void preprocessor::freeze(func_decl * f) {
+        m_imp->m_stack.freeze(f);
+    }
+
+    bool preprocessor::is_frozen(func_decl * f) const {
+        return m_imp->m_stack.is_frozen(f);
+    }
+
+    bool preprocessor::is_eliminated(app * x) const {
+        return m_imp->m_stack.is_eliminated(x);
     }
     
     void preprocessor::convert(model_ref & m) {

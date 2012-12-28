@@ -47,7 +47,7 @@ public:
     void erase(expr * s);
     bool find(expr * s, expr * & def, proof * & def_pr);
     bool find(expr * s, expr * & def, proof * & def_pr, expr_dependency * & def_dep);
-    bool contains(expr * s);
+    bool contains(expr * s) const;
     void reset();
     void cleanup();
 };

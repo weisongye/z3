@@ -139,7 +139,7 @@ bool expr_substitution::find(expr * c, expr * & def, proof * & def_pr, expr_depe
     return false;
 }
 
-bool expr_substitution::contains(expr * s) {
+bool expr_substitution::contains(expr * s) const {
     return m_subst.contains(s);
 }
 

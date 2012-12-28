@@ -379,6 +379,10 @@ extern "C" {
     }
 
     Z3_solver Z3_API Z3_mk_mcsat_solver(__in Z3_context c) {
+        return Z3_mk_mcsat_core_solver(c);
+    }
+
+    Z3_solver Z3_API Z3_mk_mcsat_core_solver(__in Z3_context c) {
         Z3_TRY;
         LOG_Z3_mk_mcsat_solver(c);
         RESET_ERROR_CODE();
@@ -390,9 +394,16 @@ extern "C" {
         Z3_CATCH_RETURN(0);
     }
 
+    static void check_mcsat(Z3_solver s) {
+        if (to_solver(s)->m_kind != Z3_solver_ref::MCSAT) {
+            throw default_exception("The given solver is not a MCSat solver");
+        }
+    }
+
     // Check if MCSat solver that can still be configured
     static void check_configure_mcsat(Z3_solver s) {
-        if (to_solver(s)->m_solver.get() != 0 || to_solver(s)->m_kind != Z3_solver_ref::MCSAT) {
+        check_mcsat(s);
+        if (to_solver(s)->m_solver.get() != 0) {
             throw default_exception("MCSat cannot be configured after assertions were already added, or check or push were invoked.");
         }
     }
@@ -443,6 +454,22 @@ extern "C" {
         RESET_ERROR_CODE();
         check_configure_mcsat(s);
         // TODO
+        Z3_CATCH;
+    }
+
+    void Z3_API Z3_mcsat_freeze(Z3_context c, Z3_solver s, Z3_ast x) {
+        Z3_TRY;
+        LOG_Z3_mcsat_freeze(c, s, x);
+        RESET_ERROR_CODE();
+        check_mcsat(s);
+        ast * _a = to_ast(x);
+        if (!is_app(_a)) {
+            SET_ERROR_CODE(Z3_INVALID_ARG);
+            return;
+        }
+        init_solver(c, s);
+        app * _x = to_app(x);
+        static_cast<mcsat::solver*>(to_solver_ref(s))->freeze(_x->get_decl());
         Z3_CATCH;
     }
 

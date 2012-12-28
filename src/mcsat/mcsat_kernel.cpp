@@ -46,11 +46,14 @@ namespace mcsat {
         unsigned_vector           m_plugin_qhead;
         _initialization_context   m_init_ctx;
 
+        volatile bool             m_cancel;
+
         imp(ast_manager & m, bool proofs_enabled):
             m_expr_manager(m),
             m_attribute_manager(m_node_manager),
             m_init_ctx(m_attribute_manager) {
-            m_fresh = true;
+            m_fresh  = true;
+            m_cancel = false;
         }
 
         // Return true if the kernel is "fresh" and assertions were not added yet.
@@ -97,6 +100,10 @@ namespace mcsat {
         }
 
         void set_cancel(bool f) {
+            m_cancel = f;
+            for (unsigned i = 0; i < m_plugins.size(); i++) {
+                m_plugins.get(i)->set_cancel(f);
+            }
         }
 
         void display(std::ostream & out) const {
@@ -104,6 +111,7 @@ namespace mcsat {
     };
     
     kernel::kernel(ast_manager & m, bool proofs_enabled) {
+        m_imp = alloc(imp, m, proofs_enabled);
     }
 
     kernel::~kernel() {

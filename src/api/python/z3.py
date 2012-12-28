@@ -5852,6 +5852,10 @@ class Solver(Z3PPObject):
         _z3_assert(isinstance(p, BoolRef) and is_const(p), "Boolean expression expected")
         Z3_solver_assert_and_track(self.ctx.ref(), self.solver, a.as_ast(), p.as_ast())
 
+    def add_and_track(self, a, p):
+        """Assert constraint `a` and track it in the unsat core using the Boolean constant `p`."""
+        self.assert_and_track(a, p)
+
     def check(self, *assumptions):
         """Check whether the assertions in the given solver plus the optional assumptions are consistent or not.
         
@@ -6039,18 +6043,35 @@ class MCSat(Solver):
     """
     A Solver object based on the "model-constructing satisfiability calculus"
     """
-    def __init__(self, ctx=None):
+    def __init__(self, s=None, ctx=None):
         ctx    = _get_ctx(ctx)
-        Solver.__init__(self, Z3_mk_mcsat_solver(ctx.ref()), ctx)
+        if s == None:
+            s = Z3_mk_mcsat_solver(ctx.ref())
+        Solver.__init__(self, s, ctx)
 
     def add_tactic_before(self, t):
+        t = _to_tactic(t, self.ctx)
         Z3_mcsat_add_tactic_before(self.ctx.ref(), self.solver, t.tactic)
 
     def add_tactic_after(self, t):
+        t = _to_tactic(t, self.ctx)
         Z3_mcsat_add_tactic_after(self.ctx.ref(), self.solver, t.tactic)
+
+    def add_tactic(self, t):
+        self.add_tactic_after(t)
 
     def add_plugin(self, p):
         Z3_mcsat_add_plugin(self.ctx.ref(), self.solver, p.plugin)
+
+    def freeze(self, x):
+        Z3_mcsat_freeze(self.ctx.ref(), self.solver, x.as_ast())
+
+def MCSatCore(ctx=None):
+    """
+    Create a MCSat solver without any pre-loaded preprocessors and solver plugins.
+    """
+    ctx = _get_ctx(ctx)
+    return MCSat(Z3_mk_mcsat_core_solver(ctx.ref()), ctx)
 
 #########################################
 #

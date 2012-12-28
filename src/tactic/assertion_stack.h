@@ -88,6 +88,9 @@ public:
     void add_filter(func_decl * f);
     void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
 
+    bool is_eliminated(func_decl * f) const;
+    bool is_eliminated(app * x) const;
+
     void convert(model_ref & m);
     void display(std::ostream & out, char const * header = "assertion-stack") const;
 

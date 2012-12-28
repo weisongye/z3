@@ -450,6 +450,16 @@ struct assertion_stack::imp {
     bool is_frozen(func_decl * f) const { 
         return m_frozen_set.contains(f); 
     }
+
+    bool is_eliminated(func_decl * f) const {
+        app_ref c(m());
+        c = m().mk_const(f);
+        return is_eliminated(c);
+    }
+    
+    bool is_eliminated(app * x) const {
+        return m_csubst.contains(x);
+    }
     
     void add_filter(func_decl * f) {
         m_mc.push_back(f);
@@ -805,6 +815,14 @@ void assertion_stack::add_filter(func_decl * f) {
 
 void assertion_stack::add_definition(app * c, expr * def, proof * pr, expr_dependency * dep) {
     m_imp->add_definition(c, def, pr, dep);
+}
+
+bool assertion_stack::is_eliminated(func_decl * f) const {
+    return m_imp->is_eliminated(f);
+}
+
+bool assertion_stack::is_eliminated(app * x) const {
+    return m_imp->is_eliminated(x);
 }
 
 void assertion_stack::convert(model_ref & m) {

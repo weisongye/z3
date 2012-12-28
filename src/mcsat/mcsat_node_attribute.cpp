@@ -62,7 +62,7 @@ namespace mcsat {
     }
     
     template<typename T>
-    T & node_attribute<T>::get_value(node const & n, T const & def) const {
+    T const & node_attribute<T>::get_value(node const & n, T const & def) const {
         if (!contains(n))
             return def;
         return m_values[n.index()];
@@ -103,4 +103,14 @@ namespace mcsat {
         return *r;
     }
 
+    node_uint_attribute & node_attribute_manager::mk_uint_attribute() { 
+        return mk_attribute<unsigned>(); 
+    }
+    
+    node_double_attribute & node_attribute_manager::mk_double_attribute() { 
+        return mk_attribute<double>(); 
+    }
+
+    template class node_attribute<unsigned>;
+    template class node_attribute<double>;
 };
