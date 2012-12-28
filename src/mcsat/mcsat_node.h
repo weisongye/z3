@@ -19,6 +19,7 @@ Revision History:
 #ifndef _MCSAT_NODE_H_
 #define _MCSAT_NODE_H_
 
+#include<limits.h>
 #include"debug.h"
 
 namespace mcsat {
