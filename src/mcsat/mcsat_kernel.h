@@ -40,7 +40,7 @@ namespace mcsat {
 
         void add_plugin(plugin * p);
         
-        void assert_expr(expr * f, proof * pr, expr_dependency * d);
+        void assert_expr(expr * f, proof * pr);
 
         void push();
         void pop(unsigned num_scopes);

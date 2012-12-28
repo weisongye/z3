@@ -38,6 +38,7 @@ namespace mcsat {
         };
 
         bool                      m_fresh;
+        bool                      m_proofs_enabled;
         expr_manager              m_expr_manager;
         node_manager              m_node_manager;
         node_attribute_manager    m_attribute_manager;
@@ -54,6 +55,7 @@ namespace mcsat {
             m_expr_manager(m),
             m_attribute_manager(m_node_manager),
             m_init_ctx(m_attribute_manager) {
+            m_proofs_enabled = proofs_enabled;
             m_fresh  = true;
             m_cancel = false;
         }
@@ -69,28 +71,62 @@ namespace mcsat {
             m_plugins.push_back(p);
             p->init(m_init_ctx);
         }
-        
-        void assert_expr(expr * f, proof * pr, expr_dependency * d) {
+
+        // -----------------------------------
+        //
+        // Internalization
+        //
+        // -----------------------------------
+
+        void assert_expr(expr * f, proof * pr) {
             m_fresh = false;
         }
         
+        // -----------------------------------
+        //
+        // Backtracking & conflict resolution
+        //
+        // -----------------------------------
+
         void push() {
         }
 
         void pop(unsigned num_scopes) {
         }
 
+        // -----------------------------------
+        //
+        // Search
+        //
+        // -----------------------------------
+
         lbool check_sat(unsigned num_assumptions, expr * const * assumptions) {
+            if (is_fresh()) 
+                return l_true;
+            // TODO
             return l_undef;
         }
 
         void collect_statistics(statistics & st) const {
+            // TODO
         }
 
         void get_unsat_core(ptr_vector<expr> & r) {
+            // TODO
         }
 
-        void get_model(model_ref & m) {
+        struct mk_model : public expr_manager::functor {
+            model_ref & m_model;
+            mk_model(model_ref & m):m_model(m) {}
+            virtual void operator()(ast_manager & m, expr_manager::store_expr_functor & to_save) {
+                m_model = alloc(model, m);
+            }
+        };
+
+        void get_model(model_ref & md) {
+            // TODO
+            mk_model mk(md);
+            m_expr_manager.apply(mk);
         }
 
         proof * get_proof() {
@@ -123,8 +159,8 @@ namespace mcsat {
         m_imp->add_plugin(p);
     }
    
-    void kernel::assert_expr(expr * f, proof * pr, expr_dependency * d) {
-        m_imp->assert_expr(f, pr, d);
+    void kernel::assert_expr(expr * f, proof * pr) {
+        m_imp->assert_expr(f, pr);
     }
         
     void kernel::push() {

@@ -185,4 +185,13 @@ namespace mcsat {
         m_imp->m_lemmas.shrink(j);
     }
 
+    clause_manager::iterator clause_manager::begin_clauses() const {
+        unsigned begin = m_imp->m_scopes.empty() ? 0 : m_imp->m_scopes.back();
+        return m_imp->m_clauses.begin() + begin;
+    }
+
+    clause_manager::iterator clause_manager::end_clauses() const {
+        return m_imp->m_clauses.end();
+    }
+
 };

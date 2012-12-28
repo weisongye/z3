@@ -203,6 +203,9 @@ namespace mcsat {
         return r;
     }
 
+    void expr_manager::functor::set_cancel(bool f) {
+    }
+
     struct expr_manager::set_functor {
         expr_manager & m_owner;
         set_functor(expr_manager & m, expr_manager::functor & f):m_owner(m) {
