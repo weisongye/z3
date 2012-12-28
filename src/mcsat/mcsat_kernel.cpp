@@ -22,6 +22,7 @@ Revision History:
 #include"mcsat_node_manager.h"
 #include"mcsat_value_manager.h"
 #include"mcsat_node_attribute.h"
+#include"mcsat_clause_manager.h"
 #include"mcsat_plugin.h"
 
 namespace mcsat {
@@ -41,6 +42,7 @@ namespace mcsat {
         node_manager              m_node_manager;
         node_attribute_manager    m_attribute_manager;
         value_manager             m_value_manager;
+        clause_manager            m_clause_manager;
         plugin_ref_vector         m_plugins;
         ptr_vector<trail>         m_trail_stack;
         unsigned_vector           m_plugin_qhead;

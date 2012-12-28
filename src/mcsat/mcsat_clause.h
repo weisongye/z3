@@ -66,27 +66,6 @@ namespace mcsat {
         void unmark_used() { m_used = false; }
         proof * pr() const { return m_pr; }
     };
-    
-    class clause_manager {
-        struct imp;
-        imp * m_imp;
-        
-        friend class kernel;
-        clause_manager();
-        ~clause_manager();
-
-        clause * mk_lemma(unsigned sz, literal const * lits, proof * pr);
-        void push(bool user);
-        void pop(unsigned num_scopes, bool user);
-
-        typedef ptr_vector<clause>::const_iterator iterator;
-        iterator begin_lemmas() const;
-        iterator end_lemmas() const;
-        void gc(ptr_vector<clause> const & to_delete);
-
-    public:
-        clause * mk(unsigned sz, literal const * lits, proof * pr);
-    };
 
 };
 

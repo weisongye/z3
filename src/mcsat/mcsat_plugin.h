@@ -30,6 +30,7 @@ Revision History:
 
 namespace mcsat {
     class expr_manager;
+    class clause;
 
     /**
        \brief MCSat plugins do *not* have direct access to the MCSat kernel.
@@ -94,6 +95,10 @@ namespace mcsat {
            to the trail.
         */
         virtual void add_propagation(propagation * p) = 0;
+        /**
+           Create a new auxiliary clause.
+        */
+        virtual clause * mk_clause(unsigned sz, literal const * lits, proof * pr);
     };
 
     /**
@@ -287,6 +292,14 @@ namespace mcsat {
         */
         virtual bool internalize(expr * t, internalization_context & ctx) = 0;
         
+        /**
+           \brief When assertions are added to the kernel or conflicts are resolved, the kernel may create clauses.
+           One of the plugins must be responsible for making sure the clause is satisfied.
+           
+           When a plugin returns "true", it means it is responsible for making sure the clause is satisfied.
+        */
+        virtual bool internalize(clause * c);
+
         // -----------------------------------
         //
         // Propagation

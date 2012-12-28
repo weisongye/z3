@@ -45,6 +45,10 @@ namespace mcsat {
     void plugin::init(initialization_context & ctx) {
     }
 
+    bool plugin::internalize(clause * c) {
+        return false;
+    }
+
     void plugin::full_propagate(propagation_context & ctx) {
     }
 
