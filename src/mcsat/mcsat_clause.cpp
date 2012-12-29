@@ -31,12 +31,12 @@ namespace mcsat {
         return sizeof(clause) + num_lits * sizeof(literal); 
     }
 
-    clause::clause(unsigned id, unsigned sz, literal const * lits, bool learned, proof * pr):
+    clause::clause(unsigned id, unsigned sz, literal const * lits, kind k, proof * pr):
         m_id(id),
         m_size(sz),
         m_approx(mk_approx(sz, lits)),
         m_used(false),
-        m_learned(learned),
+        m_kind(k),
         m_reinit_stack(false),
         m_mark(false),
         m_pr(pr) {

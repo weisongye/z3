@@ -45,7 +45,7 @@ namespace mcsat {
     void plugin::init(initialization_context & ctx) {
     }
 
-    bool plugin::internalize(clause * c) {
+    bool plugin::internalize(clause * c, clause_internalization_context & ctx) {
         return false;
     }
 

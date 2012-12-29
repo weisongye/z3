@@ -44,16 +44,16 @@ namespace mcsat {
             c->~clause();
         }
 
-        clause * mk(unsigned sz, literal const * lits, bool learned, proof * pr) {
+        clause * mk(unsigned sz, literal const * lits, clause::kind k, proof * pr) {
             unsigned id = m_id_gen.mk();
             size_t obj_sz = clause::get_obj_size(sz);
             void * mem;
-            if (learned)
+            if (k == clause::LEMMA)
                 mem = m_allocator.allocate(obj_sz);
             else
                 mem = m_region.allocate(obj_sz);
-            clause * cls = new (mem) clause(id, sz, lits, learned, pr);
-            if (learned)
+            clause * cls = new (mem) clause(id, sz, lits, k, pr);
+            if (k == clause::LEMMA)
                 m_lemmas.push_back(cls);
             else
                 m_clauses.push_back(cls);
@@ -123,11 +123,15 @@ namespace mcsat {
     }
 
     clause * clause_manager::mk(unsigned sz, literal const * lits, proof * pr) {
-        return m_imp->mk(sz, lits, false, pr);
+        return m_imp->mk(sz, lits, clause::MAIN, pr);
+    }
+
+    clause * clause_manager::mk_aux(unsigned sz, literal const * lits, proof * pr) {
+        return m_imp->mk(sz, lits, clause::AUX, pr);
     }
 
     clause * clause_manager::mk_lemma(unsigned sz, literal const * lits, proof * pr) {
-        return m_imp->mk(sz, lits, true, pr);
+        return m_imp->mk(sz, lits, clause::LEMMA, pr);
     }
 
     clause_manager::iterator clause_manager::begin_lemmas() const {
@@ -172,7 +176,7 @@ namespace mcsat {
         unsigned j     = _begin;
         for (unsigned i = _begin; i < _end; i++) {
             clause * c = m_imp->m_lemmas[i];
-            SASSERT(c->is_learned());
+            SASSERT(c->is_lemma());
             if (c->is_marked()) {
                 c->reset_mark();
                 m_imp->del_lemma(c);

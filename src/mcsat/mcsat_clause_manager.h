@@ -33,6 +33,7 @@ namespace mcsat {
         ~clause_manager();
 
         clause * mk(unsigned sz, literal const * lits, proof * pr);
+        clause * mk_aux(unsigned sz, literal const * lits, proof * pr);
         clause * mk_lemma(unsigned sz, literal const * lits, proof * pr);
 
         // Remark: lemmas are part of user defined scope_levels.

@@ -44,39 +44,23 @@ namespace mcsat {
         virtual node_double_attribute & mk_double_attribute() = 0;
     };
 
+
     /**
        \brief MCSat plugins do *not* have direct access to the MCSat kernel.
        They can access limited functionality using contexts provided to them.
        The internalization context provide the functionality available when
-       expressions are internalized in the kernel.
+       clauses are internalized in the kernel.
        
        This context is provided to the following method:
 
-       bool plugin::internalize(expr * n, internalization_context & ctx);
+       bool plugin::internalize_clause(clause * c, clause_internalization_context & ctx);
     */
-    class internalization_context {
+    class clause_internalization_context {
     public:
         /**
            Reference to the expr_manager that can be used to create new expressions.
         */
         virtual expr_manager & em() = 0;
-        
-        /**
-           \brief Return a node for the given expression. If a node did not exist
-           for the given expression yet, then it is added to the internalization queue.
-           This is the main API used during internalization.
-        */
-        virtual node mk_node(expr * n) = 0;
-        /**
-           When a plugin is internalizing an expression n in
-
-           bool plugin::internalize(expr * n, internalization_context & ctx);
-           
-           it may decide to include auxiliary axioms to MCSat state.
-           The kernel assumes the axiom is relevant only when n is relevant.
-           The proof pr is optional, and it is ignored when proof generation is disabled.
-        */
-        virtual void add_axiom(expr * ax, proof_ref & pr) = 0;
         /**
            When a plugin is internalizing an expression n in
 
@@ -95,10 +79,42 @@ namespace mcsat {
            to the trail.
         */
         virtual void add_propagation(propagation * p) = 0;
+    };
+
+    /**
+       \brief MCSat plugins do *not* have direct access to the MCSat kernel.
+       They can access limited functionality using contexts provided to them.
+       The internalization context provide the functionality available when
+       expressions are internalized in the kernel.
+       
+       This context is provided to the following method:
+
+       bool plugin::internalize(expr * n, internalization_context & ctx);
+
+       \remark This is an extension of the clause_internalization_context.
+    */
+    class internalization_context : public clause_internalization_context {
+    public:
+        /**
+           \brief Return a node for the given expression. If a node did not exist
+           for the given expression yet, then it is added to the internalization queue.
+           This is the main API used during internalization.
+        */
+        virtual node mk_node(expr * n) = 0;
+        /**
+           When a plugin is internalizing an expression n in
+
+           bool plugin::internalize(expr * n, internalization_context & ctx);
+           
+           it may decide to include auxiliary axioms to MCSat state.
+           The kernel assumes the axiom is relevant only when n is relevant.
+           The proof pr is optional, and it is ignored when proof generation is disabled.
+        */
+        virtual void add_axiom(expr * ax, proof_ref & pr) = 0;
         /**
            Create a new auxiliary clause.
         */
-        virtual clause * mk_clause(unsigned sz, literal const * lits, proof * pr);
+        virtual clause * mk_clause(unsigned sz, literal const * lits, proof * pr) = 0;
     };
 
     /**
@@ -290,7 +306,7 @@ namespace mcsat {
               The functor \c ctx.add_axiom(n, pr) can be used to do that, where \c n is the expression
               to be asserted.
         */
-        virtual bool internalize(expr * t, internalization_context & ctx) = 0;
+        virtual bool internalize(node t, internalization_context & ctx) = 0;
         
         /**
            \brief When assertions are added to the kernel or conflicts are resolved, the kernel may create clauses.
@@ -298,7 +314,7 @@ namespace mcsat {
            
            When a plugin returns "true", it means it is responsible for making sure the clause is satisfied.
         */
-        virtual bool internalize(clause * c);
+        virtual bool internalize(clause * c, clause_internalization_context & ctx);
 
         // -----------------------------------
         //

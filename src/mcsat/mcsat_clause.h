@@ -32,11 +32,16 @@ namespace mcsat {
     typedef approx_set_tpl<node, node2u, unsigned> node_approx_set;
 
     class clause {
+        enum kind {
+            MAIN,
+            AUX,
+            LEMMA
+        };
         unsigned        m_id;
         unsigned        m_size;
         node_approx_set m_approx;
         unsigned        m_used:1;
-        unsigned        m_learned:1;
+        unsigned        m_kind:2;
         unsigned        m_reinit_stack:1;
         unsigned        m_mark:1;
         proof *         m_pr;
@@ -46,7 +51,7 @@ namespace mcsat {
         friend class kernel;
 
         static size_t get_obj_size(unsigned num_lits);
-        clause(unsigned id, unsigned sz, literal const * lits, bool learned, proof * pr);
+        clause(unsigned id, unsigned sz, literal const * lits, kind k, proof * pr);
 
         bool on_reinit_stack() const { return m_reinit_stack; }
         void set_reinit_stack(bool f) { m_reinit_stack = f; }
@@ -58,7 +63,9 @@ namespace mcsat {
         unsigned id() const { return m_id; }
         unsigned size() const { return m_size; }
         literal const & operator[](unsigned idx) const { SASSERT(idx < m_size); return m_lits[idx]; }
-        bool is_learned() const { return m_learned; }
+        bool is_lemma() const { return m_kind == LEMMA; }
+        bool is_auxiliary() const { return m_kind == AUX; }
+        bool is_main() const { return m_kind == MAIN; }
         node_approx_set approx() const { return m_approx; }
         bool contains(literal l) const;
         bool contains(node v) const;
