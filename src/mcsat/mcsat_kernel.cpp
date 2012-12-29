@@ -30,75 +30,20 @@ namespace mcsat {
 
     struct kernel::imp {
         
-        class _initialization_context : public initialization_context {
+        class init_ctx : public initialization_context {
             node_attribute_manager & m_attr_manager;
+            trail_manager &          m_trail_manager;
         public:
-            _initialization_context(node_attribute_manager & m):m_attr_manager(m) {}
+            init_ctx(node_attribute_manager & am, trail_manager & tm):m_attr_manager(am), m_trail_manager(tm) {}
             virtual node_uint_attribute &   mk_uint_attribute() { return m_attr_manager.mk_uint_attribute(); }
             virtual node_double_attribute & mk_double_attribute() { return m_attr_manager.mk_double_attribute(); }
+            virtual trail_kind mk_trail_kind() { return m_trail_manager.mk_kind(); }
         };
 
         typedef std::pair<expr *, proof *> expr_proof_pair;
         typedef svector<expr_proof_pair>   expr_proof_pair_vector;
         typedef svector<node>              node_queue;
         typedef ptr_vector<trail>          trail_stack;
-
-        class _internalization_context : public internalization_context {
-            expr_manager &           m_em;
-            node_manager &           m_nm;
-            trail_manager &          m_tm;
-            clause_manager &         m_cm;
-            node_queue &             m_to_internalize;
-            trail_stack &            m_trail_stack;
-            expr_proof_pair_vector & m_new_axioms;
-        public:
-            _internalization_context(expr_manager & em, 
-                                     node_manager & nm, 
-                                     trail_manager & tm, 
-                                     clause_manager & cm, 
-                                     node_queue & to_internalize, 
-                                     trail_stack & trail_stack,
-                                     expr_proof_pair_vector & new_axioms):
-                m_em(em),
-                m_nm(nm),
-                m_tm(tm),
-                m_cm(cm),
-                m_to_internalize(to_internalize),
-                m_trail_stack(trail_stack),
-                m_new_axioms(new_axioms) {
-            }
-            
-            virtual expr_manager & em() { 
-                return m_em; 
-            }
-
-            virtual node mk_node(expr * n) { 
-                if (m_nm.contains(n)) {
-                    return m_nm.mk_node(n);
-                }
-                else {
-                    node r = m_nm.mk_node(n);
-                    m_to_internalize.push_back(r);
-                    return r;
-                }
-            }
-            
-            virtual void add_axiom(expr * ax, proof_ref & pr) {
-                m_new_axioms.push_back(expr_proof_pair(ax, pr));
-            }
-
-            virtual trail_manager & tm() {
-                return m_tm;
-            }
-
-            virtual void add_propagation(propagation * p) {
-                m_trail_stack.push_back(p);
-            }
-
-            virtual clause * mk_clause(unsigned sz, literal const * lits, proof * pr) {
-                return m_cm.mk_aux(sz, lits, pr);
-            }
-        };
 
         bool                      m_fresh;
         bool                      m_proofs_enabled;
@@ -111,20 +56,52 @@ namespace mcsat {
         plugin_ref_vector         m_plugins;
         ptr_vector<trail>         m_trail_stack;
         unsigned_vector           m_plugin_qhead;
-        _initialization_context   m_init_ctx;
         node_queue                m_to_internalize; // internalization todo queue.
         expr_proof_pair_vector    m_new_axioms;     // auxiliary axioms created by plugins.
-        _internalization_context  m_internalization_ctx;
-
         basic_recognizers         m_butil;
 
         volatile bool             m_cancel;
 
+        class internalization_ctx : public internalization_context {
+            imp &                    m;
+        public:
+            internalization_ctx(imp & _m):m(_m) {}
+            
+            virtual expr_manager & em() { 
+                return m.m_expr_manager;
+            }
+
+            virtual node mk_node(expr * n) { 
+                if (m.m_node_manager.contains(n)) {
+                    return m.m_node_manager.mk_node(n);
+                }
+                else {
+                    node r = m.m_node_manager.mk_node(n);
+                    m.m_to_internalize.push_back(r);
+                    return r;
+                }
+            }
+            
+            virtual void add_axiom(expr * ax, proof_ref & pr) {
+                m.m_new_axioms.push_back(expr_proof_pair(ax, pr));
+            }
+
+            virtual trail_manager & tm() {
+                return m.m_trail_manager;
+            }
+
+            virtual void add_propagation(propagation * p) {
+                m.m_trail_stack.push_back(p);
+            }
+
+            virtual clause * mk_clause(unsigned sz, literal const * lits, proof * pr) {
+                return m.m_clause_manager.mk_aux(sz, lits, pr);
+            }
+        };
+
         imp(ast_manager & m, bool proofs_enabled):
             m_expr_manager(m),
             m_attribute_manager(m_node_manager),
-            m_init_ctx(m_attribute_manager),
-            m_internalization_ctx(m_expr_manager, m_node_manager, m_trail_manager, m_clause_manager, m_to_internalize, m_trail_stack, m_new_axioms),
             m_butil(m.get_basic_family_id()) {
             m_proofs_enabled = proofs_enabled;
             m_fresh  = true;
@@ -137,10 +114,11 @@ namespace mcsat {
         }
 
         void add_plugin(plugin * p) {
+            init_ctx ctx(m_attribute_manager, m_trail_manager);
             SASSERT(is_fresh());
             p = p->clone();
             m_plugins.push_back(p);
-            p->init(m_init_ctx);
+            p->init(ctx);
         }
 
         unsigned num_plugins() const {
@@ -158,8 +136,9 @@ namespace mcsat {
         // -----------------------------------
 
         void internalize_core(node n) {
+            internalization_ctx ctx(*this);
             for (unsigned i = 0; i < num_plugins(); i++) {
-                if (p(i).internalize(n, m_internalization_ctx))
+                if (p(i).internalize(n, ctx))
                     return;
             }
             throw exception("MCSat could not handle the problem: none of existing plugins could process one of the expressions");
@@ -186,6 +165,7 @@ namespace mcsat {
         }
 
         void assert_expr_core(expr * f, proof * pr, bool main) {
+            internalization_ctx ctx(*this);
             unsigned num_lits;
             expr * const * lits;
             if (m_butil.is_or(f)) {
@@ -207,7 +187,7 @@ namespace mcsat {
             else
                 c = m_clause_manager.mk_aux(new_lits.size(), new_lits.c_ptr(), pr);
             for (unsigned i = 0; i < num_plugins(); i++) {
-                if (p(i).internalize(c, m_internalization_ctx))
+                if (p(i).internalize(c, ctx))
                     return; // found plugin to process the clause
             }
             throw exception("MCSat could not handle the problem: none of existing plugins could process one of the input clauses");

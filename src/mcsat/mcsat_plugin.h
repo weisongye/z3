@@ -42,6 +42,7 @@ namespace mcsat {
     public:
         virtual node_uint_attribute & mk_uint_attribute() = 0;
         virtual node_double_attribute & mk_double_attribute() = 0;
+        virtual trail_kind mk_trail_kind() = 0;
     };
 
 

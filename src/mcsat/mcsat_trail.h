@@ -291,18 +291,17 @@ namespace mcsat {
         friend class kernel;
         region   m_region;
         unsigned m_next_kind;
-        void push();
-        void pop(unsigned num_scopes);
-    public:
+
         trail_manager();
         ~trail_manager();
-        
+        void push();
+        void pop(unsigned num_scopes);
         /**
            \brief Create a new trail kind. This method is used by 
            plugin that need to create new kinds of propagation objects.
         */
         trail_kind mk_kind();
-
+    public:
         template<typename T>
         T * mk(T const & t) {
             return new (m_region) T(t);
