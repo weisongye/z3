@@ -43,7 +43,6 @@ namespace mcsat {
         typedef std::pair<expr *, proof *> expr_proof_pair;
         typedef svector<expr_proof_pair>   expr_proof_pair_vector;
         typedef svector<node>              node_queue;
-        typedef ptr_vector<trail>          trail_stack;
 
         bool                      m_fresh;
         bool                      m_proofs_enabled;
@@ -54,8 +53,7 @@ namespace mcsat {
         trail_manager             m_trail_manager;
         clause_manager            m_clause_manager;
         plugin_ref_vector         m_plugins;
-        ptr_vector<trail>         m_trail_stack;
-        unsigned_vector           m_plugin_qhead;
+        trail_stack               m_trail_stack;
         node_queue                m_to_internalize; // internalization todo queue.
         expr_proof_pair_vector    m_new_axioms;     // auxiliary axioms created by plugins.
         basic_recognizers         m_butil;
@@ -210,10 +208,32 @@ namespace mcsat {
         //
         // -----------------------------------
 
-        void push() {
+        void push(bool user) {
+            SASSERT(m_new_axioms.empty());
+            SASSERT(m_to_internalize.empty());
+            m_expr_manager.push();
+            m_node_manager.push();
+            m_value_manager.push();
+            m_trail_manager.push();
+            m_clause_manager.push(user);
+            m_trail_stack.push();
+            unsigned sz = m_plugins.size();
+            for (unsigned i = 0; i < sz; i++) {
+                m_plugins.get(i)->push();
+            }
         }
 
-        void pop(unsigned num_scopes) {
+        void pop(unsigned num_scopes, bool user) {
+            unsigned sz = m_plugins.size();
+            for (unsigned i = 0; i < sz; i++) {
+                m_plugins.get(i)->pop(num_scopes);
+            }
+            m_trail_stack.pop(num_scopes);
+            m_clause_manager.pop(num_scopes, user);
+            m_trail_manager.pop(num_scopes);
+            m_value_manager.pop(num_scopes);
+            m_node_manager.pop(num_scopes);
+            m_expr_manager.pop(num_scopes);
         }
 
         // -----------------------------------
@@ -286,11 +306,11 @@ namespace mcsat {
     }
         
     void kernel::push() {
-        m_imp->push();
+        m_imp->push(true);
     }
      
     void kernel::pop(unsigned num_scopes) {
-        m_imp->pop(num_scopes);
+        m_imp->pop(true, num_scopes);
     }
 
     lbool kernel::check_sat(unsigned num_assumptions, expr * const * assumptions) {

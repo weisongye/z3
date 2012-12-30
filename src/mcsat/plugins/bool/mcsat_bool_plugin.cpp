@@ -18,16 +18,26 @@ Revision History:
 */
 #include"mcsat_plugin.h"
 #include"mcsat_expr_manager.h"
+#include"lbool.h"
 
 namespace mcsat {
 
     class bool_plugin : public plugin {
-        symbol        m_name;
-        volatile bool m_cancel;
+        symbol             m_name;
+        ptr_vector<clause> m_watches;
+        svector<lbool>     m_assignment;
+        ptr_vector<trail>  m_justification; 
+        svector<unsigned>  m_activity;
+        unsigned           m_activity_inc;
+        volatile bool      m_cancel;
     public:
         bool_plugin() {
-            m_name   = "Boolean";
-            m_cancel = false;
+            m_name         = "Boolean";
+            m_activity_inc = 128;
+            m_cancel       = false;
+        }
+
+        virtual ~bool_plugin() {
         }
         
         virtual symbol const & get_name() const { 

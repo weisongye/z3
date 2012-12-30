@@ -307,6 +307,19 @@ namespace mcsat {
             return new (m_region) T(t);
         }
     };
+
+    class trail_stack {
+        ptr_vector<trail> m_stack;
+        unsigned_vector   m_scopes;
+        unsigned_vector   m_plugin_qhead;
+    public:
+        trail_stack();
+        ~trail_stack();
+        void push();
+        void pop(unsigned num_scopes);
+        void push_back(trail * t);
+        trail * next(unsigned pidx);
+    };
     
 };    
 

@@ -105,5 +105,44 @@ namespace mcsat {
         m_region.pop_scope(num_scopes);
     }
 
+    trail_stack::trail_stack() {
+    }
+    
+    trail_stack::~trail_stack() {
+    }
+
+    void trail_stack::push() {
+        DEBUG_CODE({
+                for (unsigned i = 0; i < m_plugin_qhead.size(); i++) {
+                    SASSERT(m_plugin_qhead[i] == m_stack.size());
+                }
+            });
+        m_scopes.push_back(m_stack.size());
+    }
+
+    void trail_stack::pop(unsigned num_scopes) {
+        SASSERT(num_scopes <= m_scopes.size());
+        unsigned new_lvl    = m_scopes.size() - num_scopes;
+        unsigned old_sz     = m_scopes[new_lvl];
+        m_stack.shrink(old_sz);
+        unsigned sz = m_plugin_qhead.size();
+        for (unsigned i = 0; i < sz; i++) {
+            m_plugin_qhead[i] = old_sz;
+        }
+        m_scopes.shrink(new_lvl);
+    }
+
+    void trail_stack::push_back(trail * t) {
+        m_stack.push_back(t);
+    }
+
+    trail * trail_stack::next(unsigned i) {
+        if (m_plugin_qhead[i] == m_stack.size())
+            return 0;
+        trail * t = m_stack[m_plugin_qhead[i]];
+        m_plugin_qhead[i]++;
+        return t;
+    }
+
 };
 
