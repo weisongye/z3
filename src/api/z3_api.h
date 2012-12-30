@@ -6825,6 +6825,27 @@ END_MLAPI_EXCLUDE
     Z3_solver Z3_API Z3_mk_mcsat_core_solver(__in Z3_context c);
 
     /**
+       \brief Return a MCSat plugin associated with the given name.
+    
+       def_API('Z3_mk_mcsat_plugin', MCSAT_PLUGIN, (_in(CONTEXT), _in(STRING)))
+    */
+    Z3_mcsat_plugin Z3_API Z3_mk_mcsat_plugin(__in Z3_context c, __in Z3_string name);
+
+    /**
+       \brief Increment the reference counter of the given MCSat plugin.
+
+       def_API('Z3_mcsat_plugin_inc_ref', VOID, (_in(CONTEXT), _in(MCSAT_PLUGIN)))
+    */
+    void Z3_API Z3_mcsat_plugin_inc_ref(__in Z3_context c, __in Z3_mcsat_plugin p);
+
+    /**
+       \brief Decrement the reference counter of the given MCSat plugin.
+       
+       def_API('Z3_mcsat_plugin_dec_ref', VOID, (_in(CONTEXT), _in(MCSAT_PLUGIN)))
+    */
+    void Z3_API Z3_mcsat_plugin_dec_ref(__in Z3_context c, __in Z3_mcsat_plugin p);
+
+    /**
        \brief Add a tactic (preprocessor) before the existing tactics (preprocessing steps) in the given solver s.
        The solver \c s must have been created using #Z3_mk_mcsat_solver. 
        Assertions must not have been added to \c s.

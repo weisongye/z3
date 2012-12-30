@@ -24,6 +24,7 @@ Revision History:
 
 #include"ast.h"
 #include"params.h"
+#include"ref.h"
 #include"statistics.h"
 #include"mcsat_trail.h"
 #include"mcsat_node_attribute.h"
@@ -383,6 +384,7 @@ namespace mcsat {
         virtual decision * decide(decision_context & ctx) = 0;
     };
 
+    typedef ref<plugin>         plugin_ref;
     typedef sref_vector<plugin> plugin_ref_vector;
 };
 

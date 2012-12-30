@@ -6051,6 +6051,25 @@ def SimpleSolver(ctx=None):
     ctx = _get_ctx(ctx)
     return Solver(Z3_mk_simple_solver(ctx.ref()), ctx)
 
+class MCSatPlugin:
+    def __init__(self, plugin, ctx=None):
+        self.ctx    = _get_ctx(ctx)
+        self.plugin = None
+        if isinstance(plugin, MCSatPluginObj):
+            self.plugin = plugin
+        else:
+            if __debug__:
+                _z3_assert(isinstance(plugin, str), "MCSat plugin name expected")
+            try:
+                self.plugin = Z3_mk_mcsat_plugin(self.ctx.ref(), str(plugin))
+            except Z3Exception:
+                raise Z3Exception("unknown plugin '%s'" % plugin)
+        Z3_mcsat_plugin_inc_ref(self.ctx.ref(), self.plugin)
+
+    def __del__(self):
+        if self.plugin != None:
+            Z3_mcsat_plugin_dec_ref(self.ctx.ref(), self.plugin)
+
 class MCSat(Solver):
     """
     A Solver object based on the "model-constructing satisfiability calculus"

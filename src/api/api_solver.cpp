@@ -32,6 +32,7 @@ Revision History:
 #include"smt_solver.h"
 #include"smt_implied_equalities.h"
 #include"mcsat_solver.h"
+#include"api_mcsat_plugins.h"
 #include"assertion_stack.h"
 
 extern "C" {
@@ -453,7 +454,8 @@ extern "C" {
         LOG_Z3_mcsat_add_plugin(c, s, p);
         RESET_ERROR_CODE();
         check_configure_mcsat(s);
-        // TODO
+        mcsat::solver_factory * f = static_cast<mcsat::solver_factory *>(to_solver(s)->m_solver_factory.get());
+        f->add_plugin(to_mcsat_plugin_ref(p));
         Z3_CATCH;
     }
 
