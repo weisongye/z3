@@ -133,7 +133,8 @@ class array_recognizers {
 protected:
     family_id m_fid;
 public:
-    array_recognizers(family_id fid):m_fid(fid) {}
+    array_recognizers(family_id fid = null_family_id):m_fid(fid) {}
+    void set_family_id(family_id fid) { m_fid = fid; }
     family_id get_family_id() const { return m_fid; }
     bool is_array(sort* s) const { return is_sort_of(s, m_fid, ARRAY_SORT);}
     bool is_array(expr* n) const { return is_array(get_sort(n)); }

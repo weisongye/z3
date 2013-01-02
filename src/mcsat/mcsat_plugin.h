@@ -41,6 +41,8 @@ namespace mcsat {
     */
     class initialization_context {
     public:
+        virtual bool proofs_enabled() const = 0;
+        virtual family_id get_family_id(char const * n) = 0;
         virtual node_uint_attribute & mk_uint_attribute() = 0;
         virtual node_double_attribute & mk_double_attribute() = 0;
         virtual trail_kind mk_trail_kind() = 0;
@@ -64,18 +66,22 @@ namespace mcsat {
         */
         virtual expr_manager & em() = 0;
         /**
-           When a plugin is internalizing an expression n in
-
-           bool plugin::internalize(expr * n, internalization_context & ctx);
+           When a plugin is internalizing a clause c in
+           
+           bool plugin::internalize_clause(clause * c, clause_internalization_context & ctx);
+           
+           OR a node n in
+           
+           bool plugin::internalize(node n, internalization_context & ctx);
            
            it may need to propagate. This method returns a reference to 
            the trail object manager.
         */
         virtual trail_manager & tm() = 0;
         /**
-           When a plugin is internalizing an expression n in
+           When a plugin is internalizing a node n in
 
-           bool plugin::internalize(expr * n, internalization_context & ctx);
+           bool plugin::internalize(node n, internalization_context & ctx);
            
            it may need to propagate, this method adds a new propagation object
            to the trail.
@@ -91,12 +97,16 @@ namespace mcsat {
        
        This context is provided to the following method:
 
-       bool plugin::internalize(expr * n, internalization_context & ctx);
+       bool plugin::internalize(node n, internalization_context & ctx);
 
        \remark This is an extension of the clause_internalization_context.
     */
     class internalization_context : public clause_internalization_context {
     public:
+        /**
+           \brief Return the expression associated with the given node.
+        */
+        virtual expr * to_expr(node n) = 0;
         /**
            \brief Return a node for the given expression. If a node did not exist
            for the given expression yet, then it is added to the internalization queue.
@@ -104,9 +114,9 @@ namespace mcsat {
         */
         virtual node mk_node(expr * n) = 0;
         /**
-           When a plugin is internalizing an expression n in
+           When a plugin is internalizing a node n in
 
-           bool plugin::internalize(expr * n, internalization_context & ctx);
+           bool plugin::internalize(node n, internalization_context & ctx);
            
            it may decide to include auxiliary axioms to MCSat state.
            The kernel assumes the axiom is relevant only when n is relevant.
@@ -277,38 +287,39 @@ namespace mcsat {
            The protocol used is the following:
 
            1) For each plugin in the kernel, the method internalize is invoked until
-              one plugin returns true. If none of them can handle the expressionn \c t,
+              one plugin returns true. If none of them can handle the node n,
               then the kernel throws an exception to indicate the problem cannot
               be handled.
               When a plugin returns "true", it means it is responsible for building
-              an interpretation for t.
+              an interpretation for n.
               
               Note that the kernel invokes the plugin in the order they were registered
               in the kernel. A plugin wrapper/adapter can be used to enforce different
               internalization strategies.
               
-           2) Plugins should use \c ctx.mk_node(n) to obtain the node for an expression \c n.
+           2) Plugins should use \c ctx.to_expr(n) to obtain the expression associated with \c n.
               The communication during the search is performed using nodes
-              instead of expressions. Note that \c ctx.mk_node(n) only creates a new node for
-              the expression \c n if \c n was not associated with a node yet.
-              Moreover, when a new node is created, the associated expression automatically 
-              enters the todo queue of expressions to be internalized.
+              instead of expressions. 
+              The context also provided the mehtod ctx.mk_node that allows the plugin to create
+              nodes (if they do not already exist) for sub-expressions.
+              Moreover, when a new node is created, it automatically 
+              enters the todo queue of nodes to be internalized.
 
               Example: suppose we have a plugin P for propositional logic.
-              and t is the expression
+              and n is the node associated with the expression
                    (iff (> x 10) (not (> y 10)))
               P invokes ctx.mk_node to create nodes for
-                   t, (> x 10) and (> y 10)
+                   (> x 10) and (> y 10)
               Using these nodes, the plugin can create propagation rules to enforce
-              that t is true iff ( (> x 10) is true IFF (not (> y 10)) is true ) 
-              The expressions (> x 10) and (> y 10) are added to the internalization
+              that n is true iff ( (> x 10) is true IFF (not (> y 10)) is true ) 
+              The nodes for (> x 10) and (> y 10) are added to the internalization
               queue if they were not associated to a a node before.
            
            3) During internalization some plugins may need to add new axioms.
               The functor \c ctx.add_axiom(n, pr) can be used to do that, where \c n is the expression
               to be asserted.
         */
-        virtual bool internalize(node t, internalization_context & ctx) = 0;
+        virtual bool internalize(node n, internalization_context & ctx) = 0;
         
         /**
            \brief When assertions are added to the kernel or conflicts are resolved, the kernel may create clauses.

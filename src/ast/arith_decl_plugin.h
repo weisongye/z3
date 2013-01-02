@@ -219,7 +219,8 @@ class arith_recognizers {
 protected:
     family_id           m_afid;
 public:
-    arith_recognizers(family_id id):m_afid(id) {}
+    arith_recognizers(family_id id = null_family_id):m_afid(id) {}
+    void set_family_id(family_id fid) { m_afid = fid; }
 
     family_id get_family_id() const { return m_afid; }
 

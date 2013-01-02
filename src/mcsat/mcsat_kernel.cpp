@@ -29,17 +29,6 @@ Revision History:
 namespace mcsat {
 
     struct kernel::imp {
-        
-        class init_ctx : public initialization_context {
-            node_attribute_manager & m_attr_manager;
-            trail_manager &          m_trail_manager;
-        public:
-            init_ctx(node_attribute_manager & am, trail_manager & tm):m_attr_manager(am), m_trail_manager(tm) {}
-            virtual node_uint_attribute &   mk_uint_attribute() { return m_attr_manager.mk_uint_attribute(); }
-            virtual node_double_attribute & mk_double_attribute() { return m_attr_manager.mk_double_attribute(); }
-            virtual trail_kind mk_trail_kind() { return m_trail_manager.mk_kind(); }
-        };
-
         typedef std::pair<expr *, proof *> expr_proof_pair;
         typedef svector<expr_proof_pair>   expr_proof_pair_vector;
         typedef svector<node>              node_queue;
@@ -59,6 +48,17 @@ namespace mcsat {
         basic_recognizers         m_butil;
 
         volatile bool             m_cancel;
+        
+        class init_ctx : public initialization_context {
+            imp & m;
+        public:
+            init_ctx(imp & _m):m(_m) {}
+            virtual bool proofs_enabled() const { return m.m_proofs_enabled; }
+            virtual family_id get_family_id(char const * n) { return m.m_expr_manager.get_family_id(n); }
+            virtual node_uint_attribute &   mk_uint_attribute() { return m.m_attribute_manager.mk_uint_attribute(); }
+            virtual node_double_attribute & mk_double_attribute() { return m.m_attribute_manager.mk_double_attribute(); }
+            virtual trail_kind mk_trail_kind() { return m.m_trail_manager.mk_kind(); }
+        };
 
         class internalization_ctx : public internalization_context {
             imp &                    m;
@@ -67,6 +67,10 @@ namespace mcsat {
             
             virtual expr_manager & em() { 
                 return m.m_expr_manager;
+            }
+
+            virtual expr * to_expr(node n) { 
+                return m.m_node_manager.to_expr(n);
             }
 
             virtual node mk_node(expr * n) { 
@@ -97,6 +101,29 @@ namespace mcsat {
             }
         };
 
+        class propagation_ctx : public propagation_context {
+            imp &    m;
+            unsigned m_pidx;
+        public:
+            propagation_ctx(imp & _m, unsigned pidx):m(_m), m_pidx(pidx) {}
+
+            virtual trail_manager & tm() {
+                return m.m_trail_manager;
+            }
+
+            virtual trail * next() {
+                return m.m_trail_stack.next(m_pidx);
+            }
+
+            virtual void add_propagation(propagation * p) {
+                m.m_trail_stack.push_back(p);
+            }
+
+            virtual void add_axiom(expr * ax, proof_ref & pr) {
+                m.m_new_axioms.push_back(expr_proof_pair(ax, pr));
+            }
+        };
+
         imp(ast_manager & m, bool proofs_enabled):
             m_expr_manager(m),
             m_attribute_manager(m_node_manager),
@@ -112,7 +139,7 @@ namespace mcsat {
         }
 
         void add_plugin(plugin * p) {
-            init_ctx ctx(m_attribute_manager, m_trail_manager);
+            init_ctx ctx(*this);
             SASSERT(is_fresh());
             p = p->clone();
             m_plugins.push_back(p);
@@ -235,6 +262,17 @@ namespace mcsat {
             m_node_manager.pop(num_scopes);
             m_expr_manager.pop(num_scopes);
         }
+
+        // -----------------------------------
+        //
+        // Propagation
+        //
+        // -----------------------------------
+        
+        void propagate() {
+            
+        }
+
 
         // -----------------------------------
         //

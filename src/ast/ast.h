@@ -1302,7 +1302,9 @@ sort * get_sort(expr const * n);
 class basic_recognizers {
     family_id m_fid;
 public:
-    basic_recognizers(family_id fid):m_fid(fid) {}
+    basic_recognizers(family_id fid = null_family_id):m_fid(fid) {}
+    void set_family_id(family_id fid) { m_fid = fid; }
+    family_id get_family_id() const { return m_fid; }
     bool is_bool(sort const * s) const { return is_sort_of(s, m_fid, BOOL_SORT); }
     bool is_bool(expr const * n) const { return is_bool(get_sort(n)); }
     bool is_or(expr const * n) const { return is_app_of(n, m_fid, OP_OR); }

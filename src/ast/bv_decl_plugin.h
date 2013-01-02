@@ -271,7 +271,8 @@ public:
 class bv_recognizers {
     family_id m_afid;
 public:
-    bv_recognizers(family_id fid):m_afid(fid) {}
+    bv_recognizers(family_id fid = null_family_id):m_afid(fid) {}
+    void set_family_id(family_id fid) { m_afid = fid; }
 
     family_id get_fid() const { return m_afid; }
     family_id get_family_id() const { return get_fid(); }

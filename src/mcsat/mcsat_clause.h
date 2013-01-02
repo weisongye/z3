@@ -74,6 +74,7 @@ namespace mcsat {
         proof * pr() const { return m_pr; }
     };
 
+    typedef ptr_vector<clause> clause_vector;
 };
 
 #endif

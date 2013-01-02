@@ -18,28 +18,37 @@ Revision History:
 */
 #include"mcsat_plugin.h"
 #include"mcsat_expr_manager.h"
+#include"mcsat_clause.h"
 #include"lbool.h"
 
 namespace mcsat {
 
     class bool_plugin : public plugin {
-        symbol             m_name;
-        ptr_vector<clause> m_watches;
-        svector<lbool>     m_assignment;
-        ptr_vector<trail>  m_justification; 
-        svector<unsigned>  m_activity;
-        unsigned           m_activity_inc;
-        volatile bool      m_cancel;
+        symbol                m_name;
+        basic_recognizers     m_util;
+        bool                  m_proofs_enabled;
+        vector<clause_vector> m_watches;
+        svector<lbool>        m_assignment;
+        ptr_vector<clause>    m_justification;
+        ptr_vector<trail>     m_ext_justification; 
+        node_uint_attribute * m_activity;
+        unsigned              m_activity_inc;
+        volatile bool         m_cancel;
+
+        node_uint_attribute & activity() { SASSERT(m_activity); return *m_activity; }
+
     public:
         bool_plugin() {
-            m_name         = "Boolean";
-            m_activity_inc = 128;
-            m_cancel       = false;
+            m_name           = "Boolean";
+            m_activity_inc   = 128;
+            m_cancel         = false;
+            m_activity       = 0;
+            m_proofs_enabled = false;
         }
 
         virtual ~bool_plugin() {
         }
-        
+
         virtual symbol const & get_name() const { 
             return m_name;
         }
@@ -67,13 +76,80 @@ namespace mcsat {
         }
 
         virtual void init(initialization_context & ctx) {
+            m_util.set_family_id(ctx.get_family_id("basic"));
+            m_activity       = &ctx.mk_uint_attribute();
+            m_proofs_enabled = ctx.proofs_enabled();
         }
        
         virtual plugin * clone() {
             return alloc(bool_plugin);
         }
 
-        virtual bool internalize(node t, internalization_context & ctx) {
+        void init_bvar(node n) {
+            unsigned idx = n.index();
+            if (idx >= m_justification.size()) {
+                unsigned new_sz = idx + 1;
+                m_assignment.resize(new_sz*2, l_undef);
+                m_watches.resize(new_sz*2);
+                m_justification.resize(new_sz, 0);
+                m_ext_justification.resize(new_sz, 0);
+            }
+        }
+
+        lbool get_value(literal l) {
+            return m_assignment[l.index()];
+        }
+
+        void propagate_literal(literal l, clause * c, internalization_context & ctx) {
+            if (get_value(l) == l_true) {
+                // nothing to be done
+                return; 
+            }
+            else if (get_value(l) == l_false) {
+                // conflict
+                
+            }
+            else {
+                m_assignment[l.index()]  = l_true;
+                m_assignment[~l.index()] = l_false;
+                m_justification[l.var().index()] = c;
+                ctx.add_propagation(ctx.tm().mk(propagated_literal(l, *this)));
+            }
+        }
+
+        void internalize_true(node n, expr * t, internalization_context & ctx) {
+            init_bvar(n);
+            ctx.add_propagation(ctx.tm().mk(propagated_literal(literal(n, false), *this)));
+
+        }
+
+        virtual bool internalize(node n, internalization_context & ctx) {
+            expr * t = ctx.to_expr(n);
+            if (is_app(t) && m_util.is_bool(get_sort(t))) {
+                if (to_app(t)->get_family_id() == m_util.get_family_id()) {
+                    switch (to_app(t)->get_decl_kind()) {
+                    case OP_TRUE:
+                        init_bvar(n);
+                        
+                    case OP_FALSE:
+                        init_bvar(n);
+                    case OP_ITE:
+                    case OP_AND:
+                    case OP_OR:
+                    case OP_EQ: 
+                    case OP_IFF:
+                    case OP_XOR:
+                    case OP_NOT:
+                    case OP_IMPLIES:
+                    default:
+                        return false;
+                    }
+                }
+                else if (is_uninterp_const(t)) {
+                    init_bvar(n);
+                    return true;
+                }
+            }
             return false;
         }
 
