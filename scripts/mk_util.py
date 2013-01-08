@@ -272,7 +272,6 @@ def check_ml():
     os.remove('hello.cmi')
     os.remove('hello.cmo')
     os.remove('hello.cmx')
-    os.remove('hello.obj')
     os.remove('a.out')
     find_ml_lib()
 
