@@ -65,7 +65,10 @@ class RCFNum:
         return self.ctx.ref()
                   
     def __repr__(self):
-        return Z3_rcf_num_to_string(self.ctx_ref(), self.num)
+        return Z3_rcf_num_to_string(self.ctx_ref(), self.num, False)
+
+    def compact_str(self):
+        return Z3_rcf_num_to_string(self.ctx_ref(), self.num, True)
 
     def __add__(self, other):
         v = _to_rcfnum(other, self.ctx)
@@ -151,3 +154,8 @@ class RCFNum:
         v = _to_rcfnum(other, self.ctx)
         return Z3_rcf_neq(self.ctx_ref(), self.num, v.num)
 
+    def split(self):
+        n = (RCFNumObj * 1)()
+        d = (RCFNumObj * 1)()
+        Z3_rcf_get_numerator_denominator(self.ctx_ref(), self.num, n, d)
+        return (RCFNum(n[0], self.ctx), RCFNum(d[0], self.ctx))

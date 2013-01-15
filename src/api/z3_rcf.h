@@ -173,9 +173,9 @@ extern "C" {
     /**
        \brief Convert the RCF numeral into a string.
 
-       def_API('Z3_rcf_num_to_string', STRING, (_in(CONTEXT), _in(RCF_NUM)))
+       def_API('Z3_rcf_num_to_string', STRING, (_in(CONTEXT), _in(RCF_NUM), _in(BOOL)))
     */
-    Z3_string Z3_API Z3_rcf_num_to_string(__in Z3_context c, __in Z3_rcf_num a);
+    Z3_string Z3_API Z3_rcf_num_to_string(__in Z3_context c, __in Z3_rcf_num a, __in Z3_bool compact);
 
     /**
        \brief Convert the RCF numeral into a string in decimal notation.
@@ -183,6 +183,14 @@ extern "C" {
        def_API('Z3_rcf_num_to_decimal_string', STRING, (_in(CONTEXT), _in(RCF_NUM), _in(UINT)))
     */
     Z3_string Z3_API Z3_rcf_num_to_decimal_string(__in Z3_context c, __in Z3_rcf_num a, __in unsigned prec);
+
+    /**
+       \brief Extract the "numerator" and "denominator" of the given RCF numeral.
+       We have that a = n/d, moreover n and d are not represented using rational functions.
+
+       def_API('Z3_rcf_get_numerator_denominator', VOID, (_in(CONTEXT), _in(RCF_NUM), _out(RCF_NUM), _out(RCF_NUM)))
+    */
+    void Z3_API Z3_rcf_get_numerator_denominator(__in Z3_context c, __in Z3_rcf_num a, __out Z3_rcf_num * n, __out Z3_rcf_num * d);
 
 #ifdef __cplusplus
 };
