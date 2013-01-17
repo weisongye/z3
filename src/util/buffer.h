@@ -238,6 +238,17 @@ public:
         append(other);
         return *this;
     }
+
+    bool contains(T const & elem) const {
+        const_iterator it  = begin();
+        const_iterator e = end();
+        for (; it != e; ++it) {
+            if (*it == elem) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 template<typename T, unsigned INITIAL_SIZE=16>
