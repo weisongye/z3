@@ -387,6 +387,10 @@ public:
     app * mk_bvumul_no_ovfl(expr* m, expr* n) { return m_manager.mk_app(get_fid(), OP_BUMUL_NO_OVFL, n, m); }
 
     app * mk_bv(unsigned n, expr* const* es) { return m_manager.mk_app(get_fid(), OP_MKBV, n, es); }
+
+    app * mk_signed_max(sort * s) { return mk_numeral(rational::power_of_two(get_bv_size(s) - 1) - rational(1), s); }
+    app * mk_signed_min(sort * s) { return mk_numeral(rational::power_of_two(get_bv_size(s) - 1), s); }
+    app * mk_unsigned_max(sort * s) { return mk_numeral(rational::power_of_two(get_bv_size(s)) - rational(1), s); }
 };
     
 #endif /* _BV_DECL_PLUGIN_H_ */
