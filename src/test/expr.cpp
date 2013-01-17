@@ -87,6 +87,10 @@ public:
 };
 
 
+
+
+
+
 bool bound_info::get_var_monomial(expr * e, expr_ref & var, expr_ref & coeff) {
     if (is_var(e)) {
         var = to_var(e);
