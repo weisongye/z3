@@ -52,7 +52,7 @@ def init_project_def():
     add_lib('fuzzing', ['ast'], 'test/fuzzing')
     add_lib('fpa', ['core_tactics', 'bv_tactics', 'sat_tactic'], 'tactic/fpa')
     add_lib('smt_tactic', ['smt'], 'smt/tactic')
-    add_lib('bounded_quantifiers', ['tactic', 'rewriter'], 'mcsat/bounded_quantifiers')
+    add_lib('bounded_quantifiers', ['tactic', 'rewriter', 'arith_tactics'], 'mcsat/bounded_quantifiers')
     add_lib('sls_tactic', ['tactic', 'normal_forms', 'core_tactics', 'bv_tactics'], 'tactic/sls')
     # TODO: split muz_qe into muz, qe. Perhaps, we should also consider breaking muz into muz and pdr.
     add_lib('muz_qe', ['smt', 'sat', 'smt2parser'])

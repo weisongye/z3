@@ -18,7 +18,7 @@ Author:
 #define _BOUND_MINIMIZE_H_
 
 #include"bound_info.h"
-#include"arith\bound_propagator.h"
+#include"bound_propagator.h"
 
 class propagate_bound_info
 {
