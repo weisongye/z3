@@ -452,3 +452,17 @@ int bound_info::get_var_order_index( unsigned idx ) {
     }
     return -1;
 }
+
+void bound_info::apply_rewrite(th_rewriter& rw) {
+    for (unsigned i = 0; i < m_l.size(); i++ ) {
+        expr_ref result(m_m);
+        rw(m_l[i],result);
+        m_l.setx(i, result);
+        rw(m_u[i],result);
+        m_u.setx(i, result);
+        rw(m_sl[i],result);
+        m_sl.setx(i, result);
+        rw(m_su[i],result);
+        m_su.setx(i, result);
+    }
+}

@@ -20,7 +20,7 @@ Author:
 #include"ast.h"
 #include"arith_decl_plugin.h"
 #include"bv_decl_plugin.h"
-
+#include"th_rewriter.h"
 
 // m_l and m_u are signed bounds (also includes Int)
 // m_ul and m_uu and unsigned bounds
@@ -79,6 +79,8 @@ public:
     void get_body( expr_ref& body, bool inc_bounds = true );
     // get variable order index for idx
     int get_var_order_index( unsigned idx );
+    // apply rewriter to bounds
+    void apply_rewrite(th_rewriter& as);
 };
 
 

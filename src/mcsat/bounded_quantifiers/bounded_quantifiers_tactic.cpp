@@ -21,6 +21,7 @@ Author:
 #include"bound_info.h"
 #include"ast_pp.h"
 #include"th_rewriter.h"
+#include"bound_minimize.h"
 
 class normalize_bounded_quantifiers_tactic : public tactic {
 
@@ -176,119 +177,29 @@ class minimize_bounded_quantifiers_tactic : public tactic {
         ast_manager & m_m;
         arith_util m_au;
         bv_util m_bvu;
-        rw_cfg(ast_manager & _m):m_m(_m), m_au(_m), m_bvu(_m){}
-        
-        bool get_monomial( expr * e, expr_ref_buffer & terms, sbuffer<int> & vars, expr_ref_buffer & coeff ) {
-            //TODO
-            return false;
+        bound_propagator::numeral_manager m_nm;
+        bound_propagator::allocator m_alloc;
+        params_ref m_arith_p;
+        th_rewriter m_arith_simp;
+        rw_cfg(ast_manager & _m):m_m(_m), m_au(_m), m_bvu(_m), m_arith_simp(_m,m_arith_p){
+            m_arith_p.set_bool("sort_sums", true);
         }
+        
 	    bool reduce_quantifier(quantifier * old_q, 
                                expr * new_body, 
                                expr * const * new_patterns, 
                                expr * const * new_no_patterns,
                                expr_ref & result,
                                proof_ref & result_pr) {
-            TRACE("minimize-bound-quant",tout << "Process " << mk_pp(old_q,m_m) << "\n";);
+            TRACE("minimize_bounded_quantifiers",tout << "Process " << mk_pp(old_q,m_m) << "\n";);
             quantifier * q = m_m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
 	        bound_info bi(m_m, m_au, m_bvu, q);
             if (bi.compute()) {
-                //check that all lower bounds are zero
-                if (bi.is_normalized()) {
-                    bool iter_succ = true;
-                    do {
-                        iter_succ = false;
-                        //over-approximation of lower/upper bounds (these are ground)
-                        expr_ref_buffer abs_lower(m_m);
-                        expr_ref_buffer abs_upper(m_m);
-                        //iterate over all bounds to see if they can propagate lower or upper bounds
-                        for (unsigned i=1; i<bi.m_var_order.size(); i++) {
-                            int prop_index = bi.m_var_order[i];
-                            //process upper bound into u = t + c1*x1 + ... + cn*xn
-                            expr_ref_buffer terms(m_m);
-                            sbuffer<int> vars;
-                            expr_ref_buffer coeffs(m_m);
-                            if (get_monomial(bi.get_upper_bound(prop_index), terms, vars, coeffs)) {
-                                //get upper/lower bounds for each of these variables
-                                expr_ref_buffer var_lower(m_m);
-                                expr_ref_buffer var_upper(m_m);
-                                for (unsigned j = 0; j < vars.size(); j++ ) {
-                                    int id = bi.get_var_order_index(vars[j]);
-                                    if (id>=0) {
-                                        var_lower.push_back(abs_lower[id]);
-                                        var_upper.push_back(abs_upper[id]);
-                                    }
-                                    else {
-                                        var_lower.push_back(m_m.mk_false());
-                                        var_upper.push_back(m_m.mk_false());
-                                    }
-                                }
-                                //try to isolate each x1 .... xn, and propagate the corresponding bound
-                                for (unsigned v = 0; v < vars.size(); v++) {
-                                    //isolating xi
-                                    int var_index = vars[v];
-                                    sort * sv = q->get_decl_sort(q->get_num_decls()-1-var_index);
-                                    rational cv;
-                                    unsigned bvszv;
-                                    if ((m_au.is_int(sv) && m_au.is_numeral(coeffs[v],cv)) || 
-                                        (m_bvu.is_bv_sort(sv) && m_bvu.is_numeral(coeffs[v],cv,bvszv))) {
-                                        //will be generating a lower bound if coefficient for vars[v] is negative
-                                        bool isLower = cv.is_neg();
-                                        //values we will use for each of variables x1...xn
-                                        expr_ref_buffer values(m_m);
-                                        //find values for x1...x{v-1} x{v+1}...xn to maximize/minimize u
-                                        for (unsigned j = 0; j < vars.size(); j++ ) {
-                                            sort * ss = q->get_decl_sort(q->get_num_decls()-1-vars[j]);
-                                            //get the corresponding upper or lower bound 
-                                            if (j!=var_index) {
-                                                rational cs;
-                                                unsigned bvszs;
-                                                if ((m_au.is_int(ss) && m_au.is_numeral(coeffs[j], cs)) || 
-                                                    (m_bvu.is_bv_sort(ss) && m_bvu.is_numeral(coeffs[j], cs, bvszs))) {
-                                                    if (isLower==cs.is_neg()) {
-                                                        //substitute maximum value
-                                                        values.push_back(var_upper[j]);
-                                                    }
-                                                    else {
-                                                        //substitute minimum value
-                                                        values.push_back(var_lower[j]);
-                                                    }
-                                                }
-                                            }
-                                            else {
-                                                values.push_back(m_m.mk_var(vars[j], ss));
-                                            }
-                                        }
- 
-                                        //now construct the new upper/lower bound
-                                        expr_ref_buffer new_bound_vec(m_m);
-                                        new_bound_vec.append(terms.size(),terms.c_ptr());
-                                        for (unsigned j = 0; j < vars.size(); j++) {
-                                            if (j!=v) {
-                                                if (m_au.is_int(sv)) {
-                                                    new_bound_vec.push_back(m_au.mk_mul(coeffs[j], values[j]));
-                                                }
-                                                else if (m_bvu.is_bv_sort(sv)) {
-                                                    new_bound_vec.push_back(m_bvu.mk_bv_mul(coeffs[j], values[j]));
-                                                }
-                                            }
-                                        }
-                                        //construct new bound term
-                                        expr_ref new_bound(m_m);
-                                        new_bound = m_au.is_int(sv) ? m_au.mk_add(new_bound_vec.size(), new_bound_vec.c_ptr()) : m_bvu.mk_bv_add(new_bound_vec.size(), new_bound_vec.c_ptr());
-                                        //negate if an upper bound
-                                        if (!isLower) {
-                                            new_bound = m_au.is_int(sv) ? m_au.mk_sub(m_au.mk_numeral(rational(0),true), new_bound) : m_bvu.mk_bv_sub(m_bvu.mk_numeral(rational(0),sv), new_bound);
-                                        }
-                                        //we have infered the bound xv ~ new_bound
-                                    }
-                                }
-                                //now construct abs_upper and abs_lower bounds
-                             }
-                        }
-                    } while (iter_succ);
-                }
-                else {
-                    TRACE("minimize-bound-quant",tout << "Bounds are not normalized.\n";);
+                //must rewrite the bounds
+                bi.apply_rewrite(m_arith_simp);
+                propagate_bound_info pbi(m_m, m_au, m_nm, m_alloc);
+                if (pbi.compute(bi)) {
+                
                 }
             }
             return false;
@@ -352,6 +263,11 @@ public:
 	    m_rw.set_cancel(f);
     }
 };
+
+tactic * mk_minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
+  std::cout << "mk_minimize_bounded_quantifiers_tactic\n";
+  return alloc(minimize_bounded_quantifiers_tactic, m, p);
+}
 
 //expand tactic
 // parameters should take:
