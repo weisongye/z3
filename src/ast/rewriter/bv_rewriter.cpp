@@ -65,6 +65,7 @@ void bv_rewriter::updt_local_params(params_ref const & _p) {
     m_udiv2mul = p.udiv2mul();
     m_bvnot2arith = p.bvnot2arith();
     m_mkbv2num = _p.get_bool("mkbv2num", false);
+    m_ule_split = p.ule_split();
 }
 
 void bv_rewriter::updt_params(params_ref const & p) {
@@ -332,7 +333,7 @@ br_status bv_rewriter::mk_leq_core(bool is_signed, expr * a, expr * b, expr_ref 
         return BR_REWRITE3;
     }
 #else
-    if (!is_signed) {
+    if (!is_signed && m_ule_split) {
         // Extended version of the rule above using is_zero_bit.
         // It also catches examples atoms such as:
         //  
