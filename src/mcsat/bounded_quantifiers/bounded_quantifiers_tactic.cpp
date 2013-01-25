@@ -37,11 +37,11 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                                expr * const * new_no_patterns,
                                expr_ref & result,
                                proof_ref & result_pr) {
-            TRACE("normalize-bound-quant",tout << "Process " << mk_pp(old_q,m) << "\n";);
+            TRACE("normalize_bounded_quantifiers",tout << "Process " << mk_pp(old_q,m) << "\n";);
             quantifier * q = m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
 	        bound_info bi(m, m_au, m_bvu, q);
             if (bi.compute()) {
-                //bi.print("normalize-bound-quant-debug");
+                //bi.print("normalize_bounded_quantifiers-debug");
                 expr_ref_buffer bound_lits(m);
                 expr_ref_buffer body_lits(m);
                 //start with all literals from body
@@ -82,7 +82,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                         subs_val = m_bvu.mk_bv_add(v, lower);
                     }
                     //also add v -> (v+l) to the substitution
-                    TRACE("normalize-bound-quant-debug",tout << "Substitution value for variable " << i << " is " << mk_pp(subs_val,m) << "\n";);
+                    TRACE("normalize_bounded_quantifiers-debug",tout << "Substitution value for variable " << i << " is " << mk_pp(subs_val,m) << "\n";);
                     subs.setx(q->get_num_decls()-1-i, subs_val);
                 }
                 //apply substitution to each of the body literals
@@ -94,7 +94,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                 //construct the body (it is an "or" of all the literals)
                 bound_lits.append(body_lits.size(), body_lits.c_ptr());
                 result = m.update_quantifier(q, m.mk_or(bound_lits.size(), bound_lits.c_ptr()));
-                TRACE("normalize-bound-quant",tout << "Normalized " << mk_pp(old_q,m) << " to \n     " << mk_pp(result,m) << "\n";);
+                TRACE("normalize_bounded_quantifiers",tout << "Normalized " << mk_pp(old_q,m) << " to \n     " << mk_pp(result,m) << "\n";);
                 /* (test if the next bounds found are indeed normalized)
                 bound_info bi2(m, m_au, m_bvu, to_quantifier(result));
                 if( bi2.compute()){
@@ -102,6 +102,9 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                 }
                 */
 	            return true;
+            }
+            else {
+                TRACE("normalize_bounded_quantifiers",tout << "Could not find bounds.\n";);
             }
             return false;
         }
@@ -199,7 +202,17 @@ class minimize_bounded_quantifiers_tactic : public tactic {
                 bi.apply_rewrite(m_arith_simp);
                 propagate_bound_info pbi(m_m, m_au, m_nm, m_alloc);
                 if (pbi.compute(bi)) {
-                
+                    if (bi.is_trivial_sat()) {
+                        //bound were found to be inconsistent
+                        result = m_m.mk_true();
+                        TRACE("minimize_bounded_quantifiers",tout  << "Incosistent bounds, discard quantified formula.\n";);
+                        return true;
+                    }
+                    else {
+                        result = bi.get_quantifier();
+                        TRACE("minimize_bounded_quantifiers",tout  << "After bound propagations : " << mk_pp(result,m_m) << "\n";);
+                        return true;
+                    }
                 }
             }
             return false;
@@ -268,6 +281,11 @@ tactic * mk_minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref cons
   std::cout << "mk_minimize_bounded_quantifiers_tactic\n";
   return alloc(minimize_bounded_quantifiers_tactic, m, p);
 }
+
+//tactic * mk_minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
+//  return and_then(mk_normalize_bounded_quantifiers_tactic(m,p), mk_minimize_bounded_quantifiers_tactic_core(m,p));
+//}
+
 
 //expand tactic
 // parameters should take:
@@ -343,7 +361,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                         expr_ref val(m);
                         val = m_au.is_int(s) ? m_au.mk_numeral(rational(v), true) : m_bvu.mk_numeral(rational(v),s);
                         val_subs.setx(bi.m_q->get_num_decls() - 1 - i, val);
-                        TRACE("expand-bound-quant-debug", tout << "Consider " << v << " / " << i << "\n";);
+                        TRACE("expand_bounded_quantifiers-debug", tout << "Consider " << v << " / " << i << "\n";);
                         //check if the body is trivially satisfied?
                         if (!process(bi, body, index+1, vs, val_subs, exp_result)) {
                             return false;
@@ -352,7 +370,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                     return true;
                 }
                 else {
-                    TRACE("expand-bound-quant", tout << "Could not process upper bound " << mk_pp(upper,m) << "\n";);
+                    TRACE("expand_bounded_quantifiers", tout << "Could not process upper bound " << mk_pp(upper,m) << "\n";);
                     return false;
                 }
             }
@@ -365,9 +383,11 @@ class expand_bounded_quantifiers_tactic : public tactic {
         unsigned m_exp_bound_limit;
         params_ref arith_p;
         th_rewriter arith_simp;
+        bool m_precise;
         rw_cfg(ast_manager & _m, int exp_bound, int exp_bound_limit):
             m(_m), m_au(m), m_bvu(m), m_exp_bound(exp_bound), m_exp_bound_limit(exp_bound_limit), arith_simp(m,arith_p){
             arith_p.set_bool("sort_sums", true);
+            m_precise = false;
         }
 	    bool reduce_quantifier(quantifier * old_q, 
                                expr * new_body, 
@@ -375,7 +395,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                                expr * const * new_no_patterns,
                                expr_ref & result,
                                proof_ref & result_pr) {
-            TRACE("expand-bound-quant", tout << "Process " << mk_pp(old_q,m) << "\n";);
+            TRACE("expand_bounded_quantifiers", tout << "Process " << mk_pp(old_q,m) << "\n";);
             quantifier * q = m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
 	        bound_info bi(m, m_au, m_bvu, q);
             if (bi.compute()) {
@@ -403,22 +423,22 @@ class expand_bounded_quantifiers_tactic : public tactic {
                     if (process(bi, body, 0, vs, val_subs, exp_result)) {
                         //result is a conjunction of the literals in exp_result
                         result = exp_result.size()>1 ? m.mk_and(exp_result.size(), exp_result.c_ptr()) : (exp_result.size()==1 ? exp_result[0] : m.mk_true());
-                        TRACE("expand-bound-quant", tout << "Expand, got result " << mk_pp(result,m) << "\n";);
+                        TRACE("expand_bounded_quantifiers", tout << "Expand, got result " << mk_pp(result,m) << "\n";);
                         //std::cout << "Got result " << mk_pp(result,m) << std::endl;
                         return true;
                     }
                     else {
-                        TRACE("expand-bound-quant",tout << "Bound expansion failed.\n";);
+                        TRACE("expand_bounded_quantifiers",tout << "Bound expansion failed.\n";);
                     }
                 }
                 else {
-                    TRACE("expand-bound-quant",tout << "Bounds are not normalized.\n";);
+                    TRACE("expand_bounded_quantifiers",tout << "Bounds are not normalized.\n";);
                 }
                 //std::cout << "Could not process " << mk_pp(q,m) << "\n";
                 //bi.print("");
             }
             else {
-                TRACE("expand-bound-quant",tout << "Could not find bounds.\n";);
+                TRACE("expand_bounded_quantifiers",tout << "Could not find bounds.\n";);
             }
 	        return false;
         }
@@ -429,6 +449,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
             rewriter_tpl<rw_cfg>(m, false, m_cfg),
             m_cfg(m, exp_bound, exp_bound_limit) {
         }
+        bool is_precise() { return m_cfg.m_precise; }
     };
     rw            m_rw;
     params_ref    m_params;
@@ -471,6 +492,9 @@ public:
             g->update(i, new_curr, 0, g->dep(i));
         }
         g->inc_depth();
+        if (!m_rw.is_precise()) {
+            g->updt_prec(goal::UNDER);
+        }
         result.push_back(g.get());
         TRACE("expand_bounded_quantifiers", g->display(tout););
         SASSERT(g->is_well_sorted());
@@ -490,3 +514,7 @@ tactic * mk_expand_bounded_quantifiers_tactic(ast_manager & m, params_ref const 
   std::cout << "mk_expand_bounded_quantifiers_tactic\n";
   return alloc(expand_bounded_quantifiers_tactic, m, p);
 }
+
+//tactic * mk_expand_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
+//  return and_then(mk_normalize_bounded_quantifiers_tactic(m,p), mk_expand_bounded_quantifiers_tactic_core(m,p));
+//}

@@ -51,8 +51,10 @@ public:
             m_su.push_back(m.mk_false());
         }
         m_is_valid = false;
+        m_is_trivial_sat = false;
     }
     bool m_is_valid;
+    bool m_is_trivial_sat;
     quantifier * m_q;
     expr_ref_buffer m_l;
     expr_ref_buffer m_u;
@@ -64,6 +66,7 @@ public:
     bool compute();
 
     bool is_valid() { return m_is_valid; }
+    bool is_trivial_sat() { return m_is_trivial_sat; }
     bool is_bound( unsigned idx );
     bool is_int_bound( unsigned idx ) { return !m_m.is_false(m_l[idx]) && !m_m.is_false(m_u[idx]); }
     bool is_bv_unsigned_bound( unsigned idx ) { return is_int_bound(idx); }
@@ -77,6 +80,8 @@ public:
     //  this is the original body without literals that were used for bounds,
     //  and possibly additional literals in the case of bit vectors
     void get_body( expr_ref& body, bool inc_bounds = true );
+    // get quantifier 
+    quantifier* get_quantifier();
     // get variable order index for idx
     int get_var_order_index( unsigned idx );
     // apply rewriter to bounds

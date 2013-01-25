@@ -92,7 +92,7 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer& lits, expr_ref_buff
             }
             bool addedBound = false;
             //arithmetic bound
-            if (m_au.is_le(ec) || m_au.is_ge(ec)) {
+            if (m_au.is_le(ec) || m_au.is_ge(ec) || m_au.is_lt(ec) || m_au.is_gt(ec)) {
                 bool foundVar = false;
                 expr_ref var(m_m);
                 expr_ref coeff(m_m);
@@ -127,7 +127,7 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer& lits, expr_ref_buff
                     if (is_ground_bnd_vars(val)) {
                         TRACE("bound-info-debug",tout << "from " << mk_pp(ec, m_m) << ", we have: \n" << mk_pp(coeff, m_m) << " * " << mk_pp(var, m_m) << " ~ " << mk_pp(val, m_m) << "\n";);
                         unsigned id = to_var(var)->get_idx();
-                        bool isLower = (neg==m_au.is_ge(ec));
+                        bool isLower = (neg==(m_au.is_ge(ec) || m_au.is_gt(ec)));
                         //modify based on coefficient sign
                         rational val_r;
                         if (m_au.is_numeral(coeff, val_r)){
@@ -153,7 +153,7 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer& lits, expr_ref_buff
                                 }
                             }
                             //modify based on strict inequality
-                            if (!neg) {
+                            if (neg==(m_au.is_lt(ec) || m_au.is_gt(ec))) {
                                 TRACE("bound-info-debug",tout << "modify strict\n";);
                                 val = m_au.mk_add(val, m_au.mk_numeral(rational(isLower ? 1 : -1, 1), true));
                             }
@@ -413,16 +413,21 @@ bool bound_info::is_bound( unsigned idx ){
 
 bool bound_info::is_normalized() {
     for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
-        expr_ref lower(m_m);
-        lower = get_lower_bound(i);
-        sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-i);
-        if ( (m_au.is_int(s) && lower == m_au.mk_numeral(rational(0, 1), true)) ||
-             (m_bvu.is_bv_sort(s) && lower == m_bvu.mk_numeral(rational(0), s)) ) {
-            //lower bound is zero
+        if (is_bv_signed_bound(i)) {
+            TRACE("bound-info-debug",tout << "Bound is not normalized, contains signed bound.";);
         }
         else{
-            TRACE("bound-info-debug",tout << "Bound is not normalized: " << mk_pp(lower, m_m) << "   <=   " << m_q->get_decl_name(m_q->get_num_decls()-i-1) << "\n";);
-            return false;
+            expr_ref lower(m_m);
+            lower = get_lower_bound(i);
+            sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-i);
+            if ( (m_au.is_int(s) && lower == m_au.mk_numeral(rational(0, 1), true)) ||
+                 (m_bvu.is_bv_sort(s) && lower == m_bvu.mk_numeral(rational(0), s)) ) {
+                //lower bound is zero
+            }
+            else{
+                TRACE("bound-info-debug",tout << "Bound is not normalized: " << mk_pp(lower, m_m) << "   <=   " << m_q->get_decl_name(m_q->get_num_decls()-i-1) << "\n";);
+                return false;
+            }
         }
     }
     return true;
@@ -432,9 +437,25 @@ void bound_info::get_body( expr_ref& body, bool inc_bounds ){
     if (m_is_valid) {
         expr_ref_buffer lits(m_m);
         if( inc_bounds ){
-            //for (unsigned i=0; i<m_var_order.size(); i++) {
-            //    int var_index = m_var_order[i];
-            //}
+            for (unsigned i=0; i<m_var_order.size(); i++) {
+                int index = m_var_order[i];
+                sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-index);
+                var * v = m_m.mk_var(index, s);
+                if (m_au.is_int(s)) {
+                    lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_l[index])));
+                    lits.push_back(m_m.mk_not(m_au.mk_le(v, m_u[index])));
+                }
+                else if (m_bvu.is_bv_sort(s)) {
+                    if (is_bv_unsigned_bound(index)) {
+                        lits.push_back(m_m.mk_not(m_bvu.mk_ule(m_l[index],v)));
+                        lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_u[index])));
+                    }
+                    else {
+                        lits.push_back(m_m.mk_not(m_bvu.mk_sle(m_sl[index],v)));
+                        lits.push_back(m_m.mk_not(m_bvu.mk_sle(v, m_su[index])));
+                    }
+                }
+            }
         }
         lits.append(m_body.size(),m_body.c_ptr());
         body = lits.size()>1 ? m_m.mk_or(lits.size(), lits.c_ptr()) : (lits.size()==1 ? lits[0] : m_m.mk_true());
@@ -442,6 +463,12 @@ void bound_info::get_body( expr_ref& body, bool inc_bounds ){
     else {
         body = m_q->get_expr();
     }
+}
+
+quantifier* bound_info::get_quantifier() {
+    expr_ref body(m_m);
+    get_body(body);
+    return m_m.update_quantifier(m_q, body);
 }
 
 int bound_info::get_var_order_index( unsigned idx ) {

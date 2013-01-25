@@ -59,6 +59,7 @@ void propagate_bound_info::introduce_var(sort * s, expr_ref & e, bound_propagato
     }
     //make variable
     var = (bound_propagator::var)m_bp_exprs.size();
+    m_bp.mk_var(var, true);
     m_bp_vars.push_back(var);
     m_bp_exprs.push_back(e);
 }
@@ -85,13 +86,18 @@ void propagate_bound_info::introduce_var(sort * s, expr_ref & x, expr_ref_buffer
         }
         //introduce new variable
         bvar = (bound_propagator::var)m_bp_vars.size();
+        m_bp.mk_var(bvar, true);
         m_bp_vars.push_back(bvar);
         m_bp_exprs.push_back(m_m.mk_false());   //don't care about the expression it represents
         //add the equation to the bound propagator
         as.push_back(1);
         xs.push_back(bvar);
+        for (unsigned i=0; i<as.size(); i++) {
+            if( i!=0 ) { std::cout << " + "; }
+            //std::cout << rational(as[i]).get_int64() << "*v" << (int)xs[i];
+        }
+        //std::cout << " = 0 \n";
         TRACE("propagate-bound-info-debug", tout << "Mk eq, size = " << terms.size() << "\n";);
-        std::cout << "mk eq " << as.size() << "\n";
         m_bp.mk_eq(as.size(), as.c_ptr(), xs.c_ptr());
         
     }
@@ -117,19 +123,18 @@ bool propagate_bound_info::compute(bound_info& bi) {
                 sbuffer<int> coeffs;
                 int cval = 0;
                 if (get_monomial(upper, terms, coeffs, cval)) {
-                    std::cout << "got mon." << std::endl;
                     // introduce variable for v,  v = x - (c1*t1 + ... + cn*tn)
                     // this will introduce equation v - x + (c1*t1 + ... + cn*tn) = 0
                     bound_propagator::var vv;
                     bound_propagator::var bv;
                     introduce_var(s, x, terms, coeffs, vv, bv);
-                    std::cout << "introduced vars " << bv << " " << vv << " \n";
-                    std::cout << "upper bound is " << cval << "\n";
-                    // add bounds 0 <= v <= c
-                    m_bp.assert_lower(bv, zero, false);
+                    //std::cout << " v" << bv << " <= " << cval << "\n";
+                    //std::cout << " v" << vv << " >= 0\n";
+                    // add bound 0 <= vv
+                    m_bp.assert_lower(vv, zero, false);
+                    // add bound bv <= c
                     mpq c(cval);
                     m_bp.assert_upper(bv, c, false);
-                    std::cout << "done asserting bounds \n";
                     //record which variable was used for bound
                     m_bp_bi_vars.push_back(vv);
                     m_bp_bi_bounds.push_back(bv);
@@ -149,13 +154,14 @@ bool propagate_bound_info::compute(bound_info& bi) {
         m_bp.propagate();
         //if unsatisfiable, we are done
         if (m_bp.inconsistent()) {
-
+            TRACE("propagate-bound-info-debug", tout << "Inconsistent bounds.\n";);
+            bi.m_is_trivial_sat = true;
         }
         else {
             //now, see what we got for the bounds 
             //for (unsigned i = 0; i < bi.m_var_order.size(); i++) {  
             //}
-            print("");
+            //print("");
             for (unsigned i = 0; i < bi.m_var_order.size(); i++) {
                 int index = bi.m_var_order[i];
                 sort * s = bi.m_q->get_decl_sort(bi.m_q->get_num_decls()-1-index);
@@ -163,16 +169,25 @@ bool propagate_bound_info::compute(bound_info& bi) {
                     bound_propagator::var vv = m_bp_bi_vars[i];
                     bound_propagator::var bv = m_bp_bi_bounds[i];
                     //check the bounds found
-                    if (m_bp.has_lower(vv)) {
-                        rational rl(m_bp.lower(vv));
-                        expr_ref l(m_m);
-                        l = m_au.mk_numeral(rl, true);
-                        
-                    }
-                    if (m_bp.has_upper(vv)) {
-                        rational ru(m_bp.upper(vv));
-                        expr_ref u(m_m);
-                        u = m_au.mk_numeral(ru, true);
+                    for (unsigned b=0; b<2; b++) {
+                        bool isLower = b==0;
+                        if ((isLower && (m_bp.has_lower(vv))) || (!isLower && (m_bp.has_upper(vv)))) {
+                            rational rb(isLower ? m_bp.lower(vv) : m_bp.upper(vv));
+                            expr_ref b(m_m);
+                            b = m_au.mk_numeral(rb, true);
+                            //std::cout << "Set bound for variable " << index << std::endl;
+                            expr_ref_buffer & bnd = isLower ? bi.m_l : bi.m_u;
+                            expr_ref curr_b(m_m);
+                            curr_b = bnd[index];
+                            rational curr_br;
+                            if (m_au.is_numeral(curr_b, curr_br)) {
+                                //should be geq if isLower, leq is !isLower
+                                bnd.setx(index, b);
+                            }
+                            else {
+                                //combine bounds?
+                            }
+                        }
                     }
                 }
             }
@@ -209,5 +224,6 @@ void propagate_bound_info::print( const char * tc ) {
         else {
             std::cout << "[INF]";
         }
+        std::cout << "\n";
     }
 }
