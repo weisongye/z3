@@ -24,11 +24,12 @@ class tactic_factory;
 
 namespace mcsat {
     class plugin;
+    class solver_factory;
 
     class solver : public ::solver {
-        friend class solver_factory;
         struct imp;
         imp *  m_imp;
+        friend class solver_factory;
     public:
         solver(ast_manager & m, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores);
         virtual ~solver();

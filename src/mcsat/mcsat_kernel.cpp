@@ -132,6 +132,9 @@ namespace mcsat {
             m_fresh  = true;
             m_cancel = false;
         }
+	
+	~imp() {
+	}
 
         // Return true if the kernel is "fresh" and assertions were not added yet.
         bool is_fresh() const {
@@ -333,6 +336,8 @@ namespace mcsat {
     }
 
     kernel::~kernel() {
+	SASSERT(m_imp);
+	dealloc(m_imp);
     }
 
     void kernel::add_plugin(plugin * p) {
@@ -348,7 +353,7 @@ namespace mcsat {
     }
      
     void kernel::pop(unsigned num_scopes) {
-        m_imp->pop(true, num_scopes);
+        m_imp->pop(num_scopes, true);
     }
 
     lbool kernel::check_sat(unsigned num_assumptions, expr * const * assumptions) {
