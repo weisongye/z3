@@ -72,6 +72,7 @@ PREFIX=os.path.split(os.path.split(os.path.split(PYTHON_PACKAGE_DIR)[0])[0])[0]
 GMP=False
 VS_PAR=False
 VS_PAR_NUM=8
+GPROF=False
 
 def is_windows():
     return IS_WINDOWS
@@ -373,6 +374,7 @@ def display_help(exit_code):
     print("  --staticlib                   build Z3 static library.")
     if not IS_WINDOWS:
         print("  -g, --gmp                     use GMP.")
+        print("  --gprof                       enable gprof")
     print("")
     print("Some influential environment variables:")
     if not IS_WINDOWS:
@@ -389,12 +391,12 @@ def display_help(exit_code):
 # Parse configuration option for mk_make script
 def parse_options():
     global VERBOSE, DEBUG_MODE, IS_WINDOWS, VS_X64, ONLY_MAKEFILES, SHOW_CPPS, VS_PROJ, TRACE, VS_PAR, VS_PAR_NUM
-    global DOTNET_ENABLED, JAVA_ENABLED, STATIC_LIB, PREFIX, GMP, PYTHON_PACKAGE_DIR
+    global DOTNET_ENABLED, JAVA_ENABLED, STATIC_LIB, PREFIX, GMP, PYTHON_PACKAGE_DIR, GPROF
     try:
         options, remainder = getopt.gnu_getopt(sys.argv[1:], 
                                                'b:dsxhmcvtnp:gj', 
                                                ['build=', 'debug', 'silent', 'x64', 'help', 'makefiles', 'showcpp', 'vsproj',
-                                                'trace', 'nodotnet', 'staticlib', 'prefix=', 'gmp', 'java', 'parallel='])
+                                                'trace', 'nodotnet', 'staticlib', 'prefix=', 'gmp', 'java', 'parallel=', 'gprof'])
     except:
         print("ERROR: Invalid command line option")
         display_help(1)
@@ -439,6 +441,8 @@ def parse_options():
             GMP = True
         elif opt in ('-j', '--java'):
             JAVA_ENABLED = True
+        elif opt == '--gprof':
+            GPROF = True
         else:
             print("ERROR: Invalid command line option '%s'" % opt)
             display_help(1)
@@ -1320,11 +1324,16 @@ def mk_config():
         check_ar()
         CXX = find_cxx_compiler()
         CC  = find_c_compiler()
+        SLIBEXTRAFLAGS = ''
+        if GPROF:
+            CXXFLAGS = '%s -pg' % CXXFLAGS
+            LDFLAGS  = '%s -pg' % LDFLAGS
         if GMP:
             test_gmp(CXX)
             ARITH = "gmp"
             CPPFLAGS = '%s -D_MP_GMP' % CPPFLAGS
             LDFLAGS  = '%s -lgmp' % LDFLAGS
+            SLIBEXTRAFLAGS = '%s -lgmp' % SLIBEXTRAFLAGS
         else:
             CPPFLAGS = '%s -D_MP_INTERNAL' % CPPFLAGS
         CXXFLAGS = '%s -c' % CXXFLAGS
@@ -1332,14 +1341,16 @@ def mk_config():
         if HAS_OMP:
             CXXFLAGS = '%s -fopenmp -mfpmath=sse' % CXXFLAGS
             LDFLAGS  = '%s -fopenmp' % LDFLAGS
-            SLIBEXTRAFLAGS = '-fopenmp'
+            SLIBEXTRAFLAGS = '%s -fopenmp' % SLIBEXTRAFLAGS
         else:
             CXXFLAGS = '%s -D_NO_OMP_' % CXXFLAGS
-            SLIBEXTRAFLAGS = ''
         if DEBUG_MODE:
             CXXFLAGS     = '%s -g -Wall' % CXXFLAGS
         else:
-            CXXFLAGS     = '%s -O3 -D _EXTERNAL_RELEASE -fomit-frame-pointer' % CXXFLAGS
+            if GPROF:
+                CXXFLAGS     = '%s -O3 -D _EXTERNAL_RELEASE' % CXXFLAGS
+            else:
+                CXXFLAGS     = '%s -O3 -D _EXTERNAL_RELEASE -fomit-frame-pointer' % CXXFLAGS
         if is_CXX_clangpp():
             CXXFLAGS   = '%s -Wno-unknown-pragmas -Wno-overloaded-virtual -Wno-unused-value' % CXXFLAGS
         sysname = os.uname()[0]
@@ -1402,6 +1413,8 @@ def mk_config():
             print('OpenMP:         %s' % HAS_OMP)
             print('Prefix:         %s' % PREFIX)
             print('64-bit:         %s' % is64())
+            if GPROF:
+                print('gprof:          enabled')
             print('Python version: %s' % distutils.sysconfig.get_python_version())
             if is_java_enabled():
                 print('Java Home:      %s' % JAVA_HOME)

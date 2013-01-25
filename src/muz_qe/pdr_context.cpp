@@ -33,7 +33,6 @@ Notes:
 #include "pdr_prop_solver.h"
 #include "pdr_context.h"
 #include "pdr_generalizers.h"
-#include "datatype_decl_plugin.h"
 #include "for_each_expr.h"
 #include "dl_rule_set.h"
 #include "unit_subsumption_tactic.h"
@@ -1566,7 +1565,7 @@ namespace pdr {
     }
     
     proof_ref context::get_proof() const {
-        datalog::scoped_coarse_proof _sc(m);
+        datalog::scoped_proof _sc(m);
         proof_ref proof(m);
         SASSERT(m_last_result == l_true);
         proof = m_search.get_proof_trace(*this);
@@ -1682,7 +1681,8 @@ namespace pdr {
             case l_false: {
                 core_generalizer::cores cores;
                 cores.push_back(std::make_pair(cube, uses_level));
-                
+                TRACE("pdr", tout << "cube:\n"; 
+                      for (unsigned j = 0; j < cube.size(); ++j) tout << mk_pp(cube[j].get(), m) << "\n";);
                 for (unsigned i = 0; !cores.empty() && i < m_core_generalizers.size(); ++i) {
                     core_generalizer::cores new_cores;                    
                     for (unsigned j = 0; j < cores.size(); ++j) {

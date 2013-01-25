@@ -620,6 +620,19 @@ namespace z3 {
             return expr(a.ctx(), r);
         }
 
+        /**
+           \brief Create the if-then-else expression <tt>ite(c, t, e)</tt>
+           
+           \pre c.is_bool()
+        */
+        friend expr ite(expr const & c, expr const & t, expr const & e) {
+            check_context(c, t); check_context(c, e);
+            assert(c.is_bool());
+            Z3_ast r = Z3_mk_ite(c.ctx(), c, t, e);
+            c.check_error();
+            return expr(c.ctx(), r);
+        }
+
         friend expr operator==(expr const & a, expr const & b) {
             check_context(a, b);
             Z3_ast r = Z3_mk_eq(a.ctx(), a, b);
@@ -1630,11 +1643,6 @@ namespace z3 {
     
 
 };
-
-template class z3::ast_vector_tpl<z3::ast>;
-template class z3::ast_vector_tpl<z3::expr>;
-template class z3::ast_vector_tpl<z3::sort>;
-template class z3::ast_vector_tpl<z3::func_decl>;
 
 /*@}*/
 /*@}*/

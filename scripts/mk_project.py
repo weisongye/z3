@@ -15,13 +15,14 @@ def init_project_def():
     add_lib('sat', ['util'])
     add_lib('nlsat', ['polynomial', 'sat'])
     add_lib('interval', ['util'], 'math/interval')
+    add_lib('realclosure', ['interval'], 'math/realclosure')
     add_lib('subpaving', ['interval'], 'math/subpaving')
     add_lib('ast', ['util', 'polynomial'])
     add_lib('rewriter', ['ast', 'polynomial'], 'ast/rewriter')
     add_lib('normal_forms', ['rewriter'], 'ast/normal_forms')
     add_lib('model', ['rewriter'])
     add_lib('tactic', ['ast', 'model'])
-    add_lib('substitution', ['ast'], 'ast/substitution')
+    add_lib('substitution', ['ast', 'rewriter'], 'ast/substitution')
     add_lib('parser_util', ['ast'], 'parsers/util')
     add_lib('grobner', ['ast'], 'math/grobner')
     add_lib('euclid', ['util'], 'math/euclid')
@@ -64,8 +65,8 @@ def init_project_def():
     add_lib('mcsat_solvers', ['mcsat', 'mcsat_bool_plugin'], 'mcsat/solvers')
     add_extra_exe('mcsat_shell', ['cmd_context', 'smt2parser', 'mcsat_solvers'], 'mcsat/shell', exe_name='mcs') 
     ##################
-    API_files = ['z3_api.h', 'z3_algebraic.h', 'z3_polynomial.h']
-    add_lib('api', ['portfolio', 'user_plugin', 'smtparser', 'mcsat_solvers'],
+    API_files = ['z3_api.h', 'z3_algebraic.h', 'z3_polynomial.h', 'z3_rcf.h']
+    add_lib('api', ['portfolio', 'user_plugin', 'smtparser', 'mcsat_solvers', 'realclosure'],
             includes2install=['z3.h', 'z3_v1.h', 'z3_macros.h'] + API_files)
     add_exe('shell', ['api', 'sat', 'extra_cmds'], exe_name='z3')
     add_exe('test', ['api', 'fuzzing'], exe_name='test-z3', install=False)

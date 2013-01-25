@@ -48,6 +48,7 @@ DEFINE_TYPE(Z3_func_interp);
 #define Z3_func_interp_opt Z3_func_interp
 DEFINE_TYPE(Z3_func_entry);
 DEFINE_TYPE(Z3_fixedpoint);
+DEFINE_TYPE(Z3_rcf_num);
 DEFINE_VOID(Z3_theory_data);
 #endif
 
@@ -1192,6 +1193,7 @@ typedef enum
   def_Type('FUNC_ENTRY',       'Z3_func_entry',       'FuncEntryObj')
   def_Type('FIXEDPOINT',       'Z3_fixedpoint',       'FixedpointObj')
   def_Type('PARAM_DESCRS',     'Z3_param_descrs',     'ParamDescrs')
+  def_Type('RCF_NUM',          'Z3_rcf_num',          'RCFNumObj')
 */
 
 #ifdef Conly
@@ -1274,7 +1276,7 @@ extern "C" {
 
        def_API('Z3_global_param_reset_all', VOID, ())
     */
-    void Z3_API Z3_global_param_reset_all();
+    void Z3_API Z3_global_param_reset_all(void);
     
     /**
        \brief Get a global (or module) parameter.
@@ -1335,7 +1337,7 @@ extern "C" {
 
        def_API('Z3_mk_config', CONFIG, ())
     */
-    Z3_config Z3_API Z3_mk_config();
+    Z3_config Z3_API Z3_mk_config(void);
 
     /**
        \brief Delete the given configuration object.
@@ -4765,7 +4767,7 @@ END_MLAPI_EXCLUDE
 
        extra_API('Z3_close_log', VOID, ())
     */
-    void Z3_API Z3_close_log();
+    void Z3_API Z3_close_log(void);
 
     /**
        \brief Enable/disable printing warning messages to the console.
