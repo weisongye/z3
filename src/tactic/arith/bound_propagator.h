@@ -36,6 +36,7 @@ public:
     typedef unsigned constraint_id;
     typedef numeral_buffer<mpz, numeral_manager> mpz_buffer;
     typedef svector<double> double_vector;
+    typedef small_object_allocator  allocator;
     static const assumption null_assumption = UINT_MAX;
     static const var null_var = UINT_MAX;
     static const unsigned null_constraint_idx = UINT_MAX;
@@ -101,7 +102,6 @@ protected:
     typedef svector<constraint>     constraint_vector;
     typedef unsigned_vector         c_idx_vector;
     typedef c_idx_vector            wlist;
-    typedef small_object_allocator  allocator;
     typedef linear_equation_manager lin_eq_manager;
 
     numeral_manager &   m;
@@ -175,7 +175,7 @@ protected:
     void init_eq(linear_equation * eq);
 
 public:
-    bound_propagator(numeral_manager & m, allocator & a, params_ref const & p);
+    bound_propagator(numeral_manager & m, allocator & a, params_ref const & p = params_ref());
     ~bound_propagator();
     
     void updt_params(params_ref const & p);

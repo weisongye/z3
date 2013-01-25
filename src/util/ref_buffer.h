@@ -142,6 +142,10 @@ public:
         append(other);
         return *this;
     }
+
+    bool contains(T * elem) const {
+        return m_buffer.contains(elem);
+    }
 };
 
 

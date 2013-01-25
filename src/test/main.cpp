@@ -208,6 +208,7 @@ int main(int argc, char ** argv) {
     TST(model2expr);
     TST(alloc);
     TST(rcf);
+    TST(expr);
 }
 
 void initialize_mam() {}
