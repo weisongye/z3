@@ -1012,8 +1012,7 @@ namespace datalog {
         for (; it != end; ++it) {
             r = *it;
             check_rule(r);
-        }
-        
+        }        
         switch(get_engine()) {
         case DATALOG_ENGINE:
             return rel_query(query);
@@ -1168,32 +1167,20 @@ namespace datalog {
         if (m_bmc) {
             m_bmc->reset_statistics();
         }
+        if (m_tab) {
+            m_tab->reset_statistics();
+        }
     }
 
     void context::collect_statistics(statistics& st) const {
-
-        switch(m_engine) {
-        case DATALOG_ENGINE: 
-            break;
-        case PDR_ENGINE: 
-        case QPDR_ENGINE:
-            if (m_pdr) {
-                m_pdr->collect_statistics(st);
-            }
-            break;
-        case BMC_ENGINE:
-        case QBMC_ENGINE:
-            if (m_bmc) {
-                m_bmc->collect_statistics(st);
-            }
-            break;
-        case TAB_ENGINE:
-            if (m_tab) {
-                m_tab->collect_statistics(st);
-            }
-            break;
-        default: 
-            break;
+        if (m_pdr) {
+            m_pdr->collect_statistics(st);
+        }
+        if (m_bmc) {
+            m_bmc->collect_statistics(st);
+        }
+        if (m_tab) {
+            m_tab->collect_statistics(st);
         }
     }
 

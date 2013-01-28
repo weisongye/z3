@@ -29,8 +29,10 @@ def E(ctx=None):
     return RCFNum(Z3_rcf_mk_e(ctx.ref()), ctx)
 
 def MkInfinitesimal(name="eps", ctx=None):
+    # Todo: remove parameter name.
+    # For now, we keep it for backward compatibility.
     ctx = z3._get_ctx(ctx)
-    return RCFNum(Z3_rcf_mk_infinitesimal(ctx.ref(), name), ctx)
+    return RCFNum(Z3_rcf_mk_infinitesimal(ctx.ref()), ctx)
 
 def MkRoots(p, ctx=None):
     ctx = z3._get_ctx(ctx)
@@ -65,10 +67,10 @@ class RCFNum:
         return self.ctx.ref()
                   
     def __repr__(self):
-        return Z3_rcf_num_to_string(self.ctx_ref(), self.num, False)
+        return Z3_rcf_num_to_string(self.ctx_ref(), self.num, False, in_html_mode())
 
     def compact_str(self):
-        return Z3_rcf_num_to_string(self.ctx_ref(), self.num, True)
+        return Z3_rcf_num_to_string(self.ctx_ref(), self.num, True, in_html_mode())
 
     def __add__(self, other):
         v = _to_rcfnum(other, self.ctx)
