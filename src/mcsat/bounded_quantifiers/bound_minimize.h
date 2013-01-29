@@ -47,4 +47,17 @@ public:
     void print( const char * tc );
 };
 
+class bv_trans_bound_info 
+{
+private:
+    ast_manager & m_m;
+    bv_util & m_bvu;
+public:
+    bv_trans_bound_info(ast_manager & m, bv_util & bvu) :
+      m_m(m), m_bvu(bvu){}
+    
+    bool compute(bound_info& bi);
+    void print( const char * tc );
+};
+
 #endif
