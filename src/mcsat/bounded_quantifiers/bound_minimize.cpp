@@ -227,3 +227,12 @@ void propagate_bound_info::print( const char * tc ) {
         std::cout << "\n";
     }
 }
+
+bool bv_trans_bound_info::compute(bound_info& bi) {
+    //TODO ???
+    return false;
+}
+
+void bv_trans_bound_info::print( const char * tc ) {
+
+}

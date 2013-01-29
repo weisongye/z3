@@ -41,9 +41,10 @@ struct quant_bound_proc {
     ast_manager & m_m;
     arith_util& m_au;
     bv_util& m_bvu;
+    datatype_util& m_dtu;
     int m_num_bad;
     int m_num_good;
-    quant_bound_proc(ast_manager& m, arith_util& au, bv_util& bvu):m_m(m), m_au(au), m_bvu(bvu), m_num_bad(0), m_num_good(0) {}
+    quant_bound_proc(ast_manager& m, arith_util& au, bv_util& bvu, datatype_util& dtu):m_m(m), m_au(au), m_bvu(bvu), m_dtu(dtu), m_num_bad(0), m_num_good(0) {}
     void operator()(var * n)        {}
     void operator()(app * n)        {}
     void operator()(quantifier * n) {
@@ -65,7 +66,7 @@ struct quant_bound_proc {
             }
         }
         */
-        bound_info bi(m_m, m_au, m_bvu, n);
+        bound_info bi(m_m, m_au, m_bvu, m_dtu, n);
         if (bi.compute()) {
             bi.print("bound-quant-test");
             m_num_good++;
@@ -208,7 +209,8 @@ void tst_expr() {
   simp(result, result);
   arith_util au(m);
   bv_util bvu(m);
-  quant_bound_proc qbp(m, au, bvu);
+  datatype_util dtu(m);
+  quant_bound_proc qbp(m, au, bvu, dtu);
   expr_mark visited;
   for_each_expr(qbp, visited, result);
   std::cout << "Good/Bad quantifiers : " << qbp.m_num_good << "/" << qbp.m_num_bad << "\n";
