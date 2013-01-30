@@ -243,6 +243,7 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer & lits, expr_ref_buf
                                 new_bnds_from_vars.push_back(id);
                                 new_bnds_signs.push_back(isSigned);
                                 //if not done so already, auto-set the other bound
+                                // [Leo]: This kind of code is not easy to maintain. Does "false" mean no bound?!?
                                 if (m_m.is_false(bo[id])) {
                                     TRACE("bound-info-debug",tout << "found bound for variable : " << mk_pp(ac->get_arg(j), m_m) << "\n";);
                                     expr_ref auto_bound(m_m);
@@ -337,6 +338,8 @@ bool bound_info::compute() {
                         }
                         //clear unused bounds created on this iteration
                         for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
+                            // [Leo]: Are you using "false" to mark that we don't have a bound?
+                            // [Leo]: Why not 0?
                             if (!m_var_order.contains(i)) {
                                 m_l.setx(i, m_m.mk_false());
                                 m_u.setx(i, m_m.mk_false());
@@ -386,6 +389,7 @@ bool bound_info::compute() {
     return false;
 }
 
+// [Leo]: replace with display(std::ostream & out, char const * tc)
 void bound_info::print(const char * tc) {
     TRACE(tc, tout << "Quantifier " << mk_pp(m_q, m_m) << " has the following bounds : \n";);
     for (unsigned i=0; i<m_var_order.size(); i++) {
@@ -474,7 +478,7 @@ bool bound_info::is_trivial(unsigned idx) {
 void bound_info::get_body(expr_ref& body, bool inc_bounds){
     if (m_is_valid) {
         expr_ref_buffer lits(m_m);
-        if( inc_bounds ){
+        if (inc_bounds) {
             for (unsigned i = 0; i < m_var_order.size(); i++) {
                 int index = m_var_order[i];
                 sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-index);
@@ -518,6 +522,7 @@ unsigned bound_info::get_var_order_index(unsigned idx) {
     return UINT_MAX;
 }
 
+// [Leo]: This method does not belong here.
 void bound_info::apply_rewrite(th_rewriter& rw) {
     for (unsigned i = 0; i < m_l.size(); i++ ) {
         expr_ref result(m_m);

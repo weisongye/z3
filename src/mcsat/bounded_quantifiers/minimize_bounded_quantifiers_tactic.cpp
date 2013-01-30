@@ -29,7 +29,7 @@ class minimize_bounded_quantifiers_tactic : public tactic {
         bv_util m_bvu;
         bound_propagator::numeral_manager m_nm;
         bound_propagator::allocator m_alloc;
-        th_rewriter m_arith_simp;
+        th_rewriter m_arith_simp; // [Leo]: Do we need this?
         rw_cfg(ast_manager & _m):m_m(_m), m_au(_m), m_bvu(_m), m_arith_simp(_m){
             params_ref arith_p;
             arith_p.set_bool("sort_sums", true);
@@ -50,7 +50,7 @@ class minimize_bounded_quantifiers_tactic : public tactic {
             if (bi.compute()) {
                 bi.print("minimize_bounded_quantifiers");
                 //must rewrite the bounds
-                bi.apply_rewrite(m_arith_simp);
+                bi.apply_rewrite(m_arith_simp); // [Leo]: We should remove this. We can add a simplification pass before minimize.
                 propagate_bound_info pbi(m_m, m_au, m_nm, m_alloc);
                 if (pbi.compute(bi)) {
                     if (bi.is_trivial_sat()) {
@@ -141,10 +141,10 @@ public:
 };
 
 tactic * mk_minimize_bounded_quantifiers_tactic_core(ast_manager & m, params_ref const & p) {
-  return alloc(minimize_bounded_quantifiers_tactic, m, p);
+    return alloc(minimize_bounded_quantifiers_tactic, m, p);
 }
 
 tactic * mk_minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
-  return and_then(mk_normalize_bounded_quantifiers_tactic(m), mk_minimize_bounded_quantifiers_tactic_core(m,p));
+    return and_then(mk_normalize_bounded_quantifiers_tactic(m), mk_minimize_bounded_quantifiers_tactic_core(m,p));
 }
 

@@ -22,14 +22,15 @@ Author:
 #include"ast_pp.h"
 #include"th_rewriter.h"
 #include"datatype_decl_plugin.h"
+#include"assertion_stream.h"
 
 class split_datatype_quantifiers_tactic : public tactic {
 
     struct rw_cfg : public default_rewriter_cfg {
     private:
         bool process(quantifier* q, int index, var_subst & vs, var_shifter & vsh, 
-                     sbuffer< sort* > & sorts, sbuffer< symbol > & symbols, expr_ref_buffer & subs, expr_ref_buffer & conj) {
-            if (index<0) {
+                     ptr_buffer<sort> & sorts, sbuffer< symbol > & symbols, expr_ref_buffer & subs, expr_ref_buffer & conj) {
+            if (index < 0) {
                 TRACE("split_datatype_quantifiers-debug", tout << "Quantifier : " << mk_pp( q, m_m ) << "\n";);
                 //add to conjunction
                 expr_ref q_c(m_m);
@@ -41,7 +42,8 @@ class split_datatype_quantifiers_tactic : public tactic {
                     vsh(q_c, q->get_num_decls(), var_change, 0, q_c);
                     TRACE("split_datatype_quantifiers-debug", tout << "Shifted Body : " << mk_pp( q_c, m_m ) << "\n";);
                 }
-                for (unsigned i=0; i<subs.size(); i++) {
+                // [Leo]: The for-loop should be inside the TRACE
+                for (unsigned i = 0; i < subs.size(); i++) {
                     TRACE("split_datatype_quantifiers-debug", tout << "subsitutions : " << i << " -> " << mk_pp( subs[i], m_m ) << "\n";);
                 }
                 vs(q_c, subs.size(), subs.c_ptr(), q_c);
@@ -68,8 +70,8 @@ class split_datatype_quantifiers_tactic : public tactic {
                 if (m_dtu.is_datatype(s)) {
                     ptr_vector<func_decl> const * cons = m_dtu.get_datatype_constructors(s);
                     for (unsigned i=0; i<m_dtu.get_datatype_num_constructors(s); i++) {
-                        sbuffer< sort* > new_sorts;
-                        sbuffer< symbol > new_symbols;
+                        ptr_buffer<sort> new_sorts;
+                        sbuffer<symbol> new_symbols;
                         new_sorts.append(sorts.size(), sorts.c_ptr());
                         new_symbols.append(symbols);
                         //split based on constructor
@@ -109,7 +111,7 @@ class split_datatype_quantifiers_tactic : public tactic {
         datatype_util m_dtu;
         rw_cfg(ast_manager & _m):m_m(_m), m_dtu(_m){}
         
-	    bool reduce_quantifier(quantifier * old_q, 
+        bool reduce_quantifier(quantifier * old_q, 
                                expr * new_body, 
                                expr * const * new_patterns, 
                                expr * const * new_no_patterns,
@@ -119,7 +121,7 @@ class split_datatype_quantifiers_tactic : public tactic {
             if (q->is_forall()) {
                 TRACE("split_datatype_quantifiers",tout << "Process " << mk_pp(q,m_m) << "\n";);
                 // keep track of variables
-                sbuffer< sort* > new_sorts;
+                ptr_buffer<sort> new_sorts;
                 sbuffer< symbol > new_symbols;
                 expr_ref_buffer subs(m_m);
                 expr_ref_buffer conj(m_m);
@@ -153,7 +155,7 @@ public:
     }
 
     virtual tactic * translate(ast_manager & m) {
-	    return alloc(split_datatype_quantifiers_tactic, m, m_params);
+        return alloc(split_datatype_quantifiers_tactic, m, m_params);
     }
 
     virtual ~split_datatype_quantifiers_tactic() {}
@@ -162,41 +164,49 @@ public:
 
     virtual void collect_param_descrs(param_descrs & r) { }
 
+    void apply(assertion_stream & g) {
+        TRACE("split_datatype_quantifiers", g.display(tout););
+        fail_if_proof_generation("split_datatype_quantifiers_tactic", g.proofs_enabled());
+        ast_manager & m = g.m();
+        SASSERT(g.is_well_sorted());
+        stream_report report("split_datatype_quantifiers", g);
+        unsigned sz = g.size();
+        expr_ref new_curr(m);
+        for (unsigned i = g.qhead(); i < sz; i++) {
+            expr * curr = g.form(i);
+            m_rw(curr, new_curr);
+            g.update(i, new_curr, 0, g.dep(i));
+        }
+        TRACE("split_datatype_quantifiers", g.display(tout););
+        SASSERT(g.is_well_sorted());
+    }
+
     virtual void operator()(goal_ref const & g, 
                             goal_ref_buffer & result, 
                             model_converter_ref & mc, 
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
-        TRACE("split_datatype_quantifiers", tout << "params: " << m_params << "\n"; g->display(tout););
-	    fail_if_proof_generation("split_datatype_quantifiers_tactic", g);
-	    ast_manager & m = g->m();
-        SASSERT(g->is_well_sorted());
         mc = 0; pc = 0; core = 0;
-        tactic_report report("split_datatype_quantifiers", *g);
-        unsigned sz = g->size();
-	    expr_ref new_curr(m);
-        for (unsigned i = 0; i < sz; i++) {
-            expr * curr = g->form(i);
-	        m_rw(curr, new_curr);
-            g->update(i, new_curr, 0, g->dep(i));
-        }
+        goal2stream s(*(g.get()));
+        apply(s);
         g->inc_depth();
         result.push_back(g.get());
-        TRACE("split_datatype_quantifiers", g->display(tout););
-        SASSERT(g->is_well_sorted());
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        apply(strm);
     }
     
     virtual void cleanup() {
-	    m_rw.cleanup();
+        m_rw.cleanup();
     }
-
+    
     virtual void set_cancel(bool f) {
-	    m_rw.set_cancel(f);
+        m_rw.set_cancel(f);
     }
 };
 
-
 tactic * mk_split_datatype_quantifiers_tactic(ast_manager & m, params_ref const & p) {
-  std::cout << "mk_split_datatype_quantifiers_tactic\n";
-  return alloc(split_datatype_quantifiers_tactic, m, p);
+    return alloc(split_datatype_quantifiers_tactic, m, p);
 }

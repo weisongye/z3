@@ -185,6 +185,6 @@ public:
 };
 
 tactic * mk_normalize_bounded_quantifiers_tactic(ast_manager & m) {
-  return alloc(normalize_bounded_quantifiers_tactic, m);
+    return alloc(normalize_bounded_quantifiers_tactic, m);
 }
 

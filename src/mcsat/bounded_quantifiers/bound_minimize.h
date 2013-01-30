@@ -20,8 +20,7 @@ Author:
 #include"bound_info.h"
 #include"bound_propagator.h"
 
-class propagate_bound_info
-{
+class propagate_bound_info {
 private:
     ast_manager & m_m;
     arith_util & m_au;
@@ -41,20 +40,19 @@ private:
     void introduce_var(sort * s, expr_ref & x, expr_ref_buffer & terms,  sbuffer<int> & coeffs, bound_propagator::var & vvar, bound_propagator::var & bvar);
 public:
     propagate_bound_info(ast_manager& m, arith_util & au, bound_propagator::numeral_manager & nm, bound_propagator::allocator & alloc ) : 
-      m_m(m), m_au(au), m_bp( nm, alloc ), m_bp_exprs(m_m){}
+        m_m(m), m_au(au), m_bp( nm, alloc ), m_bp_exprs(m_m){}
 
     bool compute(bound_info& bi);
     void print( const char * tc );
 };
 
-class bv_trans_bound_info 
-{
+class bv_trans_bound_info {
 private:
     ast_manager & m_m;
     bv_util & m_bvu;
 public:
     bv_trans_bound_info(ast_manager & m, bv_util & bvu) :
-      m_m(m), m_bvu(bvu){}
+      m_m(m), m_bvu(bvu) {}
     
     bool compute(bound_info& bi);
     void print( const char * tc );

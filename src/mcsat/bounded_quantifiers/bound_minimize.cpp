@@ -21,6 +21,7 @@ bool propagate_bound_info::get_monomial( expr * e, expr_ref_buffer & terms,  sbu
     if (m_au.is_add(e)) {
         app * a = to_app(e);
         for (unsigned i = 0; i<a->get_num_args(); i++ ){
+            // [Leo]: Why do we have this recursive call?
             if (!get_monomial(a->get_arg(i), terms, coeffs, cval)) {
                 return false;
             }
@@ -31,6 +32,7 @@ bool propagate_bound_info::get_monomial( expr * e, expr_ref_buffer & terms,  sbu
         rational c;
         if (m_au.is_numeral(to_app(e)->get_arg(0), c)) {
             terms.push_back(to_app(e)->get_arg(1));
+            // [Leo]: This is unsafe, c may not fit in an Int64
             coeffs.push_back((int)c.get_int64());
             return true;
         }
@@ -39,6 +41,7 @@ bool propagate_bound_info::get_monomial( expr * e, expr_ref_buffer & terms,  sbu
     else {
         rational c;
         if( m_au.is_numeral(e, c)) {
+            // [Leo]: This is unsafe, c may not fit in an Int64
             cval = (int)c.get_int64();
             return true;
         }
@@ -72,7 +75,7 @@ void propagate_bound_info::introduce_var(sort * s, expr_ref & x, expr_ref_buffer
     } 
     else {
         //first, ensure that each term has been introduced
-        sbuffer<mpq> as;
+        sbuffer<mpq> as; // [Leo]: this will leak if the multi-precision rational value does not fit in a machine integer.
         sbuffer<bound_propagator::var> xs;
         as.push_back(mpq(-1));
         xs.push_back(vvar);
@@ -120,7 +123,7 @@ bool propagate_bound_info::compute(bound_info& bi) {
                 TRACE("propagate-bound-info-debug", tout << "Process bound " << mk_pp(upper,m_m) << "\n";);
                 //process x <= u into x <= c1*t1 + ... + cn*tn + c
                 expr_ref_buffer terms(m_m);
-                sbuffer<int> coeffs;
+                sbuffer<int> coeffs; 
                 int cval = 0;
                 if (get_monomial(upper, terms, coeffs, cval)) {
                     // introduce variable for v,  v = x - (c1*t1 + ... + cn*tn)
@@ -184,6 +187,7 @@ bool propagate_bound_info::compute(bound_info& bi) {
                                 bnd.setx(index, b);
                             }
                             else {
+                                // [Leo]: ???
                                 //combine bounds?
                             }
                         }
@@ -199,9 +203,11 @@ bool propagate_bound_info::compute(bound_info& bi) {
     }
 }
 
-void propagate_bound_info::print( const char * tc ) {
+// [Leo]: we should use display(std::ostream & out) instead of print to std::cout
+// [Leo]: What is tc? It is not used.
+void propagate_bound_info::print(const char * tc) {
     std::cout << "Propagated bounds :\n";
-    for (unsigned i = 0; i<m_bp_vars.size(); i++) {
+    for (unsigned i = 0; i < m_bp_vars.size(); i++) {
         bound_propagator::var v = m_bp_vars[i];
         //get upper/lower bounds
         if (m_bp.has_lower(v)) {
