@@ -404,16 +404,8 @@ void bound_info::print(const char * tc) {
     TRACE(tc, tout << "Body : " << mk_pp(body_expr, m_m) << "\n\n";);
 }
 
-<<<<<<< HEAD
 bool bound_info::is_bound(unsigned idx){
-    sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-idx);
-||||||| merged common ancestors
-bool bound_info::is_bound( unsigned idx ){
-    sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-idx);
-=======
-bool bound_info::is_bound( unsigned idx ){
     sort * s = m_q->get_decl_sort(idx);
->>>>>>> andy
     if (m_au.is_int(s)) {
         return is_int_bound(idx);
     }
