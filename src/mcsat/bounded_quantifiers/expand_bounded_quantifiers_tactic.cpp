@@ -279,5 +279,6 @@ tactic * mk_expand_bounded_quantifiers_tactic_core(ast_manager & m, params_ref c
 }
 
 tactic * mk_expand_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
-  return and_then(mk_normalize_bounded_quantifiers_tactic(m), mk_expand_bounded_quantifiers_tactic_core(m,p));
+    return and_then(mk_normalize_bounded_quantifiers_tactic(m), 
+                    mk_expand_bounded_quantifiers_tactic_core(m,p));
 }

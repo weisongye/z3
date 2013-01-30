@@ -21,6 +21,7 @@ Author:
 #include"ast_pp.h"
 #include"normalize_bounded_quantifiers_tactic.h"
 #include"assertion_stream.h"
+#include"simplify_tactic.h"
 
 class minimize_bounded_quantifiers_tactic : public tactic {
     struct rw_cfg : public default_rewriter_cfg {
@@ -145,6 +146,8 @@ tactic * mk_minimize_bounded_quantifiers_tactic_core(ast_manager & m, params_ref
 }
 
 tactic * mk_minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
-    return and_then(mk_normalize_bounded_quantifiers_tactic(m), mk_minimize_bounded_quantifiers_tactic_core(m,p));
+    return and_then(mk_normalize_bounded_quantifiers_tactic(m), 
+                    mk_minimize_bounded_quantifiers_tactic_core(m, p),
+                    mk_simplify_tactic(m));
 }
 

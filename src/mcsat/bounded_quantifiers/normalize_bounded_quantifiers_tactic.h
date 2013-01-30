@@ -21,6 +21,7 @@ Author:
 class ast_manager;
 class tactic;
 
+tactic * mk_normalize_bounded_quantifiers_tactic_core(ast_manager & m);
 tactic * mk_normalize_bounded_quantifiers_tactic(ast_manager & m);
 
 /*

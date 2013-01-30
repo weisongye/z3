@@ -20,6 +20,8 @@ Author:
 #include"bound_info.h"
 #include"assertion_stream.h"
 #include"ast_pp.h"
+#include"simplify_tactic.h"
+#include"nnf_tactic.h"
 
 class normalize_bounded_quantifiers_tactic : public tactic {
 
@@ -184,7 +186,17 @@ public:
     }
 };
 
-tactic * mk_normalize_bounded_quantifiers_tactic(ast_manager & m) {
+tactic * mk_normalize_bounded_quantifiers_tactic_core(ast_manager & m) {
     return alloc(normalize_bounded_quantifiers_tactic, m);
+}
+
+tactic * mk_normalize_bounded_quantifiers_tactic(ast_manager & m) {
+    params_ref p;
+    p.set_bool("arith_lhs", true);
+    p.set_bool("elim_and", true);
+    return and_then(using_params(mk_simplify_tactic(m), p),
+                    mk_snf_tactic(m),
+                    mk_normalize_bounded_quantifiers_tactic_core(m),
+                    mk_simplify_tactic(m));
 }
 

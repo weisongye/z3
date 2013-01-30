@@ -20,7 +20,6 @@ Author:
 #include"rewriter_def.h"
 #include"var_subst.h"
 #include"ast_pp.h"
-#include"th_rewriter.h"
 #include"datatype_decl_plugin.h"
 #include"assertion_stream.h"
 
