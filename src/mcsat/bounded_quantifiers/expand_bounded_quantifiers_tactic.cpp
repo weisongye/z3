@@ -22,7 +22,7 @@ Author:
 #include"ast_util.h"
 #include"th_rewriter.h"
 #include"normalize_bounded_quantifiers_tactic.h"
-#include"bounded_quantifiers_params.hpp"
+#include"expand_bounded_quantifiers_params.hpp"
 #include"assertion_stream.h"
 
 //expand tactic
@@ -147,7 +147,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
         }
 
         void updt_params(params_ref const & _p) {
-            bounded_quantifiers_params p(_p);
+            expand_bounded_quantifiers_params p(_p);
             m_exp_bound            = p.domain();
             m_exp_bound_inst_limit = p.max_instances();
         }
@@ -234,7 +234,7 @@ public:
     }
 
     virtual void collect_param_descrs(param_descrs & r) { 
-	bounded_quantifiers_params::collect_param_descrs(r);
+	expand_bounded_quantifiers_params::collect_param_descrs(r);
     }
 
     virtual void operator()(goal_ref const & g, 
