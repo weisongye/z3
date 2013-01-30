@@ -304,18 +304,17 @@ bool bound_info::compute() {
                     //if necessary, add trivial bv bound
                     if (new_bnd_vars.empty()) {
                         for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
-                            unsigned idx = m_q->get_num_decls()-1-i;
-                            sort * s = m_q->get_decl_sort(idx);
-                            if (m_bvu.is_bv_sort(s) && !is_bound(idx)) {
-                                var * v = m_m.mk_var(idx, s);
+                            sort * s = m_q->get_decl_sort(m_q->get_num_decls()-i-1);
+                            if (m_bvu.is_bv_sort(s) && !is_bound(i)) {
+                                var * v = m_m.mk_var(i, s);
                                 TRACE("bound-info-debug",tout << "add trivial bound for bv variable : " << mk_pp(v,m_m) << "\n";);
                                 expr_ref auto_l(m_m);
                                 expr_ref auto_u(m_m);
                                 get_bv_auto_bound(true, false, s, auto_l);
                                 get_bv_auto_bound(false, false, s, auto_u);
-                                m_l.setx(idx, auto_l);
-                                m_u.setx(idx, auto_u);
-                                new_bnd_vars.push_back(idx);
+                                m_l.setx(i, auto_l);
+                                m_u.setx(i, auto_u);
+                                new_bnd_vars.push_back(i);
                                 break;
                             }
                         }
@@ -421,7 +420,7 @@ void bound_info::print( const char * tc ) {
 }
 
 bool bound_info::is_bound( unsigned idx ){
-    sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-idx);
+    sort * s = m_q->get_decl_sort(idx);
     if (m_au.is_int(s)) {
         return is_int_bound(idx);
     }
