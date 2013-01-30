@@ -36,6 +36,7 @@ tactic * mk_qfbv_tactic(ast_manager & m, params_ref const & p) {
     main_p.set_bool("elim_and", true);
     main_p.set_bool("push_ite_bv", true);
     main_p.set_bool("blast_distinct", true);
+    main_p.set_bool("ule_split", true);
 
     params_ref simp2_p = p;
     simp2_p.set_bool("som", true);

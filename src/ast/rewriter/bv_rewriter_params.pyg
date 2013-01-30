@@ -9,5 +9,5 @@ def_module_params(module_name='rewriter',
                           ("hi_div0", BOOL, True, "use the 'hardware interpretation' for division by zero (for bit-vector terms)"),
                           ("mul2concat", BOOL, False, "replace multiplication by a power of two into a concatenation"),
                           ("bvnot2arith", BOOL, False, "replace (bvnot x) with (bvsub -1 x)"),
-                          ("ule_split", BOOL, True, "split inequalities of the form (bvule a #x00...) into an equality and an inequality.")
+                          ("ule_split", BOOL, False, "split inequalities of the form (bvule a #x00...) into an equality and an inequality.")
                           ))
