@@ -24,6 +24,7 @@ Author:
 #include"th_rewriter.h"
 #include"bound_minimize.h"
 #include"bounded_quantifiers_params.hpp"
+#include"assertion_stream.h"
 
 class normalize_bounded_quantifiers_tactic : public tactic {
 
@@ -34,7 +35,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
         datatype_util m_dtu;
         rw_cfg(ast_manager & _m):m(_m), m_au(m), m_bvu(m), m_dtu(m){}
         
-	    bool reduce_quantifier(quantifier * old_q, 
+        bool reduce_quantifier(quantifier * old_q, 
                                expr * new_body, 
                                expr * const * new_patterns, 
                                expr * const * new_no_patterns,
@@ -42,7 +43,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                                proof_ref & result_pr) {
             TRACE("normalize_bounded_quantifiers",tout << "Process " << mk_pp(old_q,m) << "\n";);
             quantifier * q = m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
-	        bound_info bi(m, m_au, m_bvu, m_dtu, q);
+            bound_info bi(m, m_au, m_bvu, m_dtu, q);
             if (bi.compute()) {
                 //bi.print("normalize_bounded_quantifiers-debug");
                 expr_ref_buffer bound_lits(m);
@@ -76,7 +77,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                             bound_lits.push_back(m.mk_not(m_au.mk_le(v, upper)));
                             subs_val = v;
                         }
-                        else{
+                        else {
                             bound_lits.push_back(m.mk_not(m_au.mk_le(v, m_au.mk_sub(upper, lower))));
                             subs_val = m_au.mk_add(v, lower);
                         }
@@ -92,7 +93,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                             bound_lits.push_back(m.mk_not(m_bvu.mk_ule(v, m_bvu.mk_bv_sub(upper, lower))));
                             //additionally, body is satisfied when lower > upper
                             bound_lits.push_back(m.mk_not(bi.is_bv_signed_bound(i) ? m_bvu.mk_sle(lower, upper) :
-                                                                                     m_bvu.mk_ule(lower, upper)));
+                                                          m_bvu.mk_ule(lower, upper)));
                             subs_val = m_bvu.mk_bv_add(v, lower);
                         }
                     }
@@ -101,7 +102,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                     subs.setx(q->get_num_decls()-1-i, subs_val);
                 }
                 //apply substitution to each of the body literals
-                for (unsigned i=0; i<body_lits.size(); i++) {
+                for (unsigned i = 0; i < body_lits.size(); i++) {
                     expr_ref bd_res(m);
                     vs(body_lits[i], subs.size(), subs.c_ptr(), bd_res);
                     body_lits.setx(i, bd_res);
@@ -110,17 +111,12 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                 bound_lits.append(body_lits.size(), body_lits.c_ptr());
                 result = m.update_quantifier(q, m.mk_or(bound_lits.size(), bound_lits.c_ptr()));
                 TRACE("normalize_bounded_quantifiers",tout << "Normalized " << mk_pp(old_q,m) << " to \n     " << mk_pp(result,m) << "\n";);
-                /* (test if the next bounds found are indeed normalized)
-                bound_info bi2(m, m_au, m_bvu, to_quantifier(result));
-                if( bi2.compute()){
-                    bi2.print("");
-                }
-                */
-	            return true;
+                return true;
             }
             else {
                 TRACE("normalize_bounded_quantifiers",tout << "Could not find bounds.\n";);
             }
+            
             return false;
         }
     };
@@ -132,62 +128,70 @@ class normalize_bounded_quantifiers_tactic : public tactic {
             m_cfg(m) {
         }
     };
-    
-    rw            m_rw;
-    params_ref    m_params;
+
+    rw m_rw;
+
 public:
-    normalize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p):
-	m_rw(m),
-	m_params(p) {
+    normalize_bounded_quantifiers_tactic(ast_manager & m):
+        m_rw(m) {
     }
 
     virtual tactic * translate(ast_manager & m) {
-	return alloc(normalize_bounded_quantifiers_tactic, m, m_params);
+	return alloc(normalize_bounded_quantifiers_tactic, m);
     }
 
     virtual ~normalize_bounded_quantifiers_tactic() {}
 
-    virtual void updt_params(params_ref const & p) { m_params = p; }
+    virtual void updt_params(params_ref const & p) {}
 
-    virtual void collect_param_descrs(param_descrs & r) { }
+    virtual void collect_param_descrs(param_descrs & r) {}
+
+    void apply(assertion_stream & g) {
+        TRACE("normalize_bounded_quantifiers", g.display(tout););
+        fail_if_proof_generation("normalize_bounded_quantifiers", g.proofs_enabled());
+        stream_report report("normalize_bounded_quantifiers", g);
+        ast_manager & m = g.m();
+        SASSERT(g.is_well_sorted());
+        unsigned sz = g.size();
+        expr_ref new_curr(m);
+        for (unsigned i = g.qhead(); i < sz; i++) {
+            expr * curr = g.form(i);
+            m_rw(curr, new_curr);
+            g.update(i, new_curr, 0, g.dep(i));
+        }
+        TRACE("normalize_bounded_quantifiers", g.display(tout););
+        SASSERT(g.is_well_sorted());
+    }
 
     virtual void operator()(goal_ref const & g, 
                             goal_ref_buffer & result, 
                             model_converter_ref & mc, 
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
-        TRACE("normalize_bounded_quantifiers", tout << "params: " << m_params << "\n"; g->display(tout););
-	    fail_if_proof_generation("normalize_bounded_quantifiers_tactic", g);
-	    ast_manager & m = g->m();
-        SASSERT(g->is_well_sorted());
         mc = 0; pc = 0; core = 0;
-        tactic_report report("normalize_bounded_quantifiers", *g);
-        unsigned sz = g->size();
-	    expr_ref new_curr(m);
-        for (unsigned i = 0; i < sz; i++) {
-            expr * curr = g->form(i);
-	        m_rw(curr, new_curr);
-            g->update(i, new_curr, 0, g->dep(i));
-        }
+        goal2stream s(*(g.get()));
+        apply(s);
         g->inc_depth();
         result.push_back(g.get());
-        TRACE("normalize_bounded_quantifiers", g->display(tout););
-        SASSERT(g->is_well_sorted());
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        apply(strm);
     }
     
     virtual void cleanup() {
-	    m_rw.cleanup();
+        m_rw.cleanup();
     }
 
     virtual void set_cancel(bool f) {
-	    m_rw.set_cancel(f);
+        m_rw.set_cancel(f);
     }
 };
 
 
-tactic * mk_normalize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
-  std::cout << "mk_normalize_bounded_quantifiers_tactic\n";
-  return alloc(normalize_bounded_quantifiers_tactic, m, p);
+tactic * mk_normalize_bounded_quantifiers_tactic(ast_manager & m) {
+  return alloc(normalize_bounded_quantifiers_tactic, m);
 }
 
 class minimize_bounded_quantifiers_tactic : public tactic {
@@ -205,7 +209,7 @@ class minimize_bounded_quantifiers_tactic : public tactic {
             m_arith_p.set_bool("ule-split", false);
         }
         
-	    bool reduce_quantifier(quantifier * old_q, 
+        bool reduce_quantifier(quantifier * old_q, 
                                expr * new_body, 
                                expr * const * new_patterns, 
                                expr * const * new_no_patterns,
@@ -213,7 +217,7 @@ class minimize_bounded_quantifiers_tactic : public tactic {
                                proof_ref & result_pr) {
             TRACE("minimize_bounded_quantifiers",tout << "Process " << mk_pp(old_q,m_m) << "\n";);
             quantifier * q = m_m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
-	        bound_info bi(m_m, m_au, m_bvu, m_dtu, q);
+            bound_info bi(m_m, m_au, m_bvu, m_dtu, q);
             if (bi.compute()) {
                 bi.print("minimize_bounded_quantifiers");
                 //must rewrite the bounds
@@ -236,6 +240,7 @@ class minimize_bounded_quantifiers_tactic : public tactic {
             return false;
         }
     };
+    
     struct rw : public rewriter_tpl<rw_cfg> {
         rw_cfg m_cfg;
         rw(ast_manager & m):
@@ -246,6 +251,7 @@ class minimize_bounded_quantifiers_tactic : public tactic {
     
     rw            m_rw;
     params_ref    m_params;
+
 public:
     minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p):
 	m_rw(m),
@@ -268,8 +274,8 @@ public:
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
         TRACE("minimize_bounded_quantifiers", tout << "params: " << m_params << "\n"; g->display(tout););
-	    fail_if_proof_generation("minimize_bounded_quantifiers_tactic", g);
-	    ast_manager & m = g->m();
+        fail_if_proof_generation("minimize_bounded_quantifiers_tactic", g);
+        ast_manager & m = g->m();
         SASSERT(g->is_well_sorted());
         mc = 0; pc = 0; core = 0;
         tactic_report report("minimize_bounded_quantifiers", *g);
@@ -296,12 +302,11 @@ public:
 };
 
 tactic * mk_minimize_bounded_quantifiers_tactic_core(ast_manager & m, params_ref const & p) {
-  std::cout << "mk_minimize_bounded_quantifiers_tactic\n";
   return alloc(minimize_bounded_quantifiers_tactic, m, p);
 }
 
 tactic * mk_minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
-  return and_then(mk_normalize_bounded_quantifiers_tactic(m,p), mk_minimize_bounded_quantifiers_tactic_core(m,p));
+  return and_then(mk_normalize_bounded_quantifiers_tactic(m), mk_minimize_bounded_quantifiers_tactic_core(m,p));
 }
 
 
@@ -310,10 +315,11 @@ tactic * mk_minimize_bounded_quantifiers_tactic(ast_manager & m, params_ref cons
 //    int expand_bound:         what bound we should try for integers, bit-vectors
 //    int exp_bound_limit:      if bound is already known to be 0 <= x <= n for some variable x and value n, and if n>exp_bound_limit, we fail.
 class expand_bounded_quantifiers_tactic : public tactic {
+
     struct rw_cfg : public default_rewriter_cfg {
-    private:
-        bool process(bound_info & bi, unsigned index, var_subst & vs, expr_ref_buffer & val_subs, expr_ref_buffer & exp_result) {
-            if (index==bi.m_var_order.size()) {
+        
+        bool process(bound_info & bi, unsigned index, expr_ref_buffer & val_subs, expr_ref_buffer & exp_result) {
+            if (index == bi.m_var_order.size()) {
                 if (m_inst_count>=m_exp_bound_inst_limit) {
                     return false;
                 }
@@ -324,9 +330,6 @@ class expand_bounded_quantifiers_tactic : public tactic {
                     instantiate(m, bi.m_q, val_subs.c_ptr(), subs_body);
                     arith_simp(subs_body,subs_body);
                     exp_result.push_back(subs_body);
-                    //std::cout << "val subs = " << val_subs.size() << std::endl;
-                    //std::cout << "body = " << mk_pp(body,m) << std::endl;
-                    //std::cout << "subs_body = " << mk_pp(subs_body,m) << std::endl;
                     return true;
                 }
             }
@@ -337,25 +340,24 @@ class expand_bounded_quantifiers_tactic : public tactic {
                 expr_ref upper(m);
                 upper = bi.get_upper_bound(i);
                 //apply substitution to "upper" based on val_subs
-                vs(upper, val_subs.size(), val_subs.c_ptr(), upper);
+                SASSERT(bi.m_q->get_num_decls() == val_subs.size());
+                instantiate(m, upper, val_subs.size(), val_subs.c_ptr(), upper);
                 //rewrite upper?
                 arith_simp(upper,upper);
                 //find the constant range
-                int range;
+                rational range;
                 bool success = false;
                 if (m_au.is_int(s)) {
-                    rational ur;
-                    if (m_au.is_numeral(upper, ur)) {
+                    if (m_au.is_numeral(upper, range)) {
                         //the range is already a constant
-                        range = (int)ur.get_uint64();
                         success = true;
                     }
                     else {
                         //the range is the bound we have specified
-                        range = m_exp_bound-1;  //minus one since we have a non-strict lower bound of zero
+                        range = rational(m_exp_bound - 1);  // minus one since we have a non-strict lower bound of zero
                         //must add constraint to result to make it constant
                         expr_ref bnd(m);
-                        bnd = m_au.mk_le(upper, m_au.mk_numeral(rational(range), true));
+                        bnd = m_au.mk_le(upper, m_au.mk_numeral(range, true));
                         TRACE("expand_bounded_quantifiers-debug", tout << "Add symbolic constraint " << mk_pp(bnd,m) << "\n";);
                         if (!exp_result.contains(bnd)) {
                             m_precise = false;
@@ -365,17 +367,15 @@ class expand_bounded_quantifiers_tactic : public tactic {
                     }
                 }
                 else if (m_bvu.is_bv_sort(s)) {
-                    rational ur;
                     unsigned sz;
-                    if (m_bvu.is_numeral(upper, ur, sz)) {
-                        range = (int)ur.get_uint64();
+                    if (m_bvu.is_numeral(upper, range, sz)) {
                         success = true;
                     }
                     else {
-                        range = m_exp_bound - 1; //minus one since we have a non-strict lower bound of zero
+                        range = rational(m_exp_bound - 1); //minus one since we have a non-strict lower bound of zero
                         //must add constraint to result to make it constant
                         expr_ref bnd(m);
-                        bnd = m_bvu.mk_ule(upper, m_bvu.mk_numeral(rational(range), s));
+                        bnd = m_bvu.mk_ule(upper, m_bvu.mk_numeral(range, s));
                         if (!exp_result.contains(bnd)) {
                             m_precise = false;
                             exp_result.push_back(bnd);
@@ -385,15 +385,20 @@ class expand_bounded_quantifiers_tactic : public tactic {
                 }
                 //if we found a range and it is less than our bound limit
                 if (success) {
-                    //iterate over all values in the range
-                    for (int v=0; v<=range; v++) {
-                        expr_ref val(m);
-                        val = m_au.is_int(s) ? m_au.mk_numeral(rational(v), true) : m_bvu.mk_numeral(rational(v),s);
-                        val_subs.setx(bi.m_q->get_num_decls() - 1 - i, val);
-                        TRACE("expand_bounded_quantifiers-debug", tout << "Consider " << v << " / " << i << "\n";);
-                        //check if the body is trivially satisfied?
-                        if (!process(bi, index+1, vs, val_subs, exp_result)) {
+                    if (range.is_nonneg()) {
+                        if (!range.is_uint64() || range.get_uint64() > UINT_MAX)
                             return false;
+                        unsigned _range = static_cast<unsigned>(range.get_uint64());
+                        //iterate over all values in the range
+                        for (unsigned v = 0; v <= _range; v++) {
+                            expr_ref val(m);
+                            val = m_au.is_int(s) ? m_au.mk_numeral(rational(v), true) : m_bvu.mk_numeral(rational(v),s);
+                            val_subs.setx(bi.m_q->get_num_decls() - 1 - i, val);
+                            TRACE("expand_bounded_quantifiers-debug", tout << "Consider " << v << " / " << i << "\n";);
+                            //check if the body is trivially satisfied?
+                            if (!process(bi, index+1, val_subs, exp_result)) {
+                                return false;
+                            }
                         }
                     }
                     return true;
@@ -404,6 +409,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                 }
             }
         }
+
     public:
         ast_manager & m;
         arith_util m_au;
@@ -415,6 +421,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
         params_ref arith_p;
         th_rewriter arith_simp;
         bool m_precise;
+
         rw_cfg(ast_manager & _m, params_ref const & p):
             m(_m), m_au(m), m_bvu(m), m_dtu(m), arith_simp(m,arith_p){
             arith_p.set_bool("sort_sums", true);
@@ -430,15 +437,16 @@ class expand_bounded_quantifiers_tactic : public tactic {
 	    m_exp_bound_inst_limit = p.max_instances();
 	}
 
-	    bool reduce_quantifier(quantifier * old_q, 
+        bool reduce_quantifier(quantifier * old_q, 
                                expr * new_body, 
                                expr * const * new_patterns, 
                                expr * const * new_no_patterns,
                                expr_ref & result,
                                proof_ref & result_pr) {
             TRACE("expand_bounded_quantifiers", tout << "Process " << mk_pp(old_q,m) << "\n";);
-            quantifier * q = m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
-	        bound_info bi(m, m_au, m_bvu, m_dtu, q);
+            quantifier_ref q(m);
+            q = m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
+            bound_info bi(m, m_au, m_bvu, m_dtu, q);
             if (bi.compute()) {
                 //check that all lower bounds are zero
                 if (bi.is_normalized()) {
@@ -451,8 +459,6 @@ class expand_bounded_quantifiers_tactic : public tactic {
                         expr * v = m.mk_var(q->get_num_decls()-1-i, s);
                         val_subs.push_back(v);
                     }
-                    //the variable substitution object
-                    var_subst vs(m);
                     //simplify the new body of quantifier
                     expr_ref body(m);
                     body = q->get_expr();
@@ -462,11 +468,10 @@ class expand_bounded_quantifiers_tactic : public tactic {
                     expr_ref_buffer exp_result(m);
                     //now, populate the result buffer
                     m_inst_count = 0;
-                    if (process(bi, 0, vs, val_subs, exp_result)) {
+                    if (process(bi, 0, val_subs, exp_result)) {
                         //result is a conjunction of the literals in exp_result
                         result = exp_result.size()>1 ? m.mk_and(exp_result.size(), exp_result.c_ptr()) : (exp_result.size()==1 ? exp_result[0] : m.mk_true());
                         TRACE("expand_bounded_quantifiers", tout << "Expand, got result " << mk_pp(result,m) << "\n";);
-                        //std::cout << "Got result " << mk_pp(result,m) << std::endl;
                         return true;
                     }
                     else {
@@ -476,15 +481,14 @@ class expand_bounded_quantifiers_tactic : public tactic {
                 else {
                     TRACE("expand_bounded_quantifiers",tout << "Bounds are not normalized.\n";);
                 }
-                //std::cout << "Could not process " << mk_pp(q,m) << "\n";
-                //bi.print("");
             }
             else {
                 TRACE("expand_bounded_quantifiers",tout << "Could not find bounds.\n";);
             }
-	        return false;
+            return false;
         }
     };
+
     struct rw : public rewriter_tpl<rw_cfg> {
         rw_cfg m_cfg;
         rw(ast_manager & m, params_ref const & p):
@@ -493,8 +497,10 @@ class expand_bounded_quantifiers_tactic : public tactic {
         }
         bool is_precise() { return m_cfg.m_precise; }
     };
+
     rw            m_rw;
     params_ref    m_params;
+
 public:
     expand_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p):
 	m_rw(m, p) {
@@ -522,13 +528,13 @@ public:
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
         TRACE("expand_bounded_quantifiers", tout << "params: " << m_params << "\n"; g->display(tout););
-	    fail_if_proof_generation("expand_bounded_quantifiers_tactic", g);
-	    ast_manager & m = g->m();
+        fail_if_proof_generation("expand_bounded_quantifiers_tactic", g);
+        ast_manager & m = g->m();
         SASSERT(g->is_well_sorted());
         mc = 0; pc = 0; core = 0;
         tactic_report report("expand_bounded_quantifiers", *g);
         unsigned sz = g->size();
-	    expr_ref new_curr(m);
+        expr_ref new_curr(m);
         for (unsigned i = 0; i < sz; i++) {
             expr * curr = g->form(i);
             m_rw(curr, new_curr);
@@ -544,20 +550,19 @@ public:
     }
     
     virtual void cleanup() {
-	    m_rw.cleanup();
+        m_rw.cleanup();
     }
-
+    
     virtual void set_cancel(bool f) {
-	    m_rw.set_cancel(f);
+        m_rw.set_cancel(f);
     }
 };
 
 
 tactic * mk_expand_bounded_quantifiers_tactic_core(ast_manager & m, params_ref const & p) {
-  std::cout << "mk_expand_bounded_quantifiers_tactic\n";
   return alloc(expand_bounded_quantifiers_tactic, m, p);
 }
 
 tactic * mk_expand_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p) {
-  return and_then(mk_normalize_bounded_quantifiers_tactic(m,p), mk_expand_bounded_quantifiers_tactic_core(m,p));
+  return and_then(mk_normalize_bounded_quantifiers_tactic(m), mk_expand_bounded_quantifiers_tactic_core(m,p));
 }

@@ -36,19 +36,17 @@ private:
     arith_util & m_au;
     bv_util & m_bvu;
     datatype_util & m_dtu;
-    params_ref m_lit_rewriter_p;
-    th_rewriter m_lit_rewriter;
     bool collect_literals(expr * e, expr_ref_buffer & lits );
     bool get_var_monomial(expr * e, expr_ref & var, expr_ref & coeff);
     bool is_ground_bnd_vars(expr * e);
     void get_bv_auto_bound(bool isLower, bool isSigned, sort * s, expr_ref & result);
     void is_bounded_quantifier_iter(expr_ref_buffer & lits, expr_ref_buffer& bnds, 
-                                    sbuffer<int>& new_bnd_vars, expr_ref_buffer & new_bnds, 
-                                    sbuffer<int>& new_bnds_from_vars, sbuffer<bool> & new_bnds_signs,
+                                    sbuffer<unsigned>& new_bnd_vars, expr_ref_buffer & new_bnds, 
+                                    sbuffer<unsigned>& new_bnds_from_vars, sbuffer<bool> & new_bnds_signs,
                                     expr_ref_buffer & new_ovf);
 public:
     bound_info( ast_manager & m, arith_util & au, bv_util & bvu, datatype_util & dtu, quantifier* q ) : 
-      m_m(m), m_au(au), m_bvu(bvu), m_dtu(dtu), m_q(q), m_l(m), m_u(m), m_sl(m), m_su(m), m_body(m), m_lit_rewriter(m, m_lit_rewriter_p){
+        m_m(m), m_au(au), m_bvu(bvu), m_dtu(dtu), m_q(q, m), m_l(m), m_u(m), m_sl(m), m_su(m), m_body(m) {
         for (unsigned i = 0; i < q->get_num_decls(); i++) {
             m_l.push_back(m.mk_false());
             m_u.push_back(m.mk_false());
@@ -57,44 +55,42 @@ public:
         }
         m_is_valid = false;
         m_is_trivial_sat = false;
-        m_lit_rewriter_p.set_bool("arith_lhs", true);
-        m_lit_rewriter_p.set_bool("ule_split",false);
     }
     bool m_is_valid;
     bool m_is_trivial_sat;
-    quantifier * m_q;
+    quantifier_ref m_q;
     expr_ref_buffer m_l;
     expr_ref_buffer m_u;
     expr_ref_buffer m_sl;
     expr_ref_buffer m_su;
     expr_ref_buffer m_body;
-    sbuffer<int> m_var_order;
+    sbuffer<unsigned> m_var_order;
 
     bool compute();
 
     bool is_valid() { return m_is_valid; }
     bool is_trivial_sat() { return m_is_trivial_sat; }
-    bool is_bound( unsigned idx );
-    bool is_int_bound( unsigned idx ) { return !m_m.is_false(m_l[idx]) && !m_m.is_false(m_u[idx]); }
-    bool is_bv_unsigned_bound( unsigned idx ) { return is_int_bound(idx); }
-    bool is_bv_signed_bound( unsigned idx ) { return !m_m.is_false(m_sl[idx]) && !m_m.is_false(m_su[idx]); }
-    expr* get_lower_bound( unsigned idx ) { return is_bv_signed_bound(idx) ? m_sl[idx] : m_l[idx]; }
-    expr* get_upper_bound( unsigned idx ) { return is_bv_signed_bound(idx) ? m_su[idx] : m_u[idx]; }
-    void print( const char * tc );
+    bool is_bound(unsigned idx);
+    bool is_int_bound(unsigned idx) { return !m_m.is_false(m_l[idx]) && !m_m.is_false(m_u[idx]); }
+    bool is_bv_unsigned_bound(unsigned idx) { return is_int_bound(idx); }
+    bool is_bv_signed_bound(unsigned idx) { return !m_m.is_false(m_sl[idx]) && !m_m.is_false(m_su[idx]); }
+    expr* get_lower_bound(unsigned idx) { return is_bv_signed_bound(idx) ? m_sl[idx] : m_l[idx]; }
+    expr* get_upper_bound(unsigned idx) { return is_bv_signed_bound(idx) ? m_su[idx] : m_u[idx]; }
+    void print(const char * tc);
     //return true if all lower bounds are zero
     bool is_normalized();
     //is bound 
-    bool is_normalized( unsigned idx );
+    bool is_normalized(unsigned idx);
     //is trivial, returns true if bound is entire domain
-    bool is_trivial( unsigned idx );
+    bool is_trivial(unsigned idx);
     //get body
     //  this is the original body without literals that were used for bounds,
     //  and possibly additional literals in the case of bit vectors
-    void get_body( expr_ref& body, bool inc_bounds = true );
+    void get_body(expr_ref& body, bool inc_bounds = true);
     // get quantifier 
     quantifier* get_quantifier();
     // get variable order index for idx
-    int get_var_order_index( unsigned idx );
+    unsigned get_var_order_index(unsigned idx);
     // apply rewriter to bounds
     void apply_rewrite(th_rewriter& as);
 };

@@ -65,6 +65,11 @@ void elim_unused_vars(ast_manager & m, quantifier * q, expr_ref & r);
    (VAR (q->get_num_decls() - 1)) is stored in the first position of the array.
 */
 void instantiate(ast_manager & m, quantifier * q, expr * const * exprs, expr_ref & result);
+/**
+   \brief Similar to the previous function, but replace the variables in e with the expressions in exprs.
+   It also shifts the not substituted variables by num_vars.
+*/
+void instantiate(ast_manager & m, expr * e, unsigned num_vars, expr * const * exprs, expr_ref & result);
 
 /**
    \brief Enumerate set of free variables in expression.

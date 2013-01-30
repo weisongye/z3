@@ -167,7 +167,6 @@ bool propagate_bound_info::compute(bound_info& bi) {
                 sort * s = bi.m_q->get_decl_sort(bi.m_q->get_num_decls()-1-index);
                 if (m_au.is_int(s)) {
                     bound_propagator::var vv = m_bp_bi_vars[i];
-                    bound_propagator::var bv = m_bp_bi_bounds[i];
                     //check the bounds found
                     for (unsigned b=0; b<2; b++) {
                         bool isLower = b==0;

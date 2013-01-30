@@ -149,16 +149,20 @@ void elim_unused_vars(ast_manager & m, quantifier * q, expr_ref & result) {
 }
 
 void instantiate(ast_manager & m, quantifier * q, expr * const * exprs, expr_ref & result) {
-    var_subst subst(m);
-    expr_ref new_expr(m);
-    subst(q->get_expr(), q->get_num_decls(), exprs, new_expr);
-    TRACE("var_subst", tout << mk_pp(q, m) << "\n" << mk_pp(new_expr, m) << "\n";);
-    inv_var_shifter shift(m);
-    shift(new_expr, q->get_num_decls(), result);
-    SASSERT(is_well_sorted(m, result));
+    TRACE("var_subst", tout << mk_pp(q, m) << "\n";);
+    instantiate(m, q->get_expr(), q->get_num_decls(), exprs, result);
     TRACE("instantiate_bug", tout << mk_ismt2_pp(q, m) << "\nusing\n";
           for (unsigned i = 0; i < q->get_num_decls(); i++) tout << mk_ismt2_pp(exprs[i], m) << "\n";
           tout << "\n----->\n" << mk_ismt2_pp(result, m) << "\n";);
+}
+
+void instantiate(ast_manager & m, expr * e, unsigned num_vars, expr * const * exprs, expr_ref & result) {
+    var_subst subst(m);
+    expr_ref new_expr(m);
+    subst(e, num_vars, exprs, new_expr);
+    inv_var_shifter shift(m);
+    shift(new_expr, num_vars, result);
+    SASSERT(is_well_sorted(m, result));
 }
 
 static void get_free_vars_offset(expr* e, unsigned offset, ptr_vector<sort>& sorts) {
