@@ -15,14 +15,13 @@ Author:
 
 --*/
 #include"tactical.h"
-#include"expand_bounded_quantifiers_tactic.h"
-#include"bounded_quantifiers_tactic.h"
-#include"tactic.h"
 #include"rewriter_def.h"
 #include"var_subst.h"
 #include"bound_info.h"
 #include"ast_pp.h"
+#include"ast_util.h"
 #include"th_rewriter.h"
+#include"normalize_bounded_quantifiers_tactic.h"
 #include"bounded_quantifiers_params.hpp"
 #include"assertion_stream.h"
 
@@ -36,7 +35,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
         
         bool process(bound_info & bi, unsigned index, expr_ref_buffer & val_subs, expr_ref_buffer & exp_result) {
             if (index == bi.m_var_order.size()) {
-                if (m_inst_count>=m_exp_bound_inst_limit) {
+                if (m_inst_count >= m_exp_bound_inst_limit) {
                     return false;
                 }
                 else {
@@ -130,29 +129,29 @@ class expand_bounded_quantifiers_tactic : public tactic {
         ast_manager & m;
         arith_util m_au;
         bv_util m_bvu;
-        datatype_util m_dtu;
         unsigned m_exp_bound;
         unsigned m_exp_bound_inst_limit;
         unsigned m_inst_count;
-        params_ref arith_p;
         th_rewriter arith_simp;
         bool m_precise;
 
         rw_cfg(ast_manager & _m, params_ref const & p):
-            m(_m), m_au(m), m_bvu(m), m_dtu(m), arith_simp(m,arith_p){
+            m(_m), m_au(m), m_bvu(m), arith_simp(m){
+            params_ref arith_p;
             arith_p.set_bool("sort_sums", true);
             arith_p.set_bool("ule-split", false);
+            arith_simp.updt_params(arith_p);
             m_inst_count = 0;
             m_precise = true;
 	    updt_params(p);
         }
 
-	    void updt_params(params_ref const & _p) {
-	        bounded_quantifiers_params p(_p);
-	        m_exp_bound            = p.domain();
-	        m_exp_bound_inst_limit = p.max_instances();
-	    }
-
+        void updt_params(params_ref const & _p) {
+            bounded_quantifiers_params p(_p);
+            m_exp_bound            = p.domain();
+            m_exp_bound_inst_limit = p.max_instances();
+        }
+        
         bool reduce_quantifier(quantifier * old_q, 
                                expr * new_body, 
                                expr * const * new_patterns, 
@@ -162,7 +161,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
             quantifier_ref q(m);
             q = m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
             TRACE("expand_bounded_quantifiers", tout << "Process " << mk_pp(q,m) << "\n";);
-	        bound_info bi(m, m_au, m_bvu, m_dtu, q);
+            bound_info bi(m, m_au, m_bvu, q);
             if (bi.compute()) {
                 //check that all lower bounds are zero
                 if (bi.is_normalized()) {
@@ -170,7 +169,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                     //we will rewrite the quantifier into a conjunction based on expansion
                     //the values we make for each variable
                     expr_ref_buffer val_subs(m);
-                    for (unsigned i=0; i<q->get_num_decls(); i++) {
+                    for (unsigned i = 0; i < q->get_num_decls(); i++) {
                         sort * s = q->get_decl_sort(i);
                         expr * v = m.mk_var(q->get_num_decls()-1-i, s);
                         val_subs.push_back(v);
@@ -186,7 +185,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                     m_inst_count = 0;
                     if (process(bi, 0, val_subs, exp_result)) {
                         //result is a conjunction of the literals in exp_result
-                        result = exp_result.size()>1 ? m.mk_and(exp_result.size(), exp_result.c_ptr()) : (exp_result.size()==1 ? exp_result[0] : m.mk_true());
+                        result = mk_and(m, exp_result.size(), exp_result.c_ptr());
                         TRACE("expand_bounded_quantifiers", tout << "Expand, got result " << mk_pp(result,m) << "\n";);
                         return true;
                     }

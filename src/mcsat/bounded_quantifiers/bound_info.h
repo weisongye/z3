@@ -20,7 +20,6 @@ Author:
 #include"ast.h"
 #include"arith_decl_plugin.h"
 #include"bv_decl_plugin.h"
-#include"datatype_decl_plugin.h"
 #include"th_rewriter.h"
 
 // m_l and m_u are signed bounds (also includes Int)
@@ -35,7 +34,6 @@ private:
     ast_manager & m_m;
     arith_util & m_au;
     bv_util & m_bvu;
-    datatype_util & m_dtu;
     bool collect_literals(expr * e, expr_ref_buffer & lits );
     bool get_var_monomial(expr * e, expr_ref & var, expr_ref & coeff);
     bool is_ground_bnd_vars(expr * e);
@@ -45,8 +43,8 @@ private:
                                     sbuffer<unsigned>& new_bnds_from_vars, sbuffer<bool> & new_bnds_signs,
                                     expr_ref_buffer & new_ovf);
 public:
-    bound_info( ast_manager & m, arith_util & au, bv_util & bvu, datatype_util & dtu, quantifier* q ) : 
-        m_m(m), m_au(au), m_bvu(bvu), m_dtu(dtu), m_q(q, m), m_l(m), m_u(m), m_sl(m), m_su(m), m_body(m) {
+    bound_info( ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q ) : 
+        m_m(m), m_au(au), m_bvu(bvu), m_q(q, m), m_l(m), m_u(m), m_sl(m), m_su(m), m_body(m) {
         for (unsigned i = 0; i < q->get_num_decls(); i++) {
             m_l.push_back(m.mk_false());
             m_u.push_back(m.mk_false());
