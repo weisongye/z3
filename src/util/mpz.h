@@ -26,6 +26,7 @@ Revision History:
 #include"trace.h"
 #include"scoped_numeral.h"
 #include"scoped_numeral_vector.h"
+#include"numeral_buffer.h"
 #include"z3_omp.h"
 
 unsigned u_gcd(unsigned u, unsigned v);
@@ -803,6 +804,7 @@ typedef mpz_manager<false> unsynch_mpz_manager;
 typedef _scoped_numeral<unsynch_mpz_manager> scoped_mpz;
 typedef _scoped_numeral<synch_mpz_manager> scoped_synch_mpz;
 typedef _scoped_numeral_vector<unsynch_mpz_manager> scoped_mpz_vector;
+typedef numeral_buffer<mpz, unsynch_mpz_manager> scoped_mpz_buffer;
 
 #endif /* _MPZ_H_ */
 

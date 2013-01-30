@@ -629,6 +629,34 @@ bool arith_recognizers::is_numeral(expr const * n, rational & val, bool & is_int
     return true;
 }
 
+void arith_recognizers::get_polynomial_monomial(expr * m, scoped_mpq_buffer & as, expr_ref_buffer & xs, scoped_mpq & c) {
+    rational v;
+    expr * a, * x;
+    if (is_mul(m, a, x) && is_numeral(a, v)) {
+        as.push_back(v.to_mpq());
+        xs.push_back(x);
+    }
+    else if (is_numeral(m, v)) {
+        unsynch_mpq_manager & nm = c.m();
+        nm.add(c, v.to_mpq(), c);
+    }
+    else {
+        as.push_back(mpq(1));
+        xs.push_back(m);
+    }
+}
+
+void arith_recognizers::get_polynomial(expr * p, scoped_mpq_buffer & as, expr_ref_buffer & xs, scoped_mpq & c) {
+    if (is_add(p)) {
+        for (unsigned i = 0; i < to_app(p)->get_num_args(); i++) {
+            get_polynomial_monomial(to_app(p)->get_arg(i), as, xs, c);
+        }
+    }
+    else {
+        get_polynomial_monomial(p, as, xs, c);
+    }
+}
+
 arith_util::arith_util(ast_manager & m):
     arith_recognizers(m.mk_family_id("arith")),
     m_manager(m),
@@ -651,3 +679,4 @@ algebraic_numbers::anum const & arith_util::to_irrational_algebraic_numeral(expr
     SASSERT(is_irrational_algebraic_numeral(n));
     return plugin().aw().to_anum(to_app(n)->get_decl());
 }
+
