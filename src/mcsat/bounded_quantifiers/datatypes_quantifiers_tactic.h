@@ -21,6 +21,7 @@ Author:
 class ast_manager;
 class tactic;
 
+tactic * mk_split_datatype_quantifiers_tactic_core(ast_manager & m, params_ref const & p);
 tactic * mk_split_datatype_quantifiers_tactic(ast_manager & m, params_ref const & p);
 
 /*

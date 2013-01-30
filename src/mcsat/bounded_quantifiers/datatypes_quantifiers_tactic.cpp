@@ -22,6 +22,8 @@ Author:
 #include"ast_pp.h"
 #include"datatype_decl_plugin.h"
 #include"assertion_stream.h"
+#include"simplify_tactic.h"
+#include"nnf_tactic.h"
 
 class split_datatype_quantifiers_tactic : public tactic {
 
@@ -52,8 +54,8 @@ class split_datatype_quantifiers_tactic : public tactic {
                 }
                 TRACE("split_datatype_quantifiers-debug", tout << "Substituted Body : " << mk_pp(q_c, m_m ) << "\n";);
                 //reverse sorts and symbols
-                sbuffer< sort* > rev_sorts;
-                sbuffer< symbol > rev_symbols;
+                ptr_buffer<sort> rev_sorts;
+                sbuffer<symbol> rev_symbols;
                 for (unsigned i = 0; i < sorts.size(); i++ ){
                     rev_sorts.push_back( sorts[ sorts.size()-i-1 ] );
                     rev_symbols.push_back( symbols[ symbols.size()-i-1 ] );
@@ -116,7 +118,8 @@ class split_datatype_quantifiers_tactic : public tactic {
                                expr * const * new_no_patterns,
                                expr_ref & result,
                                proof_ref & result_pr) {
-            quantifier * q = m_m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
+            quantifier_ref q(m_m);
+            q = m_m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
             if (q->is_forall()) {
                 TRACE("split_datatype_quantifiers",tout << "Process " << mk_pp(q,m_m) << "\n";);
                 // keep track of variables
@@ -206,6 +209,15 @@ public:
     }
 };
 
-tactic * mk_split_datatype_quantifiers_tactic(ast_manager & m, params_ref const & p) {
+tactic * mk_split_datatype_quantifiers_tactic_core(ast_manager & m, params_ref const & p) {
     return alloc(split_datatype_quantifiers_tactic, m, p);
+}
+
+tactic * mk_split_datatype_quantifiers_tactic(ast_manager & m, params_ref const & p) {
+    params_ref simp_p;
+    simp_p.set_bool("elim_and", true);
+    return and_then(using_params(mk_simplify_tactic(m), simp_p),
+                    mk_snf_tactic(m),
+                    mk_split_datatype_quantifiers_tactic_core(m, p),
+                    mk_simplify_tactic(m));
 }
