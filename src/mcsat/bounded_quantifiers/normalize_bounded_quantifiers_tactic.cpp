@@ -69,7 +69,6 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                     }
                 }
                 else if (m_bvu.is_bv_sort(s)) {
-                    unsigned sz = m_bvu.get_bv_size(s);
                     if (bi.is_normalized(i)) {
                         bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v,upper)));
                         subs_val = v;
