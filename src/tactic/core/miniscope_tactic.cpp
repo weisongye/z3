@@ -20,7 +20,10 @@ Author:
 #include"assertion_stream.h"
 #include"used_vars.h"
 #include"ast_pp.h"
+#include"nnf_tactic.h"
+#include"simplify_tactic.h"
 #include"cooperate.h"
+#include"has_free_vars.h"
 #include"miniscope_params.hpp"
 
 class miniscope_tactic : public tactic {
@@ -86,81 +89,152 @@ class miniscope_tactic : public tactic {
             new_p = to_app(aux);
         }
 
-        void distribute_apply(bool forall, app * p, unsigned depth, quantifier * q, expr_ref & result) {
-            sbuffer<bool>   already_found;
-            sbuffer<bool>   keep;
-            used_vars       uv;
-            unsigned        num_vars = q->get_num_decls();
-            already_found.resize(num_vars, false);
-            keep.resize(num_vars, false);
-            for (unsigned i = 0; i < p->get_num_args(); i++) {
-                expr * arg = p->get_arg(i);
-                uv(arg);
-                for (unsigned j = 0; j < num_vars; j++) {
-                    if (uv.contains(j)) {
-                        if (already_found[j]) {
-                            keep[j] = true;
-                        }
-                        else {
-                            already_found[j] = true;
-                        }
-                    }
-                }
+        // Force vidx to be the variable 0
+        void swap_var(unsigned vidx, app * p, quantifier * q, app_ref & new_p) {
+            if (vidx == 0) {
+                new_p = p;
             }
-            if (std::find(keep.begin(), keep.end(), false) == keep.end()) {
-                // keep all... nothing to be done
-                default_apply(forall, p, q, result);
+            else {
+                unsigned num_vars = q->get_num_decls();
+                expr_ref new_v0(m), new_vi(m);
+                new_v0 = m.mk_var(0, q->get_decl_sort(num_vars - vidx - 1));
+                new_vi = m.mk_var(vidx, q->get_decl_sort(num_vars - 1));
+                expr_ref_buffer subst(m);
+                subst.resize(num_vars);
+                subst.set(num_vars - 1,        new_vi);
+                subst.set(num_vars - vidx - 1, new_v0);
+                var_subst s(m);
+                expr_ref aux(m);
+                s(p, subst.size(), subst.c_ptr(), aux);
+                TRACE("miniscope_bug", tout << "swap_var\n" << mk_pp(p, m) << "\n---->\n" << mk_pp(aux, m) << "\n";);
+                new_p = to_app(aux);
             }
-            else if (std::find(keep.begin(), keep.end(), true) == keep.end()) {
-                // the sets of used variables are disjoint... this is an easy case
-                easy_distribute_apply(forall, p, depth, q, result);
-            }
-            else if (m_preserve_patterns && (q->get_num_patterns() > 0 || q->get_num_no_patterns() > 0)) {
+        }
+        
+        bool has_patterns(quantifier * q) {
+            return q->get_num_patterns() > 0 || q->get_num_no_patterns() > 0;
+        }
+
+        void distribute_apply_iter(bool forall, app * p, unsigned depth, quantifier * q, expr_ref & result) {
+            TRACE("miniscope_detail", tout << "distribute_apply_iter [" << depth << "]\n" << mk_pp(p, m) << "\nq:\n" << mk_pp(q, m) << "\n";);
+            checkpoint();
+            if (depth > m_max_depth || m_curr_steps > m_max_steps) {
                 default_apply(forall, p, q, result);
             }
             else {
-                sbuffer<unsigned> perm;
-                sbuffer<symbol>   not_keep_names, keep_names;
-                ptr_buffer<sort>  not_keep_sorts, keep_sorts;
-                unsigned j = 0;
-                perm.resize(num_vars, 0);
-                // add first variables we should not keep
-                for (unsigned i = 0; i < num_vars; i++) {
-                    if (!keep[i]) {
-                        perm[i] = j; j++;
-                        not_keep_names.push_back(q->get_decl_name(num_vars - i - 1));
-                        not_keep_sorts.push_back(q->get_decl_sort(num_vars - i - 1));
+                // find first variable that does not occurr in all children of p
+                unsigned      num_vars = q->get_num_decls();
+                sbuffer<unsigned> v_children_idxs;  // positition of the children that contain v.
+                sbuffer<unsigned> nv_children_idxs; // positition of the children that do not contain v.
+                for (unsigned v = 0; v < num_vars; v++) {
+                    v_children_idxs.reset();
+                    nv_children_idxs.reset();
+                    for (unsigned i = 0; i < p->get_num_args(); i++) {
+                        expr * c = p->get_arg(i);
+                        TRACE("miniscope_var_selection", tout << "has_free_var " << v << " = " << has_free_vars(c, v, v) << ", i: " << i << "\n" << mk_pp(c, m) << "\n";);
+                        if (has_free_vars(c, v, v))
+                            v_children_idxs.push_back(i);
+                        else
+                            nv_children_idxs.push_back(i);
+                    }
+                    if (!nv_children_idxs.empty()) {
+                        // at least one children does not contain v.
+                        app_ref new_p(m);
+                        // rename v to 0, and store new formula in new_p
+                        swap_var(v, p, q, new_p);
+                        // split quantifier variables
+                        symbol           v_name;
+                        sbuffer<symbol>  nv_names;
+                        sort *           v_sort;
+                        ptr_buffer<sort> nv_sorts;
+                        v_name = q->get_decl_name(num_vars - v - 1);
+                        v_sort = q->get_decl_sort(num_vars - v - 1);
+                        for (unsigned i = 0; i < num_vars; i++) {
+                            if (i != num_vars - v - 1) {
+                                nv_names.push_back(q->get_decl_name(i));
+                                nv_sorts.push_back(q->get_decl_sort(i));
+                            }
+                        }
+                        // split children
+                        expr_ref_buffer v_children(m);
+                        expr_ref_buffer nv_children(m);
+                        expr_ref new_c(m);
+                        inv_var_shifter s(m);
+                        unsigned num_nv_children = nv_children_idxs.size();
+                        for (unsigned i = 0; i < num_nv_children; i++) {
+                            s(new_p->get_arg(nv_children_idxs[i]), 1, new_c);
+                            nv_children.push_back(new_c);
+                        }
+                        unsigned num_v_children = v_children_idxs.size();
+                        for (unsigned i = 0; i < num_v_children; i++)
+                            v_children.push_back(new_p->get_arg(v_children_idxs[i]));
+                        if (num_v_children > 1) {
+                            expr_ref p0(m);
+                            p0 = m.mk_app(p->get_decl(), num_v_children, v_children.c_ptr());
+                            quantifier_ref q0(m);
+                            q0 = m.mk_quantifier(forall, 1, &v_sort, &v_name, p0,
+                                                 q->get_weight(), q->get_qid(), q->get_skid());
+                            nv_children.push_back(q0);
+                        }
+                        else if (num_v_children == 1) {
+                            quantifier_ref q0(m);
+                            q0 = m.mk_quantifier(forall, 1, &v_sort, &v_name, v_children[0],
+                                                 q->get_weight(), q->get_qid(), q->get_skid());
+                            expr_ref p0(m);
+                            apply(forall, v_children[0], depth+1, q0, p0);
+                            nv_children.push_back(p0);
+                        }
+                        SASSERT(nv_children.size() > 1);
+                        new_p = m.mk_app(p->get_decl(), nv_children.size(), nv_children.c_ptr());
+                        if (nv_names.empty()) {
+                            result = new_p;
+                        }
+                        else {
+                            quantifier_ref new_q(m);
+                            new_q = m.mk_quantifier(forall, nv_sorts.size(), nv_sorts.c_ptr(), nv_names.c_ptr(), new_p,
+                                                    q->get_weight(), q->get_qid(), q->get_skid());
+                            distribute_apply_iter(forall, new_p, depth+1, new_q, result);
+                        }
+                        return;
                     }
                 }
-                for (unsigned i = 0; i < num_vars; i++) {
-                    if (keep[i]) {
-                        perm[i] = j; j++;
-                        keep_names.push_back(q->get_decl_name(num_vars - i - 1));
-                        keep_sorts.push_back(q->get_decl_sort(num_vars - i - 1));
+                // all variables occur in all children
+                default_apply(forall, p, q, result);
+            }
+        }
+
+        void distribute_apply(bool forall, app * p, unsigned depth, quantifier * q, expr_ref & result) {
+            if (!m_preserve_patterns || !has_patterns(q)) {
+                distribute_apply_iter(forall, p, depth, q, result);
+            }
+            else {
+                sbuffer<bool>   already_found;
+                sbuffer<bool>   keep;
+                used_vars       uv;
+                unsigned        num_vars = q->get_num_decls();
+                already_found.resize(num_vars, false);
+                keep.resize(num_vars, false);
+                for (unsigned i = 0; i < p->get_num_args(); i++) {
+                    expr * arg = p->get_arg(i);
+                    uv(arg);
+                    for (unsigned j = 0; j < num_vars; j++) {
+                        if (uv.contains(j)) {
+                            if (already_found[j]) {
+                                keep[j] = true;
+                            }
+                            else {
+                                already_found[j] = true;
+                            }
+                        }
                     }
                 }
-                std::reverse(not_keep_names.begin(), not_keep_names.end());
-                std::reverse(not_keep_sorts.begin(), not_keep_sorts.end());
-                std::reverse(keep_names.begin(), keep_names.end());
-                std::reverse(keep_sorts.begin(), keep_sorts.end());
-                SASSERT(perm.size() == num_vars);
-                app_ref new_p(m);
-                reorder_vars(p, perm, q, new_p);
-                TRACE("miniscope_detail",
-                      tout << "perm:"; for (unsigned i = 0; i < perm.size(); i++) tout << " " << perm[i]; tout << "\n";
-                      tout << "before reorder:\n" << mk_pp(p, m) << "\n---->\n" << mk_pp(new_p, m) << "\n";);
-                quantifier_ref new_q(m);
-                new_q = m.mk_quantifier(forall, not_keep_sorts.size(), not_keep_sorts.c_ptr(), not_keep_names.c_ptr(), new_p,
-                                        q->get_weight(), q->get_qid(), q->get_skid());
-                expr_ref_buffer new_args(m);
-                expr_ref new_arg(m);
-                for (unsigned i = 0; i < new_p->get_num_args(); i++) {
-                    apply(forall, new_p->get_arg(i), depth+1, new_q, new_arg);
-                    new_args.push_back(new_arg);
+                if (std::find(keep.begin(), keep.end(), true) == keep.end()) {
+                    // the sets of used variables are disjoint... this is an easy case
+                    easy_distribute_apply(forall, p, depth, q, result);
                 }
-                new_p = m.mk_app(new_p->get_decl(), new_args.size(), new_args.c_ptr());
-                result = m.mk_quantifier(forall, keep_sorts.size(), keep_sorts.c_ptr(), keep_names.c_ptr(), new_p,
-                                         q->get_weight(), q->get_qid(), q->get_skid());
+                else {
+                    default_apply(forall, p, q, result);
+                }
             }
         }
 
@@ -168,6 +242,25 @@ class miniscope_tactic : public tactic {
             quantifier_ref new_q(m);
             new_q = m.update_quantifier(q, forall, p);
             elim_unused_vars(m, new_q, result);
+        }
+
+        void apply_quantifier(bool forall, quantifier * p, unsigned depth, quantifier * q, expr_ref & result) {
+            if (m_preserve_patterns && (has_patterns(p) || has_patterns(q))) {
+                default_apply(forall, p, q, result);
+            }
+            else {
+                sbuffer<symbol>   names;
+                ptr_buffer<sort>  sorts;
+                names.append(q->get_num_decls(), q->get_decl_names());
+                names.append(p->get_num_decls(), p->get_decl_names());
+                sorts.append(q->get_num_decls(), q->get_decl_sorts());
+                sorts.append(p->get_num_decls(), p->get_decl_sorts());
+                quantifier_ref new_q(m);
+                new_q = m.mk_quantifier(forall, sorts.size(), sorts.c_ptr(), names.c_ptr(), p->get_expr(),
+                                        q->get_weight(), q->get_qid(), q->get_skid());
+                TRACE("miniscope_bug", tout << mk_pp(p, m) << "\n" << mk_pp(q, m) << "\n----->\n" << mk_pp(new_q, m) << "\n";);
+                apply(forall, new_q->get_expr(), depth+1, new_q, result);
+            }
         }
 
         void apply(bool forall, expr * p, unsigned depth, quantifier * q, expr_ref & result) {
@@ -188,8 +281,11 @@ class miniscope_tactic : public tactic {
                 else if (m.is_or(p) && !forall) {
                     easy_distribute_apply(forall, to_app(p), depth, q, result);
                 }
-                else if (m.is_bool(p) && (m.is_ite(p) || m.is_iff(p) || m.is_and(p) || m.is_or(p) || (m.is_eq(p) && m.is_bool(to_app(p)->get_arg(0))))) {
+                else if (m.is_and(p) || m.is_or(p)) {
                     distribute_apply(forall, to_app(p), depth, q, result);
+                }
+                else if (is_quantifier(p) && forall == to_quantifier(p)->is_forall()) {
+                    apply_quantifier(forall, to_quantifier(p), depth, q, result);
                 }
                 else {
                     default_apply(forall, p, q, result);
@@ -219,19 +315,33 @@ class miniscope_tactic : public tactic {
         }
     };
 
-    rw * m_rw;
+    rw *  m_rw;
+
+    struct set_rw {
+        miniscope_tactic & m;
+        set_rw(miniscope_tactic & _m, rw & r):m(_m) {
+            #pragma omp critical (tactic_cancel)
+            {
+                m.m_rw  = &r;
+            }
+        }
+        ~set_rw() {
+            #pragma omp critical (tactic_cancel)
+            {
+                m.m_rw  = 0;
+            }
+        }
+    };
 
     void apply(assertion_stream & g) {
         SASSERT(g.is_well_sorted());
         ast_manager & m = g.m();
-        bool produce_proofs = g.proofs_enabled();
-        rw r(m, produce_proofs, m_params);
-        #pragma omp critical (tactic_cancel)
-        {
-            m_rw = &r;
-        }
         stream_report report("miniscope", g);
-        
+        bool produce_proofs = g.proofs_enabled();
+
+        rw r(m, produce_proofs, m_params);
+        set_rw s(*this, r);
+
         expr_ref   new_curr(m);
         proof_ref  new_pr(m);
         unsigned size = g.size();
@@ -242,17 +352,13 @@ class miniscope_tactic : public tactic {
             r(curr, new_curr, new_pr);
             if (g.proofs_enabled()) {
                 proof * pr = g.pr(idx);
-                new_pr     = m.mk_modus_ponens(pr, new_pr);
+                new_pr    = m.mk_modus_ponens(pr, new_pr);
             }
             g.update(idx, new_curr, new_pr, g.dep(idx));
         }
         g.inc_depth();
         TRACE("miniscope", g.display(tout););
         SASSERT(g.is_well_sorted());
-        #pragma omp critical (tactic_cancel)
-        {
-            m_rw = 0;
-        }
     }
 
     params_ref m_params;
@@ -277,6 +383,7 @@ public:
                             model_converter_ref & mc, 
                             proof_converter_ref & pc,
                             expr_dependency_ref & core) {
+        TRACE("miniscope_detail", tout << "input goal\n"; g->display(tout););
         mc = 0; pc = 0; core = 0; result.reset();
         goal2stream s(*(g.get()));
         apply(s);
@@ -298,6 +405,17 @@ public:
     virtual void cleanup() {}
 };
 
-tactic * mk_miniscope_tactic(ast_manager & m, params_ref const & p) {
+tactic * mk_miniscope_tactic_core(ast_manager & m, params_ref const & p) {
     return alloc(miniscope_tactic, p);
 }
+
+tactic * mk_miniscope_tactic(ast_manager & m, params_ref const & p) {
+    params_ref np;
+    np.set_bool("skolemize", false);
+    np.set_bool("ignore_nested", true);
+    np.set_sym("mode", symbol("quantifiers"));
+    return and_then(using_params(mk_nnf_tactic(m), np),
+                    mk_simplify_tactic(m),
+                    mk_miniscope_tactic_core(m, p));
+}
+
