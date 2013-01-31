@@ -29,6 +29,78 @@ class normalize_bounded_quantifiers_tactic : public tactic {
         ast_manager & m_m;
         arith_util m_au;
         bv_util m_bvu;
+        //returns true if we are finished reducing the quantifier
+        bool reduce_quantifier_iter(bound_info & bi, quantifier * q, quantifier_ref & result) {
+            bool addedOvfBound = false;
+            //bi.print("normalize_bounded_quantifiers-debug");
+            expr_ref_buffer bound_lits(m_m);
+            expr_ref_buffer body_lits(m_m);
+            //start with all literals from body
+            body_lits.append(bi.m_body.size(), bi.m_body.c_ptr());
+            //make the substitution we will be using
+            expr_ref_buffer subs(m_m);
+            for (unsigned i=0; i<q->get_num_decls(); i++) {
+                sort * s = q->get_decl_sort(i);
+                expr * v = m_m.mk_var(q->get_num_decls()-1-i, s);
+                subs.push_back(v);
+            }
+            //substitution object
+            var_subst vs(m_m);
+            //normalize each of the bounds
+            for (unsigned iv=0; iv<bi.m_var_order.size(); iv++) {
+                unsigned i = bi.m_var_order[iv];
+                sort * s = q->get_decl_sort(q->get_num_decls()-1-i);
+                expr * v = m_m.mk_var(i, s);
+                //construct lower and upper bounds (must apply current substitution to them)
+                expr_ref lower(m_m);
+                expr_ref upper(m_m);
+                vs(bi.get_lower_bound(i), subs.size(), subs.c_ptr(), lower);
+                vs(bi.get_upper_bound(i), subs.size(), subs.c_ptr(), upper);
+                expr_ref subs_val(m_m);
+                //add normalized bounds to bound_lits
+                if (m_au.is_int(s)) {
+                    bound_lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_au.mk_numeral(rational(0), true))));
+                    if (bi.is_normalized(i)) {
+                        bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, upper)));
+                        subs_val = v;
+                    }
+                    else{
+                        bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, m_au.mk_sub(upper, lower))));
+                        subs_val = m_au.mk_add(v, lower);
+                    }
+                }
+                else if (m_bvu.is_bv_sort(s)) {
+                    unsigned sz = m_bvu.get_bv_size(s);
+                    if (bi.is_normalized(i)) {
+                        bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v,upper)));
+                        subs_val = v;
+                    }
+                    else {
+                        bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_bvu.mk_bv_sub(upper, lower))));
+                        //additionally, body is satisfied when lower > upper
+                        bound_lits.push_back(m_m.mk_not(bi.is_bv_signed_bound(i) ? m_bvu.mk_sle(lower, upper) :
+                                                                                    m_bvu.mk_ule(lower, upper)));
+                        subs_val = m_bvu.mk_bv_add(v, lower);
+                        addedOvfBound = true;
+                    }
+                }
+                //also add v -> (v+l) to the substitution
+                TRACE("normalize_bounded_quantifiers-debug",tout << "Substitution value for variable " << i << " is " << mk_pp(subs_val,m_m) << "\n";);
+                subs.setx(q->get_num_decls()-1-i, subs_val);
+            }
+            //apply substitution to each of the body literals
+            for (unsigned i=0; i<body_lits.size(); i++) {
+                expr_ref bd_res(m_m);
+                vs(body_lits[i], subs.size(), subs.c_ptr(), bd_res);
+                body_lits.setx(i, bd_res);
+            }
+            //construct the body (it is an "or" of all the literals)
+            bound_lits.append(body_lits.size(), body_lits.c_ptr());
+            result = m_m.update_quantifier(q, m_m.mk_or(bound_lits.size(), bound_lits.c_ptr()));
+            TRACE("normalize_bounded_quantifiers",tout << "Normalized to \n     " << mk_pp(result,m_m) << "\n";);
+            return addedOvfBound;
+        }
+    public:
         rw_cfg(ast_manager & _m):m_m(_m), m_au(_m), m_bvu(_m) {}
         
         bool reduce_quantifier(quantifier * old_q, 
@@ -40,81 +112,20 @@ class normalize_bounded_quantifiers_tactic : public tactic {
             quantifier_ref q(m_m);
             q = m_m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
             TRACE("normalize_bounded_quantifiers",tout << "Process " << mk_pp(q,m_m) << "\n";);
-            bound_info bi(m_m, m_au, m_bvu, q);
-            if (bi.compute()) {
-                //bi.print("normalize_bounded_quantifiers-debug");
-                expr_ref_buffer bound_lits(m_m);
-                expr_ref_buffer body_lits(m_m);
-                //start with all literals from body
-                body_lits.append(bi.m_body.size(), bi.m_body.c_ptr());
-                //make the substitution we will be using
-                expr_ref_buffer subs(m_m);
-                for (unsigned i=0; i<q->get_num_decls(); i++) {
-                    sort * s = q->get_decl_sort(i);
-                    expr * v = m_m.mk_var(q->get_num_decls()-1-i, s);
-                    subs.push_back(v);
+            bool recompute = false;
+            do{
+                bound_info bi(m_m, m_au, m_bvu, q);
+                if (bi.compute()) {
+                    //compute the normalization, possibly may have to recompute bound
+                    recompute = reduce_quantifier_iter(bi, q, q);
                 }
-                //substitution object
-                var_subst vs(m_m);
-                //normalize each of the bounds
-                for (unsigned iv=0; iv<bi.m_var_order.size(); iv++) {
-                    unsigned i = bi.m_var_order[iv];
-                    sort * s = q->get_decl_sort(q->get_num_decls()-1-i);
-                    expr * v = m_m.mk_var(i, s);
-                    //construct lower and upper bounds (must apply current substitution to them)
-                    expr_ref lower(m_m);
-                    expr_ref upper(m_m);
-                    vs(bi.get_lower_bound(i), subs.size(), subs.c_ptr(), lower);
-                    vs(bi.get_upper_bound(i), subs.size(), subs.c_ptr(), upper);
-                    expr_ref subs_val(m_m);
-                    //add normalized bounds to bound_lits
-                    if (m_au.is_int(s)) {
-                        bound_lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_au.mk_numeral(rational(0), true))));
-                        if (bi.is_normalized(i)) {
-                            bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, upper)));
-                            subs_val = v;
-                        }
-                        else{
-                            bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, m_au.mk_sub(upper, lower))));
-                            subs_val = m_au.mk_add(v, lower);
-                        }
-                    }
-                    else if (m_bvu.is_bv_sort(s)) {
-                        unsigned sz = m_bvu.get_bv_size(s);
-                        bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(m_bvu.mk_numeral(rational(0), sz),v)));
-                        if (bi.is_normalized(i)) {
-                            bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v,upper)));
-                            subs_val = v;
-                        }
-                        else {
-                            bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_bvu.mk_bv_sub(upper, lower))));
-                            //additionally, body is satisfied when lower > upper
-                            bound_lits.push_back(m_m.mk_not(bi.is_bv_signed_bound(i) ? m_bvu.mk_sle(lower, upper) :
-                                                                                     m_bvu.mk_ule(lower, upper)));
-                            subs_val = m_bvu.mk_bv_add(v, lower);
-                        }
-                    }
-                    //also add v -> (v+l) to the substitution
-                    TRACE("normalize_bounded_quantifiers-debug",tout << "Substitution value for variable " << i << " is " << mk_pp(subs_val,m_m) << "\n";);
-                    subs.setx(q->get_num_decls()-1-i, subs_val);
+                else {
+                    TRACE("normalize_bounded_quantifiers",tout << "Could not find bounds.\n";);
+                    return false;
                 }
-                //apply substitution to each of the body literals
-                for (unsigned i=0; i<body_lits.size(); i++) {
-                    expr_ref bd_res(m_m);
-                    vs(body_lits[i], subs.size(), subs.c_ptr(), bd_res);
-                    body_lits.setx(i, bd_res);
-                }
-                //construct the body (it is an "or" of all the literals)
-                bound_lits.append(body_lits.size(), body_lits.c_ptr());
-                result = m_m.update_quantifier(q, m_m.mk_or(bound_lits.size(), bound_lits.c_ptr()));
-                TRACE("normalize_bounded_quantifiers",tout << "Normalized " << mk_pp(old_q,m_m) << " to \n     " << mk_pp(result,m_m) << "\n";);
-                return true;
-            }
-            else {
-                TRACE("normalize_bounded_quantifiers",tout << "Could not find bounds.\n";);
-            }
-            
-            return false;
+            } while (recompute);
+            result = q;
+            return true;
         }
     };
 

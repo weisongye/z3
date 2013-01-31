@@ -43,10 +43,7 @@ class split_datatype_quantifiers_tactic : public tactic {
                     vsh(q_c, q->get_num_decls(), var_change, 0, q_c);
                     TRACE("split_datatype_quantifiers-debug", tout << "Shifted Body : " << mk_pp( q_c, m_m ) << "\n";);
                 }
-                // [Leo]: The for-loop should be inside the TRACE
-                for (unsigned i = 0; i < subs.size(); i++) {
-                    TRACE("split_datatype_quantifiers-debug", tout << "subsitutions : " << i << " -> " << mk_pp( subs[i], m_m ) << "\n";);
-                }
+                TRACE("split_datatype_quantifiers-debug", for (unsigned i = 0; i < subs.size(); i++) { tout << "subsitutions : " << i << " -> " << mk_pp( subs[i], m_m ) << "\n"; });
                 vs(q_c, subs.size(), subs.c_ptr(), q_c);
                 if (var_change < 0) {
                     vsh(q_c, q->get_num_decls(), var_change, 0, q_c);
@@ -60,10 +57,10 @@ class split_datatype_quantifiers_tactic : public tactic {
                     rev_sorts.push_back( sorts[ sorts.size()-i-1 ] );
                     rev_symbols.push_back( symbols[ symbols.size()-i-1 ] );
                 }
-                // [Leo]: I'm getting assertion violations here.
-                SASSERT(sorts.size() > 0);
-                q_c = m_m.mk_quantifier(true, sorts.size(), rev_sorts.c_ptr(), rev_symbols.c_ptr(), q_c);
-                TRACE("split_datatype_quantifiers-debug", tout << "New quantifier : " << mk_pp(q_c, m_m) << "\n";);
+                if (!sorts.empty()) {
+                    q_c = m_m.mk_forall(sorts.size(), rev_sorts.c_ptr(), rev_symbols.c_ptr(), q_c, q->get_weight(), q->get_qid());
+                }
+                TRACE("split_datatype_quantifiers-debug", tout << "New formula : " << mk_pp(q_c, m_m) << "\n";);
                 conj.push_back( q_c );
                 return true;
             }

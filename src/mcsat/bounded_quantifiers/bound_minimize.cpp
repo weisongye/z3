@@ -59,6 +59,12 @@ void propagate_bound_info::introduce_var(sort * s, expr_ref & x, expr_ref_buffer
         //add the equation to the bound propagator
         as.push_back(1);
         xs.push_back(bvar);
+        TRACE("propagate-bound-info-debug",
+                for (unsigned i=0; i<as.size(); i++) {
+                    if( i!=0 ) { tout << " + "; }
+                    tout << rational(as[i]).get_int64() << "*v" << (int)xs[i];
+                }
+                tout << " = 0 \n";);
         TRACE("propagate-bound-info-debug", tout << "Mk eq, size = " << terms.size() << "\n";);
         m_bp.mk_eq(as.size(), as.c_ptr(), xs.c_ptr());
     }
