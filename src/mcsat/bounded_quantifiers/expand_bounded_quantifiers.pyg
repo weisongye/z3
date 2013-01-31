@@ -3,4 +3,5 @@ def_module_params('expand_bounded_quantifiers',
                   export=False,
                   params=(('max_instances', UINT, 100, "maximum number of quantifier instances (per quantifier)"),
                           ('domain', UINT, 2, "domain size to be considered for universally quantified variables non constant bounds (the resultant goal is a under-approximation)."),
+						  ('use_constant_bounds', BOOL, True, "whether to prefer constant bound values whenever possible"),
                           ('filter_instances', BOOL, False, "whether to enable simple filtering of instances produced")))
