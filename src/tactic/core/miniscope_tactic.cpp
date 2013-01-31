@@ -35,6 +35,7 @@ class miniscope_tactic : public tactic {
         unsigned m_max_steps;
         unsigned m_curr_steps;
         bool     m_preserve_patterns;
+        bool     m_select_least;
         volatile bool m_cancel;   
 
         rw_cfg(ast_manager & _m, params_ref const & _p):m(_m) {
@@ -42,6 +43,7 @@ class miniscope_tactic : public tactic {
             m_max_depth         = p.max_depth();
             m_max_steps         = p.max_steps();
             m_preserve_patterns = p.preserve_patterns();
+            m_select_least      = p.select_least();
             m_curr_steps        = 0;
             m_cancel            = false;
         }
@@ -114,6 +116,41 @@ class miniscope_tactic : public tactic {
         bool has_patterns(quantifier * q) {
             return q->get_num_patterns() > 0 || q->get_num_no_patterns() > 0;
         }
+        
+        // Select the first variable that does not occur in all children of p.
+        // Return UINT_MAX if all variables occur in all children of p.
+        unsigned select_first(app * p, quantifier * q) {
+            unsigned      num_vars = q->get_num_decls();
+            for (unsigned v = 0; v < num_vars; v++) {
+                for (unsigned i = 0; i < p->get_num_args(); i++) {
+                    expr * c = p->get_arg(i);
+                    if (!has_free_vars(c, v, v))
+                        return v;
+                }
+            }
+            return UINT_MAX;
+        }
+
+        // Select the variable that occurs in the least number of children of p.
+        // Return UINT_MAX if all variables occur in all children of p.
+        unsigned select_least(app * p, quantifier * q) {
+            unsigned r    = UINT_MAX;
+            unsigned best = p->get_num_args();
+            unsigned num_vars = q->get_num_decls();
+            for (unsigned v = 0; v < num_vars; v++) {
+                unsigned counter = 0;
+                for (unsigned i = 0; i < p->get_num_args(); i++) {
+                    expr * c = p->get_arg(i);
+                    if (has_free_vars(c, v, v))
+                        counter++;
+                }
+                if (counter < best) {
+                    r    = v;
+                    best = counter;
+                }
+            }
+            return r;
+        }
 
         void distribute_apply_iter(bool forall, app * p, unsigned depth, quantifier * q, expr_ref & result) {
             TRACE("miniscope_detail", tout << "distribute_apply_iter [" << depth << "]\n" << mk_pp(p, m) << "\nq:\n" << mk_pp(q, m) << "\n";);
@@ -123,83 +160,81 @@ class miniscope_tactic : public tactic {
             }
             else {
                 // find first variable that does not occurr in all children of p
-                unsigned      num_vars = q->get_num_decls();
-                sbuffer<unsigned> v_children_idxs;  // positition of the children that contain v.
-                sbuffer<unsigned> nv_children_idxs; // positition of the children that do not contain v.
-                for (unsigned v = 0; v < num_vars; v++) {
-                    v_children_idxs.reset();
-                    nv_children_idxs.reset();
+                unsigned v = m_select_least ? select_least(p, q) : select_first(p, q);
+                if (v == UINT_MAX) {
+                    // all variables occur in all children
+                    default_apply(forall, p, q, result);
+                }
+                else {
+                    unsigned      num_vars = q->get_num_decls();
+                    sbuffer<unsigned> v_children_idxs;  // positition of the children that contain v.
+                    sbuffer<unsigned> nv_children_idxs; // positition of the children that do not contain v.
                     for (unsigned i = 0; i < p->get_num_args(); i++) {
                         expr * c = p->get_arg(i);
-                        TRACE("miniscope_var_selection", tout << "has_free_var " << v << " = " << has_free_vars(c, v, v) << ", i: " << i << "\n" << mk_pp(c, m) << "\n";);
                         if (has_free_vars(c, v, v))
                             v_children_idxs.push_back(i);
                         else
                             nv_children_idxs.push_back(i);
                     }
-                    if (!nv_children_idxs.empty()) {
-                        // at least one children does not contain v.
-                        app_ref new_p(m);
-                        // rename v to 0, and store new formula in new_p
-                        swap_var(v, p, q, new_p);
-                        // split quantifier variables
-                        symbol           v_name;
-                        sbuffer<symbol>  nv_names;
-                        sort *           v_sort;
-                        ptr_buffer<sort> nv_sorts;
-                        v_name = q->get_decl_name(num_vars - v - 1);
-                        v_sort = q->get_decl_sort(num_vars - v - 1);
-                        for (unsigned i = 0; i < num_vars; i++) {
-                            if (i != num_vars - v - 1) {
-                                nv_names.push_back(q->get_decl_name(i));
-                                nv_sorts.push_back(q->get_decl_sort(i));
-                            }
+                    SASSERT(!nv_children_idxs.empty());
+                    // at least one children does not contain v.
+                    app_ref new_p(m);
+                    // rename v to 0, and store new formula in new_p
+                    swap_var(v, p, q, new_p);
+                    // split quantifier variables
+                    symbol           v_name;
+                    sbuffer<symbol>  nv_names;
+                    sort *           v_sort;
+                    ptr_buffer<sort> nv_sorts;
+                    v_name = q->get_decl_name(num_vars - v - 1);
+                    v_sort = q->get_decl_sort(num_vars - v - 1);
+                    for (unsigned i = 0; i < num_vars; i++) {
+                        if (i != num_vars - v - 1) {
+                            nv_names.push_back(q->get_decl_name(i));
+                            nv_sorts.push_back(q->get_decl_sort(i));
                         }
-                        // split children
-                        expr_ref_buffer v_children(m);
-                        expr_ref_buffer nv_children(m);
-                        expr_ref new_c(m);
-                        inv_var_shifter s(m);
-                        unsigned num_nv_children = nv_children_idxs.size();
-                        for (unsigned i = 0; i < num_nv_children; i++) {
-                            s(new_p->get_arg(nv_children_idxs[i]), 1, new_c);
-                            nv_children.push_back(new_c);
-                        }
-                        unsigned num_v_children = v_children_idxs.size();
-                        for (unsigned i = 0; i < num_v_children; i++)
-                            v_children.push_back(new_p->get_arg(v_children_idxs[i]));
-                        if (num_v_children > 1) {
-                            expr_ref p0(m);
-                            p0 = m.mk_app(p->get_decl(), num_v_children, v_children.c_ptr());
-                            quantifier_ref q0(m);
-                            q0 = m.mk_quantifier(forall, 1, &v_sort, &v_name, p0,
-                                                 q->get_weight(), q->get_qid(), q->get_skid());
-                            nv_children.push_back(q0);
-                        }
-                        else if (num_v_children == 1) {
-                            quantifier_ref q0(m);
-                            q0 = m.mk_quantifier(forall, 1, &v_sort, &v_name, v_children[0],
-                                                 q->get_weight(), q->get_qid(), q->get_skid());
-                            expr_ref p0(m);
-                            apply(forall, v_children[0], depth+1, q0, p0);
-                            nv_children.push_back(p0);
-                        }
-                        SASSERT(nv_children.size() > 1);
-                        new_p = m.mk_app(p->get_decl(), nv_children.size(), nv_children.c_ptr());
-                        if (nv_names.empty()) {
-                            result = new_p;
-                        }
-                        else {
-                            quantifier_ref new_q(m);
-                            new_q = m.mk_quantifier(forall, nv_sorts.size(), nv_sorts.c_ptr(), nv_names.c_ptr(), new_p,
-                                                    q->get_weight(), q->get_qid(), q->get_skid());
-                            distribute_apply_iter(forall, new_p, depth+1, new_q, result);
-                        }
-                        return;
+                    }
+                    // split children
+                    expr_ref_buffer v_children(m);
+                    expr_ref_buffer nv_children(m);
+                    expr_ref new_c(m);
+                    inv_var_shifter s(m);
+                    unsigned num_nv_children = nv_children_idxs.size();
+                    for (unsigned i = 0; i < num_nv_children; i++) {
+                        s(new_p->get_arg(nv_children_idxs[i]), 1, new_c);
+                        nv_children.push_back(new_c);
+                    }
+                    unsigned num_v_children = v_children_idxs.size();
+                    for (unsigned i = 0; i < num_v_children; i++)
+                        v_children.push_back(new_p->get_arg(v_children_idxs[i]));
+                    if (num_v_children > 1) {
+                        expr_ref p0(m);
+                        p0 = m.mk_app(p->get_decl(), num_v_children, v_children.c_ptr());
+                        quantifier_ref q0(m);
+                        q0 = m.mk_quantifier(forall, 1, &v_sort, &v_name, p0,
+                                             q->get_weight(), q->get_qid(), q->get_skid());
+                        nv_children.push_back(q0);
+                    }
+                    else if (num_v_children == 1) {
+                        quantifier_ref q0(m);
+                        q0 = m.mk_quantifier(forall, 1, &v_sort, &v_name, v_children[0],
+                                             q->get_weight(), q->get_qid(), q->get_skid());
+                        expr_ref p0(m);
+                        apply(forall, v_children[0], depth+1, q0, p0);
+                        nv_children.push_back(p0);
+                    }
+                    SASSERT(nv_children.size() > 1);
+                    new_p = m.mk_app(p->get_decl(), nv_children.size(), nv_children.c_ptr());
+                    if (nv_names.empty()) {
+                        result = new_p;
+                    }
+                    else {
+                        quantifier_ref new_q(m);
+                        new_q = m.mk_quantifier(forall, nv_sorts.size(), nv_sorts.c_ptr(), nv_names.c_ptr(), new_p,
+                                                q->get_weight(), q->get_qid(), q->get_skid());
+                        distribute_apply_iter(forall, new_p, depth+1, new_q, result);
                     }
                 }
-                // all variables occur in all children
-                default_apply(forall, p, q, result);
             }
         }
 

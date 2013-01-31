@@ -3,4 +3,5 @@ def_module_params('miniscope',
                   export=False,
                   params=(('max_depth', UINT, 1024, "maximum depth (per quantifier)"),
                           ('max_steps', UINT, 32768, "maximum number of visited expressions (per quantifier)"),
+                          ('select_least', BOOL, True, "push first the variable with the least number of occurrences"),
                           ('preserve_patterns', BOOL, True, "preserve patterns")))
