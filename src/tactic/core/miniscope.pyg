@@ -1,0 +1,6 @@
+def_module_params('miniscope', 
+                  description='parameters for miniscope tactic',
+                  export=False,
+                  params=(('max_depth', UINT, 1024, "maximum depth (per quantifier)"),
+                          ('max_steps', UINT, 32768, "maximum number of visited expressions (per quantifier)"),
+                          ('preserve_patterns', BOOL, True, "preserve patterns")))
