@@ -32,7 +32,6 @@ class normalize_bounded_quantifiers_tactic : public tactic {
         //returns true if we are finished reducing the quantifier
         bool reduce_quantifier_iter(bound_info & bi, quantifier * q, quantifier_ref & result) {
             bool addedOvfBound = false;
-            //bi.print("normalize_bounded_quantifiers-debug");
             expr_ref_buffer bound_lits(m_m);
             expr_ref_buffer body_lits(m_m);
             //start with all literals from body

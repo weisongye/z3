@@ -42,7 +42,7 @@ public:
         m_m(m), m_au(au), m_bp(nm, alloc), m_bp_exprs(m_m){}
 
     bool compute(bound_info& bi);
-    void print( const char * tc );
+    void display(std::ostream & out);
 };
 
 class bv_trans_bound_info {
@@ -54,7 +54,6 @@ public:
       m_m(m), m_bvu(bvu) {}
     
     bool compute(bound_info& bi);
-    void print( const char * tc );
 };
 
 #endif

@@ -49,7 +49,7 @@ class minimize_bounded_quantifiers_tactic : public tactic {
             TRACE("minimize_bounded_quantifiers",tout << "Process " << mk_pp(q,m_m) << "\n";);
             bound_info bi(m_m, m_au, m_bvu, q);
             if (bi.compute()) {
-                bi.print("minimize_bounded_quantifiers");
+                TRACE("minimize_bounded_quantifiers", bi.display(tout););
                 //must rewrite the bounds
                 bi.apply_rewrite(m_arith_simp); // [Leo]: We should remove this. We can add a simplification pass before minimize.
                 propagate_bound_info pbi(m_m, m_au, m_nm, m_alloc);
