@@ -79,6 +79,16 @@ VS_PAR=False
 VS_PAR_NUM=8
 GPROF=False
 
+def git_hash():
+    try:
+        r = subprocess.check_output(['git', 'show-ref', '--abbrev=12', 'HEAD'], shell=True).rstrip('\r\n')
+    except:
+        raise MKException("Failed to retrieve git hash")
+    ls = r.split(' ')
+    if len(ls) != 2:
+        raise MKException("Unexpected git output")
+    return ls[0]
+
 def is_windows():
     return IS_WINDOWS
 
@@ -1764,8 +1774,11 @@ PYG_GLOBALS = { 'UINT' : UINT, 'BOOL' : BOOL, 'DOUBLE' : DOUBLE, 'STRING' : STRI
                 'def_module_params' : def_module_params }
 
 def _execfile(file, globals=globals(), locals=locals()):
-    with open(file, "r") as fh:
-        exec(fh.read()+"\n", globals, locals)
+    if sys.version < "2.7":
+        execfile(file, globals, locals)
+    else:
+        with open(file, "r") as fh:
+            exec(fh.read()+"\n", globals, locals)
 
 # Execute python auxiliary scripts that generate extra code for Z3.
 def exec_pyg_scripts():
