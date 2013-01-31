@@ -2210,9 +2210,13 @@ quantifier * ast_manager::update_quantifier(quantifier * q, unsigned num_pattern
 }
 
 quantifier * ast_manager::update_quantifier(quantifier * q, unsigned num_patterns, expr * const * patterns, unsigned num_no_patterns, expr * const * no_patterns, expr * body) {
-    if (q->get_expr() == body && same_patterns(q, num_patterns, patterns) && same_no_patterns(q, num_no_patterns, no_patterns))
+    return update_quantifier(q, q->is_forall(), num_patterns, patterns, num_no_patterns, no_patterns, body);
+}
+
+quantifier * ast_manager::update_quantifier(quantifier * q, bool new_is_forall, unsigned num_patterns, expr * const * patterns, unsigned num_no_patterns, expr * const * no_patterns, expr * body) {
+    if (q->get_expr() == body && q->is_forall() == new_is_forall && same_patterns(q, num_patterns, patterns) && same_no_patterns(q, num_no_patterns, no_patterns))
         return q;
-    return mk_quantifier(q->is_forall(),
+    return mk_quantifier(new_is_forall,
                          q->get_num_decls(),
                          q->get_decl_sorts(),
                          q->get_decl_names(),

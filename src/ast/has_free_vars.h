@@ -21,7 +21,7 @@ Revision History:
 
 class expr;
 
-bool has_free_vars(expr * n);
+bool has_free_vars(expr * n, unsigned begin=0, unsigned end=UINT_MAX);
 
 #endif /* _HAS_FREE_VARS_H_ */
 

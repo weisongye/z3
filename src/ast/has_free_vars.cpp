@@ -86,9 +86,9 @@ public:
     }
 };
 
-bool has_free_vars(expr * n) {
+bool has_free_vars(expr * n, unsigned begin, unsigned end) {
     contains_vars p;
-    return p(n);
+    return p(n, begin, end);
 }
 
 

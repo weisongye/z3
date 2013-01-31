@@ -1851,6 +1851,8 @@ public:
     quantifier * update_quantifier(quantifier * q, unsigned new_num_patterns, expr * const * new_patterns, expr * new_body);
 
     quantifier * update_quantifier(quantifier * q, unsigned new_num_patterns, expr * const * new_patterns, unsigned new_num_no_patterns, expr * const * new_no_patterns, expr * new_body);
+
+    quantifier * update_quantifier(quantifier * q, bool new_is_forall, unsigned new_num_patterns, expr * const * new_patterns, unsigned new_num_no_patterns, expr * const * new_no_patterns, expr * new_body);
     
     quantifier * update_quantifier(quantifier * q, expr * new_body);
     
