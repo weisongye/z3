@@ -157,7 +157,7 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer & lits, expr_ref_buf
                             expr_ref_buffer& bo = isLower ? m_u : m_l;
                             //if the bound has not already been set
                             bool alreadySet = false;
-                            if (!m_m.is_false(b[id])) {
+                            if (b[id]) {
                                 alreadySet = true;
                                 TRACE("bound-info-debug",tout << "modify for preexisting\n";);
                                 expr_ref cond(m_m);
@@ -171,9 +171,9 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer & lits, expr_ref_buf
                             new_bnds.push_back(lits[i]);
                             new_bnds_from_vars.push_back(id);
                             new_bnds_signs.push_back(false);
-                            new_ovf.push_back(m_m.mk_false());
+                            new_ovf.push_back(0);
                             //add variable to new bound variables, if now both bounds are set
-                            if (!alreadySet && !m_m.is_false(bo[id])) {
+                            if (!alreadySet && bo[id]) {
                                 TRACE("bound-info-debug",tout << "found bound for variable : " << mk_pp(var, m_m) << "\n";);
                                 new_bnd_vars.push_back(id);
                             }
@@ -219,9 +219,9 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer & lits, expr_ref_buf
                                 }
                                 else {
                                     //no overflow constraint
-                                    new_ovf.push_back(m_m.mk_false());
+                                    new_ovf.push_back(0);
                                 }
-                                if (!m_m.is_false(b[id])) {
+                                if (b[id]) {
                                     //check if it is the auto-bound
                                     expr_ref eauto(m_m);
                                     get_bv_auto_bound(isLower, isSigned, s, eauto);
@@ -244,7 +244,7 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer & lits, expr_ref_buf
                                 new_bnds_signs.push_back(isSigned);
                                 //if not done so already, auto-set the other bound
                                 // [Leo]: This kind of code is not easy to maintain. Does "false" mean no bound?!?
-                                if (m_m.is_false(bo[id])) {
+                                if (!bo[id]) {
                                     TRACE("bound-info-debug",tout << "found bound for variable : " << mk_pp(ac->get_arg(j), m_m) << "\n";);
                                     expr_ref auto_bound(m_m);
                                     get_bv_auto_bound(!isLower, isSigned, s, auto_bound);
@@ -323,7 +323,7 @@ bool bound_info::compute() {
                         //add to variables
                         m_var_order.push_back(max_var);
                         //check if signed or unsigned (require both unsigned to be set)
-                        bool isSigned = (m_m.is_false(m_l[max_var]) || m_m.is_false(m_u[max_var]));
+                        bool isSigned = (!m_l[max_var] || !m_u[max_var]);
                         TRACE("bound-info",tout << "Bound variable : " << max_var << ", signed = " << isSigned << "\n";);
                         //now, only take the bounds from max_var
                         for (unsigned i = 0; i < new_bnds_from_vars.size(); i++) {
@@ -331,7 +331,7 @@ bool bound_info::compute() {
                                 TRACE("bound-info",tout << "Processed literal : " << mk_pp(new_bnds[i], m_m) << "\n";);
                                 bnds.push_back(new_bnds[i]);
                                 //check if it has a corresponding overflow constraint, if so, add it to the body
-                                if (!m_m.is_false(new_ovf[i])) {
+                                if (new_ovf[i]) {
                                     m_body.push_back(new_ovf[i]);
                                 }
                             }
@@ -341,19 +341,19 @@ bool bound_info::compute() {
                             // [Leo]: Are you using "false" to mark that we don't have a bound?
                             // [Leo]: Why not 0?
                             if (!m_var_order.contains(i)) {
-                                m_l.setx(i, m_m.mk_false());
-                                m_u.setx(i, m_m.mk_false());
-                                m_sl.setx(i, m_m.mk_false());
-                                m_su.setx(i, m_m.mk_false());
+                                m_l.setx(i, 0);
+                                m_u.setx(i, 0);
+                                m_sl.setx(i, 0);
+                                m_su.setx(i, 0);
                             }
                             else if (i == max_var ){
                                 if (isSigned) {
-                                    m_l.setx(i, m_m.mk_false());
-                                    m_u.setx(i, m_m.mk_false());
+                                    m_l.setx(i, 0);
+                                    m_u.setx(i, 0);
                                 }
                                 else {
-                                    m_sl.setx(i, m_m.mk_false());
-                                    m_su.setx(i, m_m.mk_false());
+                                    m_sl.setx(i, 0);
+                                    m_su.setx(i, 0);
                                 }
                             }
                         }
@@ -377,7 +377,7 @@ bool bound_info::compute() {
                         }
                     }
                     m_is_valid = true;
-                    print("bound-info-debug");
+                    TRACE("bound-info-debug", display( tout ););
                     return true;
                 }
             }
@@ -389,23 +389,22 @@ bool bound_info::compute() {
     return false;
 }
 
-// [Leo]: replace with display(std::ostream & out, char const * tc)
-void bound_info::print(const char * tc) {
-    TRACE(tc, tout << "Quantifier " << mk_pp(m_q, m_m) << " has the following bounds : \n";);
+void bound_info::display(std::ostream & out) {
+    out << "Quantifier " << mk_pp(m_q, m_m) << " has the following bounds : \n";
     for (unsigned i=0; i<m_var_order.size(); i++) {
         int var_index = m_var_order[i];
         expr_ref_buffer & bl = m_l;
         expr_ref_buffer & bu = m_u;
         if (is_bv_signed_bound(var_index)) {
-            TRACE(tc, tout << "(signed) ";);
+            out << "(signed) ";
             bl = m_sl;
             bu = m_su;
         }
-        TRACE(tc, tout << mk_pp(bl[var_index], m_m) << "   <=   " << m_q->get_decl_name(m_q->get_num_decls()-var_index-1) << "   <=   " << mk_pp(bu[var_index], m_m) << "\n";);
+        out << mk_pp(bl[var_index], m_m) << "   <=   " << m_q->get_decl_name(m_q->get_num_decls()-var_index-1) << "   <=   " << mk_pp(bu[var_index], m_m) << "\n";
     }
     expr_ref body_expr(m_m);
     get_body(body_expr, false);
-    TRACE(tc, tout << "Body : " << mk_pp(body_expr, m_m) << "\n\n";);
+    out <<  "Body : " << mk_pp(body_expr, m_m) << "\n\n";
 }
 
 bool bound_info::is_bound(unsigned idx){
@@ -526,13 +525,21 @@ unsigned bound_info::get_var_order_index(unsigned idx) {
 void bound_info::apply_rewrite(th_rewriter& rw) {
     for (unsigned i = 0; i < m_l.size(); i++ ) {
         expr_ref result(m_m);
-        rw(m_l[i],result);
-        m_l.setx(i, result);
-        rw(m_u[i],result);
-        m_u.setx(i, result);
-        rw(m_sl[i],result);
-        m_sl.setx(i, result);
-        rw(m_su[i],result);
-        m_su.setx(i, result);
+        if (m_l[i]) {
+            rw(m_l[i],result);
+            m_l.setx(i, result);
+        }
+        if (m_u[i]) {
+            rw(m_u[i],result);
+            m_u.setx(i, result);
+        }
+        if (m_sl[i]) {
+            rw(m_sl[i],result);
+            m_sl.setx(i, result);
+        }
+        if (m_su[i]) {
+            rw(m_su[i],result);
+            m_su.setx(i, result);
+        }
     }
 }

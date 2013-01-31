@@ -71,9 +71,9 @@ void propagate_bound_info::introduce_var(sort * s, expr_ref & x, expr_ref_buffer
 }
 
 bool propagate_bound_info::compute(bound_info& bi) {
+    TRACE("propagate-bound-info-debug", tout << "Propagate bound info: Compute for " << mk_pp(bi.m_q,m_m) << "\n";);
     mpq zero(0);
     if (bi.is_normalized()) {   //need this?
-        TRACE("propagate-bound-info-debug", tout << "Propagate bound info: Compute for " << mk_pp(bi.m_q,m_m) << "\n";);
         //add equations into bound propagator
         for (unsigned i = 0; i < bi.m_var_order.size(); i++) {
             int index = bi.m_var_order[i];
@@ -159,10 +159,8 @@ bool propagate_bound_info::compute(bound_info& bi) {
     }
 }
 
-// [Leo]: we should use display(std::ostream & out) instead of print to std::cout
-// [Leo]: What is tc? It is not used.
-void propagate_bound_info::print(const char * tc) {
-    std::cout << "Propagated bounds :\n";
+void propagate_bound_info::display(std::ostream & out) {
+    out << "Propagated bounds :\n";
     for (unsigned i = 0; i < m_bp_vars.size(); i++) {
         bound_propagator::var v = m_bp_vars[i];
         //get upper/lower bounds
@@ -170,22 +168,22 @@ void propagate_bound_info::print(const char * tc) {
             rational rl(m_bp.lower(v));
             expr_ref l(m_m);
             l = m_au.mk_numeral(rl, true);
-            std::cout << mk_pp(l,m_m);
+            out << mk_pp(l,m_m);
         }
         else {
-            std::cout << "-[INF]";
+            out << "-[INF]";
         }
-        std::cout << " <= " << mk_pp(m_bp_exprs[i], m_m) << " <= ";
+        out << " <= " << mk_pp(m_bp_exprs[i], m_m) << " <= ";
         if (m_bp.has_upper(v)) {
             rational ru(m_bp.upper(v));
             expr_ref u(m_m);
             u = m_au.mk_numeral(ru, true);
-            std::cout << mk_pp(u,m_m);
+            out << mk_pp(u,m_m);
         }
         else {
-            std::cout << "[INF]";
+            out << "[INF]";
         }
-        std::cout << "\n";
+        out << "\n";
     }
 }
 
@@ -194,6 +192,3 @@ bool bv_trans_bound_info::compute(bound_info& bi) {
     return false;
 }
 
-void bv_trans_bound_info::print( const char * tc ) {
-
-}

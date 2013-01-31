@@ -46,10 +46,10 @@ public:
     bound_info( ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q ) : 
         m_m(m), m_au(au), m_bvu(bvu), m_q(q, m), m_l(m), m_u(m), m_sl(m), m_su(m), m_body(m) {
         for (unsigned i = 0; i < q->get_num_decls(); i++) {
-            m_l.push_back(m.mk_false());
-            m_u.push_back(m.mk_false());
-            m_sl.push_back(m.mk_false());
-            m_su.push_back(m.mk_false());
+            m_l.push_back(0);
+            m_u.push_back(0);
+            m_sl.push_back(0);
+            m_su.push_back(0);
         }
         m_is_valid = false;
         m_is_trivial_sat = false;
@@ -69,12 +69,13 @@ public:
     bool is_valid() { return m_is_valid; }
     bool is_trivial_sat() { return m_is_trivial_sat; }
     bool is_bound(unsigned idx);
-    bool is_int_bound(unsigned idx) { return !m_m.is_false(m_l[idx]) && !m_m.is_false(m_u[idx]); }
-    bool is_bv_unsigned_bound(unsigned idx) { return is_int_bound(idx); }
-    bool is_bv_signed_bound(unsigned idx) { return !m_m.is_false(m_sl[idx]) && !m_m.is_false(m_su[idx]); }
+    bool is_int_bound(unsigned idx) { return m_l[idx] && m_u[idx]; }
+    bool is_bv_unsigned_bound(unsigned idx) { return m_l[idx] && m_u[idx]; }
+    bool is_bv_signed_bound(unsigned idx) { return m_sl[idx] && m_su[idx]; }
     expr* get_lower_bound(unsigned idx) { return is_bv_signed_bound(idx) ? m_sl[idx] : m_l[idx]; }
     expr* get_upper_bound(unsigned idx) { return is_bv_signed_bound(idx) ? m_su[idx] : m_u[idx]; }
-    void print(const char * tc);
+    //display the bound info
+    void display(std::ostream & out);
     //return true if all lower bounds are zero
     bool is_normalized();
     //is bound 

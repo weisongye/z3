@@ -254,7 +254,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                 if (bi.compute()) {
                     //check that all lower bounds are zero
                     if (bi.is_normalized()) {
-                        bi.print("expand_bounded_quantifiers-debug");
+                        TRACE("expand_bounded_quantifiers", bi.display(tout););
                         //we will rewrite the quantifier into a conjunction based on expansion
                         //the values we make for each variable
                         expr_ref_buffer val_subs(m_m);
