@@ -246,6 +246,7 @@ struct nnf::imp {
     nnf_mode               m_mode;
     bool                   m_ignore_labels;
     bool                   m_skolemize;
+    bool                   m_ignore_nested;
     // ------------------------------
 
     name_exprs *           m_name_nested_formulas;
@@ -304,6 +305,7 @@ struct nnf::imp {
         m_skolemize        = p.skolemize();
         m_max_memory       = megabytes_to_bytes(p.max_memory());
         m_skolemizer.set_sk_hack(p.sk_hack());
+        m_ignore_nested    = p.ignore_nested();
     }
 
     static void get_param_descrs(param_descrs & r) {
@@ -637,10 +639,16 @@ struct nnf::imp {
         if (m_mode == NNF_FULL || t->has_quantifiers() || t->has_labels()) {
             expr_ref  n2(m());
             proof_ref pr2(m());
-            if (m_mode == NNF_FULL || (m_mode != NNF_SKOLEM && fr.m_in_q))
-                m_name_nested_formulas->operator()(t, m_todo_defs, m_todo_proofs, n2, pr2);
-            else
-                m_name_quant->operator()(t, m_todo_defs, m_todo_proofs, n2, pr2);
+            if (m_ignore_nested) {
+                if (m_mode == NNF_FULL || (m_mode != NNF_SKOLEM && fr.m_in_q))
+                    m_name_nested_formulas->operator()(t, m_todo_defs, m_todo_proofs, n2, pr2);
+                else
+                    m_name_quant->operator()(t, m_todo_defs, m_todo_proofs, n2, pr2);
+            }
+            else {
+                n2  = t;
+                pr2 = 0;
+            }
         
             if (!fr.m_pol)
                 n2 = m().mk_not(n2);
