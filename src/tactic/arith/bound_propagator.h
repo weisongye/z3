@@ -178,6 +178,8 @@ public:
     bound_propagator(numeral_manager & m, allocator & a, params_ref const & p = params_ref());
     ~bound_propagator();
     
+    numeral_manager & nm() const { return m; }
+
     void updt_params(params_ref const & p);
     static void get_param_descrs(param_descrs & r);
 

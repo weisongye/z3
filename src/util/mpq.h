@@ -843,6 +843,7 @@ typedef mpq_manager<false> unsynch_mpq_manager;
 typedef _scoped_numeral<unsynch_mpq_manager> scoped_mpq;
 typedef _scoped_numeral<synch_mpq_manager> scoped_synch_mpq;
 typedef _scoped_numeral_vector<unsynch_mpq_manager> scoped_mpq_vector;
+typedef numeral_buffer<mpq, unsynch_mpq_manager> scoped_mpq_buffer;
 
 #endif /* _MPQ_H_ */
 

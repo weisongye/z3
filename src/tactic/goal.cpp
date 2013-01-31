@@ -688,3 +688,11 @@ bool is_equal(goal const & s1, goal const & s2) {
     SASSERT(num1 >= num2);
     return num1 == num2;
 }
+
+void pp(goal const & g) {
+    g.display(std::cout);
+}
+
+void pp(goal_ref const & g) {
+    g->display(std::cout);
+}

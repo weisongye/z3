@@ -279,6 +279,15 @@ public:
 
     bool is_pi(expr * arg) { return is_app_of(arg, m_afid, OP_PI); }
     bool is_e(expr * arg) { return is_app_of(arg, m_afid, OP_E); }
+
+    /**
+       \brief Decompose polynomial p into as[0]*xs[0] + ... + as[sz-1]*xs[sz-1] + c
+       This method assumes p is in normal form.
+    */
+    void get_polynomial(expr * p, scoped_mpq_buffer & as, expr_ref_buffer & xs, scoped_mpq & c);
+private:
+    // auxiliary function for get_polynomial
+    void get_polynomial_monomial(expr * p, scoped_mpq_buffer & as, expr_ref_buffer & xs, scoped_mpq & c);
 };
 
 class arith_util : public arith_recognizers {

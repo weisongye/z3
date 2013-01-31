@@ -34,13 +34,12 @@ private:
     //variables used for each of bounds in bi
     sbuffer<bound_propagator::var> m_bp_bi_bounds;
 
-    bool get_monomial(expr * e,  expr_ref_buffer & terms,  sbuffer<int> & coeffs, int & cval);
     void introduce_var(sort * s, expr_ref & e, bound_propagator::var & var);
     // introduce variable for (x + terms*coeffs), vvar is the variable for x, bvar is the variable for the bound
-    void introduce_var(sort * s, expr_ref & x, expr_ref_buffer & terms,  sbuffer<int> & coeffs, bound_propagator::var & vvar, bound_propagator::var & bvar);
+    void introduce_var(sort * s, expr_ref & x, expr_ref_buffer & terms,  scoped_mpq_buffer & coeffs, bound_propagator::var & vvar, bound_propagator::var & bvar);
 public:
     propagate_bound_info(ast_manager& m, arith_util & au, bound_propagator::numeral_manager & nm, bound_propagator::allocator & alloc ) : 
-        m_m(m), m_au(au), m_bp( nm, alloc ), m_bp_exprs(m_m){}
+        m_m(m), m_au(au), m_bp(nm, alloc), m_bp_exprs(m_m){}
 
     bool compute(bound_info& bi);
     void print( const char * tc );
