@@ -343,6 +343,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
         bool m_opt_filter_instances;
         //other information
         bool m_had_nested_quantifiers;
+        bool m_expanded_quantifiers;
         obj_map< sort, ptr_vector<expr> > m_cardinality_bounds;
 
         rw_cfg(ast_manager & _m, params_ref const & p):
@@ -412,6 +413,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
                             //result is a conjunction of the literals in exp_result
                             result = m_is_falsified ? m_m.mk_false() : mk_and(m_m, exp_result.size(), exp_result.c_ptr());
                             TRACE("expand_bounded_quantifiers", tout << "Expand, got result " << mk_pp(result, m_m) << "\n";);
+                            m_expanded_quantifiers = true;
                             return true;
                         }
                         else {
@@ -446,15 +448,16 @@ class expand_bounded_quantifiers_tactic : public tactic {
         //TODO: collect all preexisting cardinality bounds
         do {
             m_rw.m_cfg.m_had_nested_quantifiers = false;
+            m_rw.m_cfg.m_expanded_quantifiers   = false;
             m_rw(curr, result);
             curr = result;  
-        } while (m_rw.m_cfg.m_had_nested_quantifiers);
+        } while (m_rw.m_cfg.m_had_nested_quantifiers && m_rw.m_cfg.m_expanded_quantifiers);
     }
 
 public:
     expand_bounded_quantifiers_tactic(ast_manager & m, params_ref const & p):
 	m_rw(m, p) {
-	    m_params = p;
+        m_params = p;
     }
 
     virtual tactic * translate(ast_manager & m) {
