@@ -26,13 +26,13 @@ Author:
 #include"assertion_stream.h"
 #include"has_free_vars.h"
 
-class numeral_bound_recognizer
-{
+class numeral_bound_recognizer {
 private:
     ast_manager & m_m;
     arith_util & m_au;
     bv_util & m_bvu;
     th_rewriter & m_as;
+
     bool get_constant(sort * s, expr * bnd, rational & range) {
         if (m_au.is_int(s)) {
             if (m_au.is_numeral(bnd, range)) {
@@ -47,14 +47,15 @@ private:
         }
         return false;
     }
+
     //determine if ite_term encodes the minimum or maximum function
     bool is_min_max_func(expr* ite_term, bool isMax) {
         if (m_m.is_ite(ite_term)) {
             if (m_au.is_le(to_app(ite_term)->get_arg(0)) || m_bvu.is_bv_ule(to_app(ite_term)->get_arg(0))) {
                 bool isReverse = isMax;
                 for (unsigned i = 0; i <= 1; i++) {
-                    unsigned io = isReverse ? (i==1 ? 1 : 0) : i;
-                    if (to_app(ite_term)->get_arg(i+1)!=to_app(to_app(ite_term)->get_arg(0))->get_arg(io)) {
+                    unsigned io = isReverse ? (i == 1 ? 1 : 0) : i;
+                    if (to_app(ite_term)->get_arg(i+1) != to_app(to_app(ite_term)->get_arg(0))->get_arg(io)) {
                         return false;
                     }
                 }
@@ -63,10 +64,11 @@ private:
         }
         return false;
     }
+
 public:
     //currently all ite conditions must be "less than or equal"
     numeral_bound_recognizer(ast_manager & m, arith_util & au, bv_util & bvu, th_rewriter & as) : 
-      m_m(m), m_au(au), m_bvu(bvu), m_as(as), m_infer_ite_bounds(true) {}
+        m_m(m), m_au(au), m_bvu(bvu), m_as(as), m_infer_ite_bounds(true) {}
     bool m_infer_ite_bounds;
 
     bool get_constant_bound(sort * s, expr * bnd, bool isMax, rational & range) {
@@ -86,7 +88,7 @@ public:
         else if (m_au.is_add(bnd) || m_au.is_mul(bnd)) {
             //recurse on children
             expr_ref_buffer child_t(m_m);
-            for (unsigned i=0; i<to_app(bnd)->get_num_args(); i++) {
+            for (unsigned i = 0; i < to_app(bnd)->get_num_args(); i++) {
                 rational r;
                 if (get_constant_bound(s, to_app(bnd)->get_arg(i), isMax, r)) {
                     child_t.push_back(m_au.mk_numeral(r, true));
@@ -111,8 +113,7 @@ public:
     }
 };
 
-class cardinality_bound_recognizer
-{
+class cardinality_bound_recognizer {
 private:
     ast_manager & m_m;
     bool get_cardinality_bound_eq(expr * e, ptr_vector<expr> & reps ) {
@@ -129,13 +130,14 @@ private:
         }
         return false;
     }
+
 public:
     //currently all ite conditions must be "less than or equal"
     cardinality_bound_recognizer(ast_manager & m) :  m_m(m) {}
     bool get_cardinality_bound(expr* bnd, sort * & s, ptr_vector<expr> & reps ) {
         if (is_quantifier(bnd)) {
             quantifier * q = to_quantifier(bnd);
-            if (q->get_num_decls()==1) {
+            if (q->get_num_decls() == 1) {
                 s = q->get_decl_sort(0);
                 expr* body = q->get_expr();
                 if (m_m.is_or(body)) {
@@ -153,8 +155,9 @@ public:
         }
         return false;
     }
+
     //outputs into result (reps is input)
-    static void mk_cardinality_bound(ast_manager & m, sort * s, const symbol & sym, ptr_vector<expr> & reps, expr_ref & result) {
+    static void mk_cardinality_bound(ast_manager & m, sort * s, symbol const & sym, ptr_vector<expr> & reps, expr_ref & result) {
         if (reps.empty()) {
             result = m.mk_false();
         }
@@ -174,8 +177,9 @@ public:
             result = m.mk_forall(sorts.size(), sorts.c_ptr(), symbols.c_ptr(), result);
         }
     }
+
     //outputs into result_reps, result
-    static void mk_cardinality_bound(ast_manager & m, sort * s, const symbol & sym, unsigned bound, ptr_vector<expr> & result_reps, expr_ref & result) {
+    static void mk_cardinality_bound(ast_manager & m, sort * s, symbol const & sym, unsigned bound, ptr_vector<expr> & result_reps, expr_ref & result) {
         for (unsigned i = 0; i < bound; i++) {
             result_reps.push_back(m.mk_fresh_const("c",s));
         }

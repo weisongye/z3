@@ -38,7 +38,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
             body_lits.append(bi.m_body.size(), bi.m_body.c_ptr());
             //make the substitution we will be using
             expr_ref_buffer subs(m_m);
-            for (unsigned i=0; i<q->get_num_decls(); i++) {
+            for (unsigned i = 0; i < q->get_num_decls(); i++) {
                 sort * s = q->get_decl_sort(i);
                 expr * v = m_m.mk_var(q->get_num_decls()-1-i, s);
                 subs.push_back(v);
@@ -46,7 +46,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
             //substitution object
             var_subst vs(m_m);
             //normalize each of the bounds
-            for (unsigned iv=0; iv<bi.m_var_order.size(); iv++) {
+            for (unsigned iv = 0; iv < bi.m_var_order.size(); iv++) {
                 unsigned i = bi.m_var_order[iv];
                 sort * s = q->get_decl_sort(q->get_num_decls()-1-i);
                 expr * v = m_m.mk_var(i, s);
@@ -89,7 +89,7 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                 subs.setx(q->get_num_decls()-1-i, subs_val);
             }
             //apply substitution to each of the body literals
-            for (unsigned i=0; i<body_lits.size(); i++) {
+            for (unsigned i = 0; i < body_lits.size(); i++) {
                 expr_ref bd_res(m_m);
                 vs(body_lits[i], subs.size(), subs.c_ptr(), bd_res);
                 body_lits.setx(i, bd_res);
