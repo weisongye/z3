@@ -1,7 +1,9 @@
 def_module_params('expand_bounded_quantifiers', 
                   description='parameters for bounded quantifiers tactic',
                   export=False,
-                  params=(('max_instances', UINT, 100, "maximum number of quantifier instances (per quantifier)"),
-                          ('domain', UINT, 2, "domain size to be considered for universally quantified variables non constant bounds (the resultant goal is a under-approximation)."),
-                          ('use_constant_bounds', BOOL, True, "whether to prefer constant bound values whenever possible"),
+                  params=(('domain', UINT, 2, "domain size to be considered for universally quantified variables non constant bounds (the resultant goal is a under-approximation)."),
+					      ('max_instances', UINT, 100, "maximum number of quantifier instances (per quantifier) to generate"),
+						  ('max_test_instances', UINT, 10000, "maximum number of quantifier instances (per quantifier) to test"),
+                          ('precise', BOOL, False, "only expand quantified formula if the expansion is precise"),
+                          ('use_constant_bounds', BOOL, True, "whether to prefer the use of constant bound values"),
                           ('filter_instances', BOOL, False, "whether to enable simple filtering of instances produced")))

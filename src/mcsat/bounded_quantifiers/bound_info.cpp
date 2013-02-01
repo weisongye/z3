@@ -28,21 +28,27 @@ bool bound_info::collect_literals(expr * e, expr_ref_buffer & lits ) {
 }
 
 bool bound_info::get_var_monomial(expr * e, expr_ref & var, expr_ref & coeff) {
+    bool foundVar = false;
     if (is_var(e)) {
         var = to_var(e);
         rational val(1, 1);
         coeff = m_au.mk_numeral(val, true);
-        return true;
+        foundVar = true;
     }
     else if (m_au.is_mul(e)) {
         if (m_au.is_numeral(to_app(e)->get_arg(0)) && is_var(to_app(e)->get_arg(1))) {
             var = to_app(e)->get_arg(1);
             coeff = to_app(e)->get_arg(0);
-            return true;
+            foundVar = true;
         }
     }
-    TRACE("bound-info-debug",tout << "failed to find monomial " << mk_pp(e, m_m) << "\n";);
-    return false;
+    if (foundVar && to_var(var)->get_idx() < m_q->get_num_decls()) {
+        return true;
+    }
+    else {
+        TRACE("bound-info-debug",tout << "failed to find monomial " << mk_pp(e, m_m) << "\n";);
+        return false;
+    }
 }
 
 bool bound_info::is_ground_bnd_vars(expr * e) {
@@ -267,9 +273,13 @@ bool bound_info::compute() {
         bool properSorts = true;
         for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
             sort * s = m_q->get_decl_sort(i);
-            //check sort is int/bv?
-            if (!m_au.is_int(s) && !m_bvu.is_bv_sort(s)) {
-                //TODO: bind datatype immediately if finite
+            //check sort is uninterpreted/int/bv
+            if (m_m.is_uninterp(s)){
+                //uninterpreted sorts are by default bound
+                m_var_order.push_back(m_q->get_num_decls()-i-1);
+            }
+            else if (!m_au.is_int(s) && !m_bvu.is_bv_sort(s)) {
+                TRACE("bound-info-debug",tout << "Bound info not supported for sort " << mk_pp(s, m_m) << "\n";);
                 properSorts = false;
             }
         }
@@ -284,91 +294,93 @@ bool bound_info::compute() {
                 sbuffer<unsigned> new_bnds_from_vars;
                 sbuffer<bool> new_bnds_signs;
                 expr_ref_buffer new_ovf(m_m);
-                bool iter_success = true;
+                bool iter_success;
                 do {
-                    is_bounded_quantifier_iter(lits, bnds, new_bnd_vars, new_bnds, new_bnds_from_vars, new_bnds_signs, new_ovf);
-                    //if necessary, add trivial bv bound
-                    if (new_bnd_vars.empty()) {
-                        for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
-                            sort * s = m_q->get_decl_sort(m_q->get_num_decls()-i-1);
-                            if (m_bvu.is_bv_sort(s) && !is_bound(i)) {
-                                var * v = m_m.mk_var(i, s);
-                                TRACE("bound-info-debug",tout << "add trivial bound for bv variable : " << mk_pp(v,m_m) << "\n";);
-                                expr_ref auto_l(m_m);
-                                expr_ref auto_u(m_m);
-                                get_bv_auto_bound(true, false, s, auto_l);
-                                get_bv_auto_bound(false, false, s, auto_u);
-                                m_l.setx(i, auto_l);
-                                m_u.setx(i, auto_u);
-                                new_bnd_vars.push_back(i);
-                                break;
-                            }
-                        }
-                    }
-                    //add new_bnd_vars to bnd_vars
-                    if (!new_bnd_vars.empty()) {
-                        //we add one variable per round, preferring the maximum variable (i.e. the first variable in the quantifier prefix)
-                        unsigned max_var = UINT_MAX;
-                        unsigned max_non_triv_var = UINT_MAX;
-                        for (unsigned i = 0; i < new_bnd_vars.size(); i++) {
-                            if (max_var == UINT_MAX || new_bnd_vars[i] > max_var) {
-                                max_var = new_bnd_vars[i];
-                            }
-                            if (!is_trivial(new_bnd_vars[i]) && (max_non_triv_var == UINT_MAX || new_bnd_vars[i] > max_non_triv_var)) {
-                                max_non_triv_var = new_bnd_vars[i];
-                            }
-                        }
-                        TRACE("bound-info-debug",tout << "Max vars found : " << max_var << " " << max_non_triv_var << "\n";);
-                        max_var = max_non_triv_var == UINT_MAX ? max_var : max_non_triv_var;
-                        //add to variables
-                        m_var_order.push_back(max_var);
-                        //check if signed or unsigned (require both unsigned to be set)
-                        bool isSigned = (!m_l[max_var] || !m_u[max_var]);
-                        TRACE("bound-info",tout << "Bound variable : " << max_var << ", signed = " << isSigned << "\n";);
-                        //now, only take the bounds from max_var
-                        for (unsigned i = 0; i < new_bnds_from_vars.size(); i++) {
-                            if (new_bnds_from_vars[i] == max_var && new_bnds_signs[i] == isSigned) {
-                                TRACE("bound-info",tout << "Processed literal : " << mk_pp(new_bnds[i], m_m) << "\n";);
-                                bnds.push_back(new_bnds[i]);
-                                //check if it has a corresponding overflow constraint, if so, add it to the body
-                                if (new_ovf[i]) {
-                                    m_body.push_back(new_ovf[i]);
+                    iter_success = false;
+                    if (m_var_order.size() < m_q->get_num_decls()) {
+                        is_bounded_quantifier_iter(lits, bnds, new_bnd_vars, new_bnds, new_bnds_from_vars, new_bnds_signs, new_ovf);
+                        //if necessary, add trivial bv bound
+                        if (new_bnd_vars.empty()) {
+                            for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
+                                sort * s = m_q->get_decl_sort(m_q->get_num_decls()-i-1);
+                                if (m_bvu.is_bv_sort(s) && !is_bound(i)) {
+                                    var * v = m_m.mk_var(i, s);
+                                    TRACE("bound-info-debug",tout << "add trivial bound for bv variable : " << mk_pp(v,m_m) << "\n";);
+                                    expr_ref auto_l(m_m);
+                                    expr_ref auto_u(m_m);
+                                    get_bv_auto_bound(true, false, s, auto_l);
+                                    get_bv_auto_bound(false, false, s, auto_u);
+                                    m_l.setx(i, auto_l);
+                                    m_u.setx(i, auto_u);
+                                    new_bnd_vars.push_back(i);
+                                    break;
                                 }
                             }
                         }
-                        //clear unused bounds created on this iteration
-                        for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
-                            // [Leo]: Are you using "false" to mark that we don't have a bound?
-                            // [Leo]: Why not 0?
-                            if (!m_var_order.contains(i)) {
-                                m_l.setx(i, 0);
-                                m_u.setx(i, 0);
-                                m_sl.setx(i, 0);
-                                m_su.setx(i, 0);
+                        //add new_bnd_vars to bnd_vars
+                        if (!new_bnd_vars.empty()) {
+                            //we add one variable per round, preferring the maximum variable (i.e. the first variable in the quantifier prefix)
+                            unsigned max_var = UINT_MAX;
+                            unsigned max_non_triv_var = UINT_MAX;
+                            for (unsigned i = 0; i < new_bnd_vars.size(); i++) {
+                                if (max_var == UINT_MAX || new_bnd_vars[i] > max_var) {
+                                    max_var = new_bnd_vars[i];
+                                }
+                                if (!is_trivial(new_bnd_vars[i]) && (max_non_triv_var == UINT_MAX || new_bnd_vars[i] > max_non_triv_var)) {
+                                    max_non_triv_var = new_bnd_vars[i];
+                                }
                             }
-                            else if (i == max_var ){
-                                if (isSigned) {
+                            TRACE("bound-info-debug",tout << "Max vars found : " << max_var << " " << max_non_triv_var << "\n";);
+                            max_var = max_non_triv_var == UINT_MAX ? max_var : max_non_triv_var;
+                            //add to variables
+                            m_var_order.push_back(max_var);
+                            //check if signed or unsigned (require both unsigned to be set)
+                            bool isSigned = (!m_l[max_var] || !m_u[max_var]);
+                            TRACE("bound-info",tout << "Bound variable : " << max_var << ", signed = " << isSigned << "\n";);
+                            //now, only take the bounds from max_var
+                            for (unsigned i = 0; i < new_bnds_from_vars.size(); i++) {
+                                if (new_bnds_from_vars[i] == max_var && new_bnds_signs[i] == isSigned) {
+                                    TRACE("bound-info",tout << "Processed literal : " << mk_pp(new_bnds[i], m_m) << "\n";);
+                                    bnds.push_back(new_bnds[i]);
+                                    //check if it has a corresponding overflow constraint, if so, add it to the body
+                                    if (new_ovf[i]) {
+                                        m_body.push_back(new_ovf[i]);
+                                    }
+                                }
+                            }
+                            //clear unused bounds created on this iteration
+                            for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
+                                // [Leo]: Are you using "false" to mark that we don't have a bound?
+                                // [Leo]: Why not 0?
+                                if (!m_var_order.contains(i)) {
                                     m_l.setx(i, 0);
                                     m_u.setx(i, 0);
-                                }
-                                else {
                                     m_sl.setx(i, 0);
                                     m_su.setx(i, 0);
                                 }
+                                else if (i == max_var ){
+                                    if (isSigned) {
+                                        m_l.setx(i, 0);
+                                        m_u.setx(i, 0);
+                                    }
+                                    else {
+                                        m_sl.setx(i, 0);
+                                        m_su.setx(i, 0);
+                                    }
+                                }
                             }
+                            iter_success = true;
                         }
+                        //reset temporary information
+                        new_bnd_vars.reset();
+                        new_bnds.reset();
+                        new_bnds_from_vars.reset();
+                        new_bnds_signs.reset();
+                        new_ovf.reset();
+                        TRACE("bound-info-debug",tout << "next level...";);
                     }
-                    else {
-                        iter_success = false;
-                    }
-                    //reset temporary information
-                    new_bnd_vars.reset();
-                    new_bnds.reset();
-                    new_bnds_from_vars.reset();
-                    new_bnds_signs.reset();
-                    new_ovf.reset();
-                    TRACE("bound-info-debug",tout << "next level...";);
                 } while (iter_success);
+                //push back all literals that did not contribute to bounds to body
                 if (m_var_order.size() == m_q->get_num_decls()) {
                     //make new body (all literals that were not processed as bounds)
                     for (unsigned i = 0; i < lits.size(); i++) {
@@ -393,14 +405,17 @@ void bound_info::display(std::ostream & out) {
     out << "Quantifier " << mk_pp(m_q, m_m) << " has the following bounds : \n";
     for (unsigned i=0; i<m_var_order.size(); i++) {
         int var_index = m_var_order[i];
-        expr_ref_buffer & bl = m_l;
-        expr_ref_buffer & bu = m_u;
-        if (is_bv_signed_bound(var_index)) {
-            out << "(signed) ";
-            bl = m_sl;
-            bu = m_su;
+        sort * s = m_q->get_decl_sort(m_q->get_num_decls()-var_index-1);
+        if (!m_m.is_uninterp(s)) {
+            expr_ref_buffer & bl = m_l;
+            expr_ref_buffer & bu = m_u;
+            if (is_bv_signed_bound(var_index)) {
+                out << "(signed) ";
+                bl = m_sl;
+                bu = m_su;
+            }
+            out << mk_pp(bl[var_index], m_m) << "   <=   " << m_q->get_decl_name(m_q->get_num_decls()-var_index-1) << "   <=   " << mk_pp(bu[var_index], m_m) << "\n";
         }
-        out << mk_pp(bl[var_index], m_m) << "   <=   " << m_q->get_decl_name(m_q->get_num_decls()-var_index-1) << "   <=   " << mk_pp(bu[var_index], m_m) << "\n";
     }
     expr_ref body_expr(m_m);
     get_body(body_expr, false);
@@ -409,7 +424,10 @@ void bound_info::display(std::ostream & out) {
 
 bool bound_info::is_bound(unsigned idx){
     sort * s = m_q->get_decl_sort(idx);
-    if (m_au.is_int(s)) {
+    if (m_m.is_uninterp(s)) {
+        return true;
+    }
+    else if (m_au.is_int(s)) {
         return is_int_bound(idx);
     }
     else if (m_bvu.is_bv_sort(s)) {
@@ -438,7 +456,8 @@ bool bound_info::is_normalized(unsigned idx) {
         expr_ref lower(m_m);
         lower = get_lower_bound(idx);
         sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-idx);
-        if ( (m_au.is_int(s) && lower == m_au.mk_numeral(rational(0, 1), true)) ||
+        if ( m_m.is_uninterp(s) || 
+             (m_au.is_int(s) && lower == m_au.mk_numeral(rational(0, 1), true)) ||
              (m_bvu.is_bv_sort(s) && lower == m_bvu.mk_numeral(rational(0), s)) ) {
             //lower bound is zero
         }

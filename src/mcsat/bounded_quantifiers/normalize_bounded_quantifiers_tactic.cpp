@@ -50,36 +50,38 @@ class normalize_bounded_quantifiers_tactic : public tactic {
                 unsigned i = bi.m_var_order[iv];
                 sort * s = q->get_decl_sort(q->get_num_decls()-1-i);
                 expr * v = m_m.mk_var(i, s);
-                //construct lower and upper bounds (must apply current substitution to them)
-                expr_ref lower(m_m);
-                expr_ref upper(m_m);
-                vs(bi.get_lower_bound(i), subs.size(), subs.c_ptr(), lower);
-                vs(bi.get_upper_bound(i), subs.size(), subs.c_ptr(), upper);
                 expr_ref subs_val(m_m);
-                //add normalized bounds to bound_lits
-                if (m_au.is_int(s)) {
-                    bound_lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_au.mk_numeral(rational(0), true))));
-                    if (bi.is_normalized(i)) {
-                        bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, upper)));
-                        subs_val = v;
+                subs_val = v;
+                //construct lower and upper bounds (must apply current substitution to them)
+                if (m_au.is_int(s) || m_bvu.is_bv_sort(s)) {
+                    expr_ref lower(m_m);
+                    expr_ref upper(m_m);
+                    vs(bi.get_lower_bound(i), subs.size(), subs.c_ptr(), lower);
+                    vs(bi.get_upper_bound(i), subs.size(), subs.c_ptr(), upper);
+                    //add normalized bounds to bound_lits
+                    if (m_au.is_int(s)) {
+                        bound_lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_au.mk_numeral(rational(0), true))));
+                        if (bi.is_normalized(i)) {
+                            bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, upper)));
+                        }
+                        else{
+                            bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, m_au.mk_sub(upper, lower))));
+                            subs_val = m_au.mk_add(v, lower);
+                        }
                     }
-                    else{
-                        bound_lits.push_back(m_m.mk_not(m_au.mk_le(v, m_au.mk_sub(upper, lower))));
-                        subs_val = m_au.mk_add(v, lower);
-                    }
-                }
-                else if (m_bvu.is_bv_sort(s)) {
-                    if (bi.is_normalized(i)) {
-                        bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v,upper)));
-                        subs_val = v;
-                    }
-                    else {
-                        bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_bvu.mk_bv_sub(upper, lower))));
-                        //additionally, body is satisfied when lower > upper
-                        bound_lits.push_back(m_m.mk_not(bi.is_bv_signed_bound(i) ? m_bvu.mk_sle(lower, upper) :
-                                                                                    m_bvu.mk_ule(lower, upper)));
-                        subs_val = m_bvu.mk_bv_add(v, lower);
-                        addedOvfBound = true;
+                    else if (m_bvu.is_bv_sort(s)) {
+                        //(do not need to add lower bound)
+                        if (bi.is_normalized(i)) {
+                            bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v,upper)));
+                        }
+                        else {
+                            bound_lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_bvu.mk_bv_sub(upper, lower))));
+                            //additionally, body is satisfied when lower > upper
+                            bound_lits.push_back(m_m.mk_not(bi.is_bv_signed_bound(i) ? m_bvu.mk_sle(lower, upper) :
+                                                                                        m_bvu.mk_ule(lower, upper)));
+                            subs_val = m_bvu.mk_bv_add(v, lower);
+                            addedOvfBound = true;
+                        }
                     }
                 }
                 //also add v -> (v+l) to the substitution

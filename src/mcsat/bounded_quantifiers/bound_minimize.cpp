@@ -133,7 +133,6 @@ bool propagate_bound_info::compute(bound_info& bi) {
                             rational rb(isLower ? m_bp.lower(vv) : m_bp.upper(vv));
                             expr_ref b(m_m);
                             b = m_au.mk_numeral(rb, true);
-                            //std::cout << "Set bound for variable " << index << std::endl;
                             expr_ref_buffer & bnd = isLower ? bi.m_l : bi.m_u;
                             expr_ref curr_b(m_m);
                             curr_b = bnd[index];
