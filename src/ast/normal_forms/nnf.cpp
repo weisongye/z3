@@ -640,14 +640,14 @@ struct nnf::imp {
             expr_ref  n2(m());
             proof_ref pr2(m());
             if (m_ignore_nested) {
+                n2  = t;
+                pr2 = 0;
+            }
+            else {
                 if (m_mode == NNF_FULL || (m_mode != NNF_SKOLEM && fr.m_in_q))
                     m_name_nested_formulas->operator()(t, m_todo_defs, m_todo_proofs, n2, pr2);
                 else
                     m_name_quant->operator()(t, m_todo_defs, m_todo_proofs, n2, pr2);
-            }
-            else {
-                n2  = t;
-                pr2 = 0;
             }
         
             if (!fr.m_pol)
