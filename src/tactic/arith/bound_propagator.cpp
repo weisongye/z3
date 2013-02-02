@@ -18,6 +18,7 @@ Revision History:
 
 --*/
 #include"bound_propagator.h"
+#include"tactic_exception.h"
 #include<cmath>
 
 // -------------------------------
@@ -76,6 +77,7 @@ bound_propagator::bound_propagator(numeral_manager & _m, allocator & a, params_r
     m_conflict  = null_var;
     updt_params(p);
     reset_statistics();
+    m_cancel = false;
 }
 
 bound_propagator::~bound_propagator() {
@@ -458,12 +460,18 @@ void bound_propagator::check_feasibility(var x) {
     }
 }
 
+void bound_propagator::checkpoint() {
+    if (m_cancel) 
+        throw tactic_exception(TACTIC_CANCELED_MSG);
+}
+
 void bound_propagator::propagate() {
     m_to_reset_ts.reset();
 
     while (m_qhead < m_trail.size()) {
         if (inconsistent())
             break;
+        checkpoint();
         trail_info & info = m_trail[m_qhead];
         var x = info.x();
         bool is_lower = info.is_lower();
@@ -494,6 +502,10 @@ void bound_propagator::propagate() {
     unsigned_vector::iterator end =  m_to_reset_ts.end();
     for (; it != end; ++it)
         m_constraints[*it].m_timestamp = 0;
+}
+
+void bound_propagator::set_cancel(bool f) {
+    m_cancel = f;
 }
 
 bool bound_propagator::propagate(unsigned c_idx) {

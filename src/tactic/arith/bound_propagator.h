@@ -145,6 +145,9 @@ protected:
     unsigned           m_propagations;
     unsigned           m_false_alarms;
 
+    // 
+    volatile bool      m_cancel;
+
     void del_constraint(constraint & cnstr);
     void del_constraints_core();
 
@@ -173,6 +176,8 @@ protected:
     bool get_bound(unsigned sz, Numeral const * as, var const * xs, mpq & r, bool & st) const;
 
     void init_eq(linear_equation * eq);
+
+    void checkpoint();
 
 public:
     bound_propagator(numeral_manager & m, allocator & a, params_ref const & p = params_ref());
@@ -262,6 +267,8 @@ public:
 
     unsigned get_num_false_alarms() const { return m_false_alarms; }
     unsigned get_num_propagations() const { return m_propagations; }
+
+    void set_cancel(bool f);
 };
 
 #endif
