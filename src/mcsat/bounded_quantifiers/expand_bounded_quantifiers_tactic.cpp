@@ -25,6 +25,7 @@ Author:
 #include"expand_bounded_quantifiers_params.hpp"
 #include"assertion_stream.h"
 #include"has_free_vars.h"
+#include"filter_model_converter.h"
 
 class numeral_bound_recognizer {
 private:
@@ -132,7 +133,6 @@ private:
     }
 
 public:
-    //currently all ite conditions must be "less than or equal"
     cardinality_bound_recognizer(ast_manager & m) :  m_m(m) {}
     bool get_cardinality_bound(expr* bnd, sort * & s, ptr_vector<expr> & reps ) {
         if (is_quantifier(bnd)) {
@@ -174,14 +174,16 @@ public:
             sbuffer<symbol> symbols;
             sorts.push_back(s);
             symbols.push_back(sym);
-            result = m.mk_forall(sorts.size(), sorts.c_ptr(), symbols.c_ptr(), result);
+            std::ostringstream os;
+            os << s->get_name() <<"!card";
+            result = m.mk_forall(sorts.size(), sorts.c_ptr(), symbols.c_ptr(), result, 0, symbol(os.str().c_str()));
         }
     }
 
     //outputs into result_reps, result
     static void mk_cardinality_bound(ast_manager & m, sort * s, symbol const & sym, unsigned bound, ptr_vector<expr> & result_reps, expr_ref & result) {
         for (unsigned i = 0; i < bound; i++) {
-            result_reps.push_back(m.mk_fresh_const("c",s));
+            result_reps.push_back(m.mk_fresh_const(s->get_name().str().c_str(),s));
         }
         mk_cardinality_bound(m, s, sym, result_reps, result);
     }
@@ -258,7 +260,16 @@ class expand_bounded_quantifiers_tactic : public tactic {
                         //assert cardinality bound if not already there
                         m_cardinality_bounds.insert(s, ptr_vector<expr>());
                         symbol sym("x");
-                        cardinality_bound_recognizer::mk_cardinality_bound(m_m, s, sym, m_opt_domain, m_cardinality_bounds.find(s), bnd);
+                        ptr_vector<expr> & vec = m_cardinality_bounds.find(s);
+                        cardinality_bound_recognizer::mk_cardinality_bound(m_m, s, sym, m_opt_domain, vec, bnd);
+                        if (m_stream) {
+                            for (unsigned i = 0; i < vec.size(); i++) {
+                                expr * e = vec[i];
+                                SASSERT(is_app(e));
+                                SASSERT(is_uninterp_const(e));
+                                m_stream->add_filter(to_app(e)->get_decl());
+                            }
+                        }
                         success = true;
                         TRACE("expand_bounded_quantifiers-debug", tout << "Added constraint " << mk_pp(bnd, m_m) << "\n";);
                     }
@@ -348,6 +359,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
         //other information
         bool m_had_nested_quantifiers;
         bool m_expanded_quantifiers;
+        assertion_stream * m_stream;
         obj_map< sort, ptr_vector<expr> > m_cardinality_bounds;
 
         rw_cfg(ast_manager & _m, params_ref const & p):
@@ -360,6 +372,7 @@ class expand_bounded_quantifiers_tactic : public tactic {
             m_inst_test_count = 0;
             m_precise = true;
             m_is_falsified = false;
+            m_stream = 0;
 	        updt_params(p);
         }
 
@@ -476,28 +489,29 @@ public:
     }
 
     virtual void collect_param_descrs(param_descrs & r) { 
-	expand_bounded_quantifiers_params::collect_param_descrs(r);
+	    expand_bounded_quantifiers_params::collect_param_descrs(r);
     }
 
-    virtual void operator()(goal_ref const & g, 
-                            goal_ref_buffer & result, 
-                            model_converter_ref & mc, 
-                            proof_converter_ref & pc,
-                            expr_dependency_ref & core) {
-        TRACE("expand_bounded_quantifiers", tout << "params: " << m_params << "\n"; g->display(tout););
-        fail_if_proof_generation("expand_bounded_quantifiers_tactic", g);
-        ast_manager & m = g->m();
-        SASSERT(g->is_well_sorted());
-        mc = 0; pc = 0; core = 0;
-        tactic_report report("expand_bounded_quantifiers", *g);
-        unsigned sz = g->size();
+    void apply(assertion_stream & g){
+        TRACE("expand_bounded_quantifiers", tout << "params: " << m_params << "\n"; g.display(tout););
+        fail_if_proof_generation("expand_bounded_quantifiers_tactic", g.proofs_enabled());
+        ast_manager & m = g.m();
+        SASSERT(g.is_well_sorted());
+        if (g.models_enabled()) {
+            m_rw.m_cfg.m_stream = &g;
+        }
+        else {
+            m_rw.m_cfg.m_stream = 0;
+        }
+        stream_report report("expand_bounded_quantifiers", g);
+        unsigned sz = g.size();
         //first check for cardinality bounds for sorts
         m_rw.m_cfg.m_cardinality_bounds.reset();
         cardinality_bound_recognizer cbr(m);
         for (unsigned i = 0; i < sz; i++) {
             sort * s;
             ptr_vector<expr> pexpr;
-            if (cbr.get_cardinality_bound(g->form(i), s, pexpr)) {
+            if (cbr.get_cardinality_bound(g.form(i), s, pexpr)) {
                 TRACE("expand_bounded_quantifiers-debug", tout << "Found bound for sort " << mk_pp(s,m);
                                                           tout << ", size = " << pexpr.size() << ", contains = " << m_rw.m_cfg.m_cardinality_bounds.contains(s) << "\n";);
                 if (m_rw.m_cfg.m_cardinality_bounds.contains(s)) {
@@ -512,21 +526,39 @@ public:
                 }
             }
         }
-        for (unsigned i = 0; i < sz; i++) {
-            expr * curr = g->form(i);
+        for (unsigned i = g.qhead(); i < sz; i++) {
+            expr * curr = g.form(i);
             expr_ref new_curr(m);
             apply_rewrite(curr, new_curr);
-            g->update(i, new_curr, 0, g->dep(i));
+            g.update(i, new_curr, 0, g.dep(i));
         }
+
+        TRACE("expand_bounded_quantifiers", g.display(tout););
+        SASSERT(g.is_well_sorted());
+    }
+
+    virtual void operator()(goal_ref const & g, 
+                            goal_ref_buffer & result, 
+                            model_converter_ref & mc, 
+                            proof_converter_ref & pc,
+                            expr_dependency_ref & core) {
+        mc = 0; pc = 0; core = 0;
+        goal_and_fmc2stream s(*(g.get()));
+        apply(s);
+        if (g->models_enabled())
+            mc = s.mc();
         g->inc_depth();
         if (!m_rw.is_precise()) {
             g->updt_prec(goal::UNDER);
         }
         result.push_back(g.get());
-        TRACE("expand_bounded_quantifiers", g->display(tout););
-        SASSERT(g->is_well_sorted());
     }
     
+    virtual void operator()(assertion_stack & s) {
+        assertion_stack2stream strm(s);
+        apply(strm);
+    }
+
     virtual void cleanup() {
         m_rw.cleanup();
     }
