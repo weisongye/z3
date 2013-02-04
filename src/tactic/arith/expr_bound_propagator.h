@@ -53,6 +53,17 @@ public:
     bool lower(expr * x, mpq & k, bool & strict) const;
     bool upper(expr * x, mpq & k, bool & strict) const;
     /**
+       \brief Return an inequality representing the lower bound for x.
+       Return false if it does not exist
+    */
+    bool get_lower_ineq(expr * x, expr_ref & l) const;
+    /**
+       \brief Return an inequality representing the upper bound for x.
+       Return false if it does not exist
+    */
+    bool get_upper_ineq(expr * x, expr_ref & u) const;
+
+    /**
        \brief Return true if p is a polynomial of the form a_1*x_1 + ... + a_n*x_n, and has a lower bound based on the bounds for the x_i's.
        Return false otherwise.
        The bound is stored in k and strict.

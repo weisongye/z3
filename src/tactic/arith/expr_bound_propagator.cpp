@@ -289,6 +289,7 @@ struct expr_bound_propagator::imp {
         scope & s           = m_scopes[new_lvl];
         for (unsigned i = s.m_var2expr_trail; i < m_var2expr.size(); i++) {
             expr * t = m_var2expr[i];
+            bp.del_var(i);
             if (t)
                 m_expr2var.erase(t);
         }
@@ -346,6 +347,31 @@ struct expr_bound_propagator::imp {
             return false;
         return bp.upper(m_var_buffer.size(), m_num_buffer.c_ptr(), m_var_buffer.c_ptr(), k, strict);
     }
+
+    bool get_lower_ineq(expr * x, expr_ref & l) {
+        scoped_mpq k(nm);
+        bool strict;
+        if (!lower(x, k, strict))
+            return false;
+        if (strict)
+            l = m.mk_not(m_util.mk_le(x, m_util.mk_numeral(rational(k), m_util.is_int(x))));
+        else
+            l = m_util.mk_ge(x, m_util.mk_numeral(rational(k), m_util.is_int(x)));
+        return true;
+    }
+    
+    bool get_upper_ineq(expr * x, expr_ref & u) {
+        scoped_mpq k(nm);
+        bool strict;
+        if (!upper(x, k, strict))
+            return false;
+        if (strict)
+            u = m.mk_not(m_util.mk_ge(x, m_util.mk_numeral(rational(k), m_util.is_int(x))));
+        else
+            u = m_util.mk_le(x, m_util.mk_numeral(rational(k), m_util.is_int(x)));
+        return true;
+    }
+
 };
 
 expr_bound_propagator::expr_bound_propagator(ast_manager & m, params_ref const & p) {
@@ -403,6 +429,14 @@ bool expr_bound_propagator::poly_lower(expr * p, mpq & k, bool & strict) {
 
 bool expr_bound_propagator::poly_upper(expr * p, mpq & k, bool & strict) {
     return m_imp->poly_upper(p, k, strict);
+}
+
+bool expr_bound_propagator::get_lower_ineq(expr * x, expr_ref & l) const {
+    return m_imp->get_lower_ineq(x, l);
+}
+
+bool expr_bound_propagator::get_upper_ineq(expr * x, expr_ref & u) const {
+    return m_imp->get_upper_ineq(x, u);
 }
 
 void expr_bound_propagator::propagate() {
