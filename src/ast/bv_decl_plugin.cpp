@@ -171,6 +171,9 @@ sort * bv_decl_plugin::mk_sort(decl_kind k, unsigned num_parameters, parameter c
         m_manager->raise_exception("expecting one integer parameter to bit-vector sort");
     }
     unsigned bv_size = parameters[0].get_int();
+    if (bv_size == 0) {
+        m_manager->raise_exception("bit-vector size must be greater than zero");
+    }
     mk_bv_sort(bv_size);
     return m_bv_sorts[bv_size];
 }
@@ -457,7 +460,14 @@ func_decl * bv_decl_plugin::mk_mkbv(unsigned arity, sort * const * domain) {
 }
 
 func_decl * bv_decl_plugin::mk_func_decl(decl_kind k, unsigned num_parameters, parameter const * parameters,
-                                       unsigned arity, sort * const * domain, sort * range) {
+                                         unsigned arity, sort * const * domain, sort * range) {
+    if (range != 0) {
+        if (is_sort_of(range, m_family_id, BV_SORT))
+            m_manager->raise_exception("unneeded disambiguation");
+        else
+            m_manager->raise_exception("incorrect disambiguation");
+        return 0;
+    }
     int bv_size;
     if (k == OP_INT2BV && get_int2bv_size(num_parameters, parameters, bv_size)) {
         // bv_size is filled in.
@@ -555,7 +565,14 @@ func_decl * bv_decl_plugin::mk_func_decl(decl_kind k, unsigned num_parameters, p
 }
 
 func_decl * bv_decl_plugin::mk_func_decl(decl_kind k, unsigned num_parameters, parameter const * parameters, 
-                                       unsigned num_args, expr * const * args, sort * range) {
+                                         unsigned num_args, expr * const * args, sort * range) {
+    if (range != 0) {
+        if (is_sort_of(range, m_family_id, BV_SORT))
+            m_manager->raise_exception("unneeded disambiguation");
+        else
+            m_manager->raise_exception("incorrect disambiguation");
+        return 0;
+    }
     int bv_size;
     if (k == OP_INT2BV && get_int2bv_size(num_parameters, parameters, bv_size)) {
         // bv_size is filled in.
