@@ -361,9 +361,10 @@ class expand_bounded_quantifiers_tactic : public tactic {
         bool m_expanded_quantifiers;
         assertion_stream * m_stream;
         obj_map< sort, ptr_vector<expr> > m_cardinality_bounds;
+        expr_ref_buffer m_quant_exclude;
 
         rw_cfg(ast_manager & _m, params_ref const & p):
-            m_m(_m), m_au(_m), m_bvu(_m), arith_simp(_m){
+            m_m(_m), m_au(_m), m_bvu(_m), arith_simp(_m), m_quant_exclude(_m){
             params_ref arith_p;
             arith_p.set_bool("sort_sums", true);
             arith_p.set_bool("ule-split", false);
@@ -395,7 +396,10 @@ class expand_bounded_quantifiers_tactic : public tactic {
                                proof_ref & result_pr) {
             quantifier_ref q(m_m);
             q = m_m.update_quantifier(old_q, old_q->get_num_patterns(), new_patterns, old_q->get_num_no_patterns(), new_no_patterns, new_body);
-            if (has_free_vars(q)) {
+            if (m_quant_exclude.contains(old_q)) {
+                TRACE("expand_bounded_quantifiers", tout << mk_pp(q,m_m) << " should not be expanded.\n";);
+            }
+            else if (has_free_vars(q)) {
                 TRACE("expand_bounded_quantifiers", tout << mk_pp(q,m_m) << " has free variables.\n";);
                 m_had_nested_quantifiers = true;
             }
@@ -507,7 +511,9 @@ public:
         unsigned sz = g.size();
         //first check for cardinality bounds for sorts
         m_rw.m_cfg.m_cardinality_bounds.reset();
+        m_rw.m_cfg.m_quant_exclude.reset();
         cardinality_bound_recognizer cbr(m);
+        obj_map< sort, expr* > card_bounds;
         for (unsigned i = 0; i < sz; i++) {
             sort * s;
             ptr_vector<expr> pexpr;
@@ -519,12 +525,21 @@ public:
                     if (pexpr.size()<m_rw.m_cfg.m_cardinality_bounds.find(s).size()) {
                         m_rw.m_cfg.m_cardinality_bounds.remove(s);
                         m_rw.m_cfg.m_cardinality_bounds.insert(s, pexpr);
+                        card_bounds.remove(s);
+                        card_bounds.insert(s, g.form(i));
                     }
                 }
                 else {
                     m_rw.m_cfg.m_cardinality_bounds.insert(s, pexpr);
+                    card_bounds.insert(s, g.form(i));
                 }
             }
+        }
+        //add all cardinality bounds 
+        for (obj_map< sort, expr* >::iterator it = card_bounds.begin(); it != card_bounds.end(); ++it) {
+            expr_ref exc(m);
+            exc = it->get_value();
+            m_rw.m_cfg.m_quant_exclude.push_back( exc );
         }
         for (unsigned i = g.qhead(); i < sz; i++) {
             expr * curr = g.form(i);
