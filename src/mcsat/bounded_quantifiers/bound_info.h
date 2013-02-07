@@ -34,7 +34,7 @@ private:
     ast_manager & m_m;
     arith_util & m_au;
     bv_util & m_bvu;
-    bool collect_literals(expr * e, expr_ref_buffer & lits );
+    void collect_literals(expr * e, expr_ref_buffer & lits );
     bool get_var_monomial(expr * e, expr_ref & var, expr_ref & coeff);
     bool is_ground_bnd_vars(expr * e);
     void get_bv_auto_bound(bool isLower, bool isSigned, sort * s, expr_ref & result);
@@ -51,10 +51,10 @@ public:
             m_sl.push_back(0);
             m_su.push_back(0);
         }
-        m_is_valid = false;
+        m_is_bounded = false;
         m_is_trivial_sat = false;
     }
-    bool m_is_valid;
+    bool m_is_bounded;
     bool m_is_trivial_sat;
     quantifier_ref m_q;
     expr_ref_buffer m_l;
@@ -66,7 +66,7 @@ public:
 
     bool compute();
 
-    bool is_valid() { return m_is_valid; }
+    bool is_bounded() { return m_is_bounded; }
     bool is_trivial_sat() { return m_is_trivial_sat; }
     bool is_bound(unsigned idx);
     bool is_int_bound(unsigned idx) { return m_l[idx] && m_u[idx]; }

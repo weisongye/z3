@@ -17,14 +17,13 @@ Author:
 #include"bound_info.h"
 #include"ast_pp.h"
 
-bool bound_info::collect_literals(expr * e, expr_ref_buffer & lits ) {
+void bound_info::collect_literals(expr * e, expr_ref_buffer & lits ) {
     if (m_m.is_or(e)) {
         lits.append(to_app(e)->get_num_args(), to_app(e)->get_args());
     }
     else {
         lits.push_back(e);
     }
-    return true;
 }
 
 bool bound_info::get_var_monomial(expr * e, expr_ref & var, expr_ref & coeff) {
@@ -268,135 +267,130 @@ void bound_info::is_bounded_quantifier_iter(expr_ref_buffer & lits, expr_ref_buf
 }
 
 bool bound_info::compute() {
-    if (m_q->is_forall()) {
-        TRACE("bound-info",tout << "compute bound info for " << mk_pp(m_q, m_m) << "\n";);
-        bool properSorts = true;
-        for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
-            sort * s = m_q->get_decl_sort(i);
-            //check sort is uninterpreted/int/bv
-            if (m_m.is_uninterp(s)){
-                //uninterpreted sorts are by default bound
-                m_var_order.push_back(m_q->get_num_decls()-i-1);
-            }
-            else if (!m_au.is_int(s) && !m_bvu.is_bv_sort(s)) {
-                TRACE("bound-info-debug",tout << "Bound info not supported for sort " << mk_pp(s, m_m) << "\n";);
-                properSorts = false;
-            }
+    if (!m_q->is_forall()) {
+        TRACE("bound-info", tout << "Bound info cannot be applied to existential quantifiers.\n";);
+        m_body.push_back(m_q->get_expr());
+        return false;
+    }
+    TRACE("bound-info",tout << "Compute bound info for " << mk_pp(m_q, m_m) << "\n";);
+    bool properSorts = true;
+    for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
+        sort * s = m_q->get_decl_sort(i);
+        //check sort is uninterpreted/int/bv
+        if (m_m.is_uninterp(s)){
+            //uninterpreted sorts are by default bound
+            m_var_order.push_back(m_q->get_num_decls()-i-1);
         }
-        if (properSorts) {
-            //collect literals from body of quantifier
-            expr_ref_buffer lits(m_m);
-            //only consider forall?
-            if (collect_literals(m_q->get_expr(), lits)) {
-                expr_ref_buffer bnds(m_m);
-                sbuffer<unsigned> new_bnd_vars;
-                expr_ref_buffer new_bnds(m_m);
-                sbuffer<unsigned> new_bnds_from_vars;
-                sbuffer<bool> new_bnds_signs;
-                expr_ref_buffer new_ovf(m_m);
-                bool iter_success;
-                do {
-                    iter_success = false;
-                    if (m_var_order.size() < m_q->get_num_decls()) {
-                        is_bounded_quantifier_iter(lits, bnds, new_bnd_vars, new_bnds, new_bnds_from_vars, new_bnds_signs, new_ovf);
-                        //if necessary, add trivial bv bound
-                        if (new_bnd_vars.empty()) {
-                            for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
-                                sort * s = m_q->get_decl_sort(m_q->get_num_decls()-i-1);
-                                if (m_bvu.is_bv_sort(s) && !is_bound(i)) {
-                                    var * v = m_m.mk_var(i, s);
-                                    TRACE("bound-info-debug",tout << "add trivial bound for bv variable : " << mk_pp(v,m_m) << "\n";);
-                                    expr_ref auto_l(m_m);
-                                    expr_ref auto_u(m_m);
-                                    get_bv_auto_bound(true, false, s, auto_l);
-                                    get_bv_auto_bound(false, false, s, auto_u);
-                                    m_l.setx(i, auto_l);
-                                    m_u.setx(i, auto_u);
-                                    new_bnd_vars.push_back(i);
-                                    break;
-                                }
-                            }
-                        }
-                        //add new_bnd_vars to bnd_vars
-                        if (!new_bnd_vars.empty()) {
-                            //we add one variable per round, preferring the maximum variable (i.e. the first variable in the quantifier prefix)
-                            unsigned max_var = UINT_MAX;
-                            unsigned max_non_triv_var = UINT_MAX;
-                            for (unsigned i = 0; i < new_bnd_vars.size(); i++) {
-                                if (max_var == UINT_MAX || new_bnd_vars[i] > max_var) {
-                                    max_var = new_bnd_vars[i];
-                                }
-                                if (!is_trivial(new_bnd_vars[i]) && (max_non_triv_var == UINT_MAX || new_bnd_vars[i] > max_non_triv_var)) {
-                                    max_non_triv_var = new_bnd_vars[i];
-                                }
-                            }
-                            TRACE("bound-info-debug",tout << "Max vars found : " << max_var << " " << max_non_triv_var << "\n";);
-                            max_var = max_non_triv_var == UINT_MAX ? max_var : max_non_triv_var;
-                            //add to variables
-                            m_var_order.push_back(max_var);
-                            //check if signed or unsigned (require both unsigned to be set)
-                            bool isSigned = (!m_l[max_var] || !m_u[max_var]);
-                            TRACE("bound-info",tout << "Bound variable : " << max_var << ", signed = " << isSigned << "\n";);
-                            //now, only take the bounds from max_var
-                            for (unsigned i = 0; i < new_bnds_from_vars.size(); i++) {
-                                if (new_bnds_from_vars[i] == max_var && new_bnds_signs[i] == isSigned) {
-                                    TRACE("bound-info",tout << "Processed literal : " << mk_pp(new_bnds[i], m_m) << "\n";);
-                                    bnds.push_back(new_bnds[i]);
-                                    //check if it has a corresponding overflow constraint, if so, add it to the body
-                                    if (new_ovf[i]) {
-                                        m_body.push_back(new_ovf[i]);
-                                    }
-                                }
-                            }
-                            //clear unused bounds created on this iteration
-                            for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
-                                // [Leo]: Are you using "false" to mark that we don't have a bound?
-                                // [Leo]: Why not 0?
-                                if (!m_var_order.contains(i)) {
-                                    m_l.setx(i, 0);
-                                    m_u.setx(i, 0);
-                                    m_sl.setx(i, 0);
-                                    m_su.setx(i, 0);
-                                }
-                                else if (i == max_var ){
-                                    if (isSigned) {
-                                        m_l.setx(i, 0);
-                                        m_u.setx(i, 0);
-                                    }
-                                    else {
-                                        m_sl.setx(i, 0);
-                                        m_su.setx(i, 0);
-                                    }
-                                }
-                            }
-                            iter_success = true;
-                        }
-                        //reset temporary information
-                        new_bnd_vars.reset();
-                        new_bnds.reset();
-                        new_bnds_from_vars.reset();
-                        new_bnds_signs.reset();
-                        new_ovf.reset();
-                        TRACE("bound-info-debug",tout << "next level...";);
+        else if (!m_au.is_int(s) && !m_bvu.is_bv_sort(s)) {
+            TRACE("bound-info-debug",tout << "Warning: bound info not supported for sort " << mk_pp(s, m_m) << "\n";);
+        }
+    }
+    //collect literals from body of quantifier
+    expr_ref_buffer lits(m_m);
+    //only consider forall?
+    collect_literals(m_q->get_expr(), lits);
+    //now compute bounds
+    expr_ref_buffer bnds(m_m);
+    sbuffer<unsigned> new_bnd_vars;
+    expr_ref_buffer new_bnds(m_m);
+    sbuffer<unsigned> new_bnds_from_vars;
+    sbuffer<bool> new_bnds_signs;
+    expr_ref_buffer new_ovf(m_m);
+    bool iter_success;
+    do {
+        iter_success = false;
+        if (m_var_order.size() < m_q->get_num_decls()) {
+            is_bounded_quantifier_iter(lits, bnds, new_bnd_vars, new_bnds, new_bnds_from_vars, new_bnds_signs, new_ovf);
+            //if necessary, add trivial bv bound
+            if (new_bnd_vars.empty()) {
+                for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
+                    unsigned index = m_q->get_num_decls()-i-1;
+                    sort * s = m_q->get_decl_sort(m_q->get_num_decls()-i-1);
+                    if (m_bvu.is_bv_sort(s) && !is_bound(index)) {
+                        var * v = m_m.mk_var(index, s);
+                        TRACE("bound-info-debug",tout << "add trivial bound for bv variable : " << mk_pp(v,m_m) << "\n";);
+                        expr_ref auto_l(m_m);
+                        expr_ref auto_u(m_m);
+                        get_bv_auto_bound(true, false, s, auto_l);
+                        get_bv_auto_bound(false, false, s, auto_u);
+                        m_l.setx(index, auto_l);
+                        m_u.setx(index, auto_u);
+                        new_bnd_vars.push_back(index);
+                        break;
                     }
-                } while (iter_success);
-                //push back all literals that did not contribute to bounds to body
-                if (m_var_order.size() == m_q->get_num_decls()) {
-                    //make new body (all literals that were not processed as bounds)
-                    for (unsigned i = 0; i < lits.size(); i++) {
-                        if (!bnds.contains(lits[i])) {
-                            m_body.push_back(lits[i]);
-                        }
-                    }
-                    m_is_valid = true;
-                    TRACE("bound-info-debug", display( tout ););
-                    return true;
                 }
             }
+            //add new_bnd_vars to bnd_vars
+            if (!new_bnd_vars.empty()) {
+                //we add one variable per round, preferring the maximum variable (i.e. the first variable in the quantifier prefix)
+                unsigned max_var = UINT_MAX;
+                unsigned max_non_triv_var = UINT_MAX;
+                for (unsigned i = 0; i < new_bnd_vars.size(); i++) {
+                    if (max_var == UINT_MAX || new_bnd_vars[i] > max_var) {
+                        max_var = new_bnd_vars[i];
+                    }
+                    if (!is_trivial(new_bnd_vars[i]) && (max_non_triv_var == UINT_MAX || new_bnd_vars[i] > max_non_triv_var)) {
+                        max_non_triv_var = new_bnd_vars[i];
+                    }
+                }
+                TRACE("bound-info-debug",tout << "Max vars found : " << max_var << " " << max_non_triv_var << "\n";);
+                max_var = max_non_triv_var == UINT_MAX ? max_var : max_non_triv_var;
+                //add to variables
+                m_var_order.push_back(max_var);
+                //check if signed or unsigned (require both unsigned to be set)
+                bool isSigned = (!m_l[max_var] || !m_u[max_var]);
+                TRACE("bound-info",tout << "Bound variable : " << max_var << ", signed = " << isSigned << "\n";);
+                //now, only take the bounds from max_var
+                for (unsigned i = 0; i < new_bnds_from_vars.size(); i++) {
+                    if (new_bnds_from_vars[i] == max_var && new_bnds_signs[i] == isSigned) {
+                        TRACE("bound-info",tout << "Processed literal : " << mk_pp(new_bnds[i], m_m) << "\n";);
+                        bnds.push_back(new_bnds[i]);
+                        //check if it has a corresponding overflow constraint, if so, add it to the body
+                        if (new_ovf[i]) {
+                            m_body.push_back(new_ovf[i]);
+                        }
+                    }
+                }
+                //clear unused bounds created on this iteration
+                for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
+                    if (!m_var_order.contains(i)) {
+                        m_l.setx(i, 0);
+                        m_u.setx(i, 0);
+                        m_sl.setx(i, 0);
+                        m_su.setx(i, 0);
+                    }
+                    else if (i == max_var ){
+                        if (isSigned) {
+                            m_l.setx(i, 0);
+                            m_u.setx(i, 0);
+                        }
+                        else {
+                            m_sl.setx(i, 0);
+                            m_su.setx(i, 0);
+                        }
+                    }
+                }
+                iter_success = true;
+            }
+            //reset temporary information
+            new_bnd_vars.reset();
+            new_bnds.reset();
+            new_bnds_from_vars.reset();
+            new_bnds_signs.reset();
+            new_ovf.reset();
+            TRACE("bound-info-debug",tout << "next level...";);
         }
-        else {
-            TRACE("bound-info-debug",tout << "Could not find bounds, improper sort for variables\n";);
+    } while (iter_success);
+    //add all literals that were not processed as bounds to the new body
+    for (unsigned i = 0; i < lits.size(); i++) {
+        if (!bnds.contains(lits[i])) {
+            m_body.push_back(lits[i]);
         }
+    }
+    if (m_var_order.size() == m_q->get_num_decls()) {
+        m_is_bounded = true;
+        TRACE("bound-info-debug", display( tout ););
+        return true;
     }
     return false;
 }
@@ -407,12 +401,11 @@ void bound_info::display(std::ostream & out) {
         int var_index = m_var_order[i];
         sort * s = m_q->get_decl_sort(m_q->get_num_decls()-var_index-1);
         if (!m_m.is_uninterp(s)) {
-            expr_ref_buffer & bl = m_l;
-            expr_ref_buffer & bu = m_u;
-            if (is_bv_signed_bound(var_index)) {
+            bool is_signed = is_bv_signed_bound(var_index);
+            expr_ref_buffer & bl = is_signed ? m_sl : m_l;
+            expr_ref_buffer & bu = is_signed ? m_su : m_u;
+            if (is_signed) {
                 out << "(signed) ";
-                bl = m_sl;
-                bu = m_su;
             }
             out << mk_pp(bl[var_index], m_m) << "   <=   " << m_q->get_decl_name(m_q->get_num_decls()-var_index-1) << "   <=   " << mk_pp(bu[var_index], m_m) << "\n";
         }
@@ -423,7 +416,7 @@ void bound_info::display(std::ostream & out) {
 }
 
 bool bound_info::is_bound(unsigned idx){
-    sort * s = m_q->get_decl_sort(idx);
+    sort * s = m_q->get_decl_sort(m_q->get_num_decls()-idx-1);
     if (m_m.is_uninterp(s)) {
         return true;
     }
@@ -474,7 +467,7 @@ bool bound_info::is_trivial(unsigned idx) {
         return true;
     }
     else {
-        sort * s = m_q->get_decl_sort(idx);
+        sort * s = m_q->get_decl_sort(m_q->get_num_decls()-idx-1);
         //check if it is not trivial first
         if (m_bvu.is_bv_sort(s)) {
             expr_ref auto_l(m_m);
@@ -494,35 +487,30 @@ bool bound_info::is_trivial(unsigned idx) {
 }
 
 void bound_info::get_body(expr_ref& body, bool inc_bounds){
-    if (m_is_valid) {
-        expr_ref_buffer lits(m_m);
-        if (inc_bounds) {
-            for (unsigned i = 0; i < m_var_order.size(); i++) {
-                int index = m_var_order[i];
-                sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-index);
-                var * v = m_m.mk_var(index, s);
-                if (m_au.is_int(s)) {
-                    lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_l[index])));
-                    lits.push_back(m_m.mk_not(m_au.mk_le(v, m_u[index])));
+    expr_ref_buffer lits(m_m);
+    if (inc_bounds) {
+        for (unsigned i = 0; i < m_var_order.size(); i++) {
+            int index = m_var_order[i];
+            sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-index);
+            var * v = m_m.mk_var(index, s);
+            if (m_au.is_int(s)) {
+                lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_l[index])));
+                lits.push_back(m_m.mk_not(m_au.mk_le(v, m_u[index])));
+            }
+            else if (m_bvu.is_bv_sort(s)) {
+                if (is_bv_unsigned_bound(index)) {
+                    lits.push_back(m_m.mk_not(m_bvu.mk_ule(m_l[index],v)));
+                    lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_u[index])));
                 }
-                else if (m_bvu.is_bv_sort(s)) {
-                    if (is_bv_unsigned_bound(index)) {
-                        lits.push_back(m_m.mk_not(m_bvu.mk_ule(m_l[index],v)));
-                        lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_u[index])));
-                    }
-                    else {
-                        lits.push_back(m_m.mk_not(m_bvu.mk_sle(m_sl[index],v)));
-                        lits.push_back(m_m.mk_not(m_bvu.mk_sle(v, m_su[index])));
-                    }
+                else {
+                    lits.push_back(m_m.mk_not(m_bvu.mk_sle(m_sl[index],v)));
+                    lits.push_back(m_m.mk_not(m_bvu.mk_sle(v, m_su[index])));
                 }
             }
         }
-        lits.append(m_body.size(),m_body.c_ptr());
-        body = lits.size()>1 ? m_m.mk_or(lits.size(), lits.c_ptr()) : (lits.size()==1 ? lits[0] : m_m.mk_true());
-    } 
-    else {
-        body = m_q->get_expr();
     }
+    lits.append(m_body.size(),m_body.c_ptr());
+    body = lits.size()>1 ? m_m.mk_or(lits.size(), lits.c_ptr()) : (lits.size()==1 ? lits[0] : m_m.mk_true());
 }
 
 quantifier* bound_info::get_quantifier() {
