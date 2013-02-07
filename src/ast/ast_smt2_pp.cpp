@@ -429,7 +429,7 @@ class smt2_printer {
     unsigned m_pp_max_depth;
     unsigned m_pp_min_alias_size;
     bool     m_pp_flat_assoc;
-
+    bool     m_pp_hide_attributes;
 
     symbol next_name(char const * prefix, unsigned & idx) {
         while (true) {
@@ -834,8 +834,8 @@ class smt2_printer {
         format * f_body = pp_let(m_format_stack.back(), num_lets);
         // The current SMT2 frontend uses weight 1 as default.
 #define MIN_WEIGHT 1
-        if (q->has_patterns() || q->get_weight() > MIN_WEIGHT || 
-            q->get_skid() != symbol::null || (q->get_qid() != symbol::null && !q->get_qid().is_numerical())) {
+        if (!m_pp_hide_attributes && (q->has_patterns() || q->get_weight() > MIN_WEIGHT || 
+                                      q->get_skid() != symbol::null || (q->get_qid() != symbol::null && !q->get_qid().is_numerical()))) {
             ptr_buffer<format> buf;
             buf.push_back(f_body);
             if (q->get_num_patterns() > 0) {
@@ -976,6 +976,7 @@ public:
         m_pp_max_depth = p.max_depth();
         m_pp_min_alias_size = p.min_alias_size();
         m_pp_flat_assoc = p.flat_assoc();
+        m_pp_hide_attributes = p.hide_attributes();
     }
 
     ~smt2_printer() {
