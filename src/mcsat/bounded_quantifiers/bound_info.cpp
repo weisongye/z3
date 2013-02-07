@@ -273,7 +273,6 @@ bool bound_info::compute() {
         return false;
     }
     TRACE("bound-info",tout << "Compute bound info for " << mk_pp(m_q, m_m) << "\n";);
-    bool properSorts = true;
     for (unsigned i = 0; i < m_q->get_num_decls(); i++) {
         sort * s = m_q->get_decl_sort(i);
         //check sort is uninterpreted/int/bv
