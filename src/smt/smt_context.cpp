@@ -3549,7 +3549,8 @@ namespace smt {
             for (unsigned i = 0; i < num_lits; i++) {
                 literal l = lits[i];
                 SASSERT(get_assignment(l) == l_false);
-                expr_lits.push_back(bool_var2expr(l.var()));
+                expr * l_expr = bool_var2expr(l.var());
+                expr_lits.push_back(l_expr);
                 expr_signs.push_back(l.sign());
             }
 #endif
@@ -3613,10 +3614,16 @@ namespace smt {
             for (unsigned i = 0; i < num_lits; i++) {
                 literal l = lits[i];
                 if (m_manager.is_not(expr_lits.get(i))) {
-                    // the sign must have flipped when internalizing
-                    expr * real_atom = to_app(expr_lits.get(i))->get_arg(0);
-                    SASSERT(real_atom == bool_var2expr(l.var()));
-                    SASSERT(expr_signs[i]    != l.sign());
+                    // the sign may have flipped when internalizing
+                    if (expr_lits.get(i) == bool_var2expr(l.var())) {
+                        SASSERT(expr_lits.get(i) == bool_var2expr(l.var()));
+                        SASSERT(expr_signs[i]    == l.sign());
+                    }
+                    else {
+                        expr * real_atom = to_app(expr_lits.get(i))->get_arg(0);
+                        SASSERT(real_atom == bool_var2expr(l.var()));
+                        SASSERT(expr_signs[i]    != l.sign());
+                    }
                 }
                 else {
                     SASSERT(expr_lits.get(i) == bool_var2expr(l.var()));
