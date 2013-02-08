@@ -50,7 +50,10 @@ enum array_op_kind {
     OP_SET_DIFFERENCE,
     OP_SET_COMPLEMENT,
     OP_SET_SUBSET,
-    OP_AS_ARRAY, // used for model construction
+    // model construction auxiliary definitions
+    OP_AS_ARRAY, 
+    OP_CURRY,
+    OP_UNCURRY,
     LAST_ARRAY_OP
 };
 
@@ -67,6 +70,8 @@ class array_decl_plugin : public decl_plugin {
     symbol m_set_subset_sym;
     symbol m_array_ext_sym;
     symbol m_as_array_sym;
+    symbol m_curry_sym;
+    symbol m_uncurry_sym;
 
     bool check_set_arguments(unsigned arity, sort * const * domain);
 
@@ -94,6 +99,10 @@ class array_decl_plugin : public decl_plugin {
 
     func_decl * mk_as_array(func_decl * f);
 
+    func_decl * mk_curry(unsigned idx, sort * domain);
+
+    func_decl * mk_uncurry(sort * domain);
+
     bool is_array_sort(sort* s) const;
  public:
     array_decl_plugin();
@@ -112,11 +121,6 @@ class array_decl_plugin : public decl_plugin {
     //
     virtual sort * mk_sort(decl_kind k, unsigned num_parameters, parameter const * parameters);
     
-    //
-    // Contract for func_decl:
-    //   parameters[0]     - array sort
-    // Contract for others:
-    //   no parameters
     virtual func_decl * mk_func_decl(decl_kind k, unsigned num_parameters, parameter const * parameters, 
                                      unsigned arity, sort * const * domain, sort * range);
 
@@ -136,20 +140,23 @@ public:
     array_recognizers(family_id fid = null_family_id):m_fid(fid) {}
     void set_family_id(family_id fid) { m_fid = fid; }
     family_id get_family_id() const { return m_fid; }
-    bool is_array(sort* s) const { return is_sort_of(s, m_fid, ARRAY_SORT);}
-    bool is_array(expr* n) const { return is_array(get_sort(n)); }
-    bool is_select(expr* n) const { return is_app_of(n, m_fid, OP_SELECT); }
-    bool is_store(expr* n) const { return is_app_of(n, m_fid, OP_STORE); }
-    bool is_const(expr* n) const { return is_app_of(n, m_fid, OP_CONST_ARRAY); }
-    bool is_map(expr* n) const { return is_app_of(n, m_fid, OP_ARRAY_MAP); }
-    bool is_as_array(expr * n) const { return is_app_of(n, m_fid, OP_AS_ARRAY); }
-    bool is_select(func_decl* f) const { return is_decl_of(f, m_fid, OP_SELECT); }
-    bool is_store(func_decl* f) const { return is_decl_of(f, m_fid, OP_STORE); }
-    bool is_const(func_decl* f) const { return is_decl_of(f, m_fid, OP_CONST_ARRAY); }
-    bool is_map(func_decl* f) const { return is_decl_of(f, m_fid, OP_ARRAY_MAP); }
-    bool is_as_array(func_decl* f) const { return is_decl_of(f, m_fid, OP_AS_ARRAY); }
-    func_decl * get_as_array_func_decl(app * n) const;
+    bool is_array(sort * s) const { return is_sort_of(s, m_fid, ARRAY_SORT);}
+    bool is_array(expr * n) const { return is_array(get_sort(n)); }
+    bool is_select(expr * n) const { return is_app_of(n, m_fid, OP_SELECT); }
+    bool is_store(expr * n) const { return is_app_of(n, m_fid, OP_STORE); }
+    bool is_const(expr * n) const { return is_app_of(n, m_fid, OP_CONST_ARRAY); }
+    bool is_map(expr * n) const { return is_app_of(n, m_fid, OP_ARRAY_MAP); }
     func_decl * get_map_func_decl(app * n) const;
+    bool is_as_array(expr * n) const { return is_app_of(n, m_fid, OP_AS_ARRAY); }
+    bool is_select(func_decl * f) const { return is_decl_of(f, m_fid, OP_SELECT); }
+    bool is_store(func_decl * f) const { return is_decl_of(f, m_fid, OP_STORE); }
+    bool is_const(func_decl * f) const { return is_decl_of(f, m_fid, OP_CONST_ARRAY); }
+    bool is_map(func_decl * f) const { return is_decl_of(f, m_fid, OP_ARRAY_MAP); }
+    bool is_as_array(func_decl * f) const { return is_decl_of(f, m_fid, OP_AS_ARRAY); }
+    func_decl * get_as_array_func_decl(app * n) const;
+    bool is_curry(func_decl * f) const { return is_decl_of(f, m_fid, OP_CURRY); }
+    unsigned get_curry_index(func_decl * f) const;
+    bool is_uncurry(func_decl * f) const { return is_decl_of(f, m_fid, OP_UNCURRY); }
 };
 
 class array_util : public array_recognizers {
@@ -172,13 +179,30 @@ public:
         parameter p(f);
         return m_manager.mk_app(m_fid, OP_ARRAY_MAP, 1, &p, num_args, args);
     }
+
     app * mk_const_array(sort * s, expr * v) {
         parameter param(s);
         return m_manager.mk_app(m_fid, OP_CONST_ARRAY, 1, &param, 1, &v);
     }
+
+    app * mk_uncurry(expr * a) {
+        return m_manager.mk_app(m_fid, OP_UNCURRY, 0, 0, 1, &a);
+    }
+    
+    app * mk_curry(unsigned idx, expr * a) {
+        parameter param(idx);
+        return m_manager.mk_app(m_fid, OP_CURRY, 1, &param, 1, &a);
+    }
+
+    app * mk_as_array(func_decl * f) {
+        parameter param(f);
+        return m_manager.mk_app(m_fid, OP_CURRY, 1, &param);
+    }
+
     app * mk_empty_set(sort * s) {
         return mk_const_array(s, m_manager.mk_false());
     }
+
     app * mk_full_set(sort * s) {
         return mk_const_array(s, m_manager.mk_true());
     }

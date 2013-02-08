@@ -34,7 +34,9 @@ array_decl_plugin::array_decl_plugin():
     m_set_complement_sym("complement"),
     m_set_subset_sym("subset"),
     m_array_ext_sym("array-ext"),
-    m_as_array_sym("as-array") {
+    m_as_array_sym("as-array"),
+    m_curry_sym("curry"),
+    m_uncurry_sym("uncurry") {
 }
 
 #define ARRAY_SORT_STR "Array"
@@ -176,7 +178,7 @@ func_decl * array_decl_plugin::mk_map(func_decl* f, unsigned arity, sort* const*
             return 0;                                
         }
     }
-    vector<parameter> parameters;
+    buffer<parameter> parameters;
     for (unsigned i = 0; i < dom_arity; ++i) {
         parameters.push_back(domain[0]->get_parameter(i));
     }
@@ -421,7 +423,7 @@ func_decl * array_decl_plugin::mk_set_subset(unsigned arity, sort * const * doma
 }
 
 func_decl * array_decl_plugin::mk_as_array(func_decl * f) {
-    vector<parameter> parameters;
+    buffer<parameter> parameters;
     for (unsigned i = 0; i < f->get_arity(); i++) {
         parameters.push_back(parameter(f->get_domain(i)));
     }
@@ -432,6 +434,44 @@ func_decl * array_decl_plugin::mk_as_array(func_decl * f) {
     return m_manager->mk_const_decl(m_as_array_sym, s, info);
 }
 
+func_decl * array_decl_plugin::mk_curry(unsigned idx, sort * S) {
+    if (!is_array_sort(S))
+        m_manager->raise_exception("curry expects the first argument to be an array");
+    unsigned arity = get_array_arity(S);
+    if (idx == 0 || idx >= arity)
+        m_manager->raise_exception("curry parameter must be greater than 0 and less than the arity of the array argument");
+    // Range is an Array of Arrays
+    buffer<parameter> p1;
+    buffer<parameter> p2;
+    unsigned i;
+    for (i = 0; i < arity - idx; i++)
+        p1.push_back(parameter(get_array_domain(S, i)));
+    for (; i < arity; i++)
+        p2.push_back(parameter(get_array_domain(S, i)));
+    p2.push_back(parameter(get_array_range(S)));
+    sort_ref rr(*m_manager);
+    rr = mk_sort(ARRAY_SORT, p2.size(), p2.c_ptr());
+    p1.push_back(parameter(rr.get()));
+    sort_ref r(*m_manager);
+    r = mk_sort(ARRAY_SORT, p1.size(), p1.c_ptr());
+    parameter param(idx);
+    return m_manager->mk_func_decl(m_curry_sym, 1, &S, r.get(), func_decl_info(m_family_id, OP_CURRY, 1, &param));
+}
+
+func_decl * array_decl_plugin::mk_uncurry(sort * S) {
+    if (!is_array_sort(S) || !is_array_sort(get_array_range(S)))
+        m_manager->raise_exception("curry expects the first argument to be an array of arrays");
+    buffer<parameter> p;
+    for (unsigned i = 0; i < get_array_arity(S); i++)
+        p.push_back(parameter(get_array_domain(S, i)));
+    sort * R = get_array_range(S);
+    for (unsigned i = 0; i < get_array_arity(R); i++)
+        p.push_back(parameter(get_array_domain(R, i)));
+    p.push_back(parameter(get_array_range(R)));
+    sort_ref r(*m_manager);
+    r = mk_sort(ARRAY_SORT, p.size(), p.c_ptr());
+    return m_manager->mk_func_decl(m_uncurry_sym, 1, &S, r.get(), func_decl_info(m_family_id, OP_UNCURRY));
+}
 
 func_decl * array_decl_plugin::mk_func_decl(decl_kind k, unsigned num_parameters, parameter const * parameters, 
                                             unsigned arity, sort * const * domain, sort * range) {
@@ -497,7 +537,20 @@ func_decl * array_decl_plugin::mk_func_decl(decl_kind k, unsigned num_parameters
         func_decl * f = to_func_decl(parameters[0].get_ast());
         return mk_as_array(f);
     }
-    default: return 0;
+    case OP_CURRY:
+        if (num_parameters != 1 || !parameters[0].is_int())
+            m_manager->raise_exception("curry takes one unsigned integer parameter");
+        if (arity != 1)
+            m_manager->raise_exception("curry has arity 1");
+        return mk_curry(parameters[0].get_int(), domain[0]);
+    case OP_UNCURRY:
+        if (num_parameters != 0)
+            m_manager->raise_exception("uncurry does not take parameters");
+        if (arity != 1)
+            m_manager->raise_exception("uncurry has arity 1");
+        return mk_uncurry(domain[0]);
+    default: 
+        return 0;
     }
 }
 
@@ -519,9 +572,10 @@ void array_decl_plugin::get_op_names(svector<builtin_name>& op_names, symbol con
         op_names.push_back(builtin_name("complement",OP_SET_COMPLEMENT));
         op_names.push_back(builtin_name("subset",OP_SET_SUBSET));
         op_names.push_back(builtin_name("as-array", OP_AS_ARRAY));
+        op_names.push_back(builtin_name("curry", OP_CURRY));
+        op_names.push_back(builtin_name("uncurry", OP_UNCURRY));
     }
 }
-
 
 expr * array_decl_plugin::get_some_value(sort * s) {
     SASSERT(s->is_sort_of(m_family_id, ARRAY_SORT));
@@ -576,7 +630,7 @@ bool array_util::is_as_array_tree(expr * n) {
 }
 
 sort * array_util::mk_array_sort(unsigned arity, sort* const* domain, sort* range) {
-    vector<parameter> params;
+    buffer<parameter> params;
     for (unsigned i = 0; i < arity; ++i) {
         params.push_back(parameter(domain[i]));
     }

@@ -29,6 +29,7 @@ Notes:
 #include"bound_manager.h"
 #include"used_vars.h"
 #include"var_subst.h"
+#include"ast_pp.h"
 
 #ifndef _EXTERNAL_RELEASE
 
@@ -51,7 +52,6 @@ BINARY_SYM_CMD(set_cmd,
                expr *, {
     store_expr_ref(ctx, m_sym, arg);
 });
-
 
 UNARY_CMD(pp_var_cmd, "dbg-pp-var", "<symbol>", "pretty print a global variable that references an AST", CPK_SYMBOL, symbol const &, {
     expr * t = get_expr_ref(ctx, arg);
@@ -95,6 +95,10 @@ UNARY_CMD(num_shared_cmd, "dbg-num-shared", "<term>", "return the number of shar
 
 UNARY_CMD(size_cmd, "dbg-size", "<term>", "return the size of the given term", CPK_EXPR, expr *, {
     ctx.regular_stream() << get_num_exprs(arg) << std::endl;
+});
+
+UNARY_CMD(sort_cmd, "dbg-sort", "<term>", "return the size of the given term", CPK_EXPR, expr *, {
+    ctx.regular_stream() << mk_pp(get_sort(arg), ctx.m()) << std::endl;
 });
 
 class subst_cmd : public cmd {
@@ -353,6 +357,7 @@ void install_dbg_cmds(cmd_context & ctx) {
     ctx.insert(alloc(pp_shared_cmd));
     ctx.insert(alloc(num_shared_cmd));
     ctx.insert(alloc(size_cmd));
+    ctx.insert(alloc(sort_cmd));
     ctx.insert(alloc(subst_cmd));
     ctx.insert(alloc(bool_rewriter_cmd));
     ctx.insert(alloc(bool_frewriter_cmd));
