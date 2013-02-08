@@ -391,7 +391,6 @@ class miniscope_tactic : public tactic {
             }
             g.update(idx, new_curr, new_pr, g.dep(idx));
         }
-        g.inc_depth();
         TRACE("miniscope", g.display(tout););
         SASSERT(g.is_well_sorted());
     }
@@ -422,6 +421,7 @@ public:
         mc = 0; pc = 0; core = 0; result.reset();
         goal2stream s(*(g.get()));
         apply(s);
+        g->inc_depth();
         result.push_back(g.get());
     }
 
