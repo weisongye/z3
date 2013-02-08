@@ -49,6 +49,16 @@ static void tst1() {
     SASSERT(!lt(symbol("z"), symbol("b")));
     SASSERT(!lt(symbol("zzz"), symbol("b")));
     SASSERT(lt(symbol("zzz"), symbol("zzzb")));
+    std::cout << "fresh symbols\n";
+    symbol s("c!2");
+    for (unsigned i = 0; i < 5; i++) {
+        symbol f = mk_fresh_symbol("c");
+        SASSERT(f != s);
+        std::cout << f << "\n";
+    }
+    for (unsigned i = 0; i < 5; i++) {
+        std::cout << mk_fresh_symbol("d") << "\n";
+    }
 }
 
 void tst_symbol() {

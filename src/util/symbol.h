@@ -127,6 +127,9 @@ public:
     }
 };
 
+symbol mk_fresh_symbol(char const * prefix="c");
+symbol mk_fresh_symbol(symbol const & prefix);
+
 struct symbol_hash_proc {
     unsigned operator()(symbol const & s) const { 
         return s.hash();

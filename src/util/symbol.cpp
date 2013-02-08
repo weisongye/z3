@@ -31,7 +31,11 @@ const symbol symbol::null;
 class internal_symbol_table {
     region        m_region; //!< Region used to store symbol strings.
     str_hashtable m_table;  //!< Table of created symbol strings.
+    unsigned      m_next_fresh_idx;
 public:
+    internal_symbol_table() {
+        m_next_fresh_idx = 0;
+    }
 
     char const * get_str(char const * d) {
         char * result;
@@ -58,6 +62,19 @@ public:
         }
         return result;
     }
+
+    symbol mk_fresh_symbol(char const * prefix) {
+        if (prefix == 0 || strcmp(prefix, "k"))
+            prefix = "c";
+        string_buffer<128> buffer;
+        while (true) {
+            buffer.reset();
+            buffer << prefix << "!" << m_next_fresh_idx;
+            m_next_fresh_idx++;
+            if (!m_table.contains(const_cast<char*>(buffer.c_str())))
+                return symbol(buffer.c_str());
+        }
+    }
 };
 
 internal_symbol_table* g_symbol_table = 0;
@@ -71,6 +88,19 @@ void initialize_symbols() {
 void finalize_symbols() {
     dealloc(g_symbol_table);
     g_symbol_table = 0;
+}
+
+symbol mk_fresh_symbol(char const * prefix) {
+    return g_symbol_table->mk_fresh_symbol(prefix);
+}
+
+symbol mk_fresh_symbol(symbol const & prefix) {
+    if (prefix.is_numerical()) {
+        return mk_fresh_symbol("c");
+    }
+    else {
+        return mk_fresh_symbol(prefix.bare_str());
+    }
 }
 
 symbol::symbol(char const * d) {
