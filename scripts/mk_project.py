@@ -29,6 +29,7 @@ def init_project_def():
     add_lib('core_tactics', ['tactic', 'normal_forms'], 'tactic/core')
     add_lib('sat_tactic', ['tactic', 'sat'], 'sat/tactic')
     add_lib('arith_tactics', ['core_tactics', 'sat'], 'tactic/arith')
+    add_lib('array_tactics', ['core_tactics', 'sat'], 'tactic/array')
     add_lib('nlsat_tactic', ['nlsat', 'sat_tactic', 'arith_tactics'], 'nlsat/tactic')
     add_lib('subpaving_tactic', ['core_tactics', 'subpaving'], 'math/subpaving/tactic')
     add_lib('aig_tactic', ['tactic'], 'tactic/aig')
@@ -69,7 +70,7 @@ def init_project_def():
     API_files = ['z3_api.h', 'z3_algebraic.h', 'z3_polynomial.h', 'z3_rcf.h']
     add_lib('api', ['portfolio', 'user_plugin', 'smtparser', 'mcsat_solvers', 'realclosure'],
             includes2install=['z3.h', 'z3_v1.h', 'z3_macros.h'] + API_files)
-    add_exe('shell', ['api', 'sat', 'extra_cmds', 'bounded_quantifiers'], exe_name='z3')
+    add_exe('shell', ['api', 'sat', 'extra_cmds', 'bounded_quantifiers', 'array_tactics'], exe_name='z3')
     add_exe('test', ['api', 'fuzzing', 'bounded_quantifiers'], exe_name='test-z3', install=False)
     add_dll('api_dll', ['api', 'sat', 'extra_cmds'], 'api/dll', 
             reexports=['api'], 
