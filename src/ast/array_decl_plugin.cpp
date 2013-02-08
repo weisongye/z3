@@ -546,6 +546,12 @@ func_decl * array_recognizers::get_as_array_func_decl(app * n) const {
     return to_func_decl(n->get_decl()->get_parameter(0).get_ast()); 
 }
 
+func_decl * array_recognizers::get_map_func_decl(app * n) const {
+    SASSERT(is_map(n));
+    return to_func_decl(n->get_decl()->get_parameter(0).get_ast()); 
+}
+
+
 array_util::array_util(ast_manager& m): 
     array_recognizers(m.mk_family_id("array")),
     m_manager(m) {

@@ -149,6 +149,7 @@ public:
     bool is_map(func_decl* f) const { return is_decl_of(f, m_fid, OP_ARRAY_MAP); }
     bool is_as_array(func_decl* f) const { return is_decl_of(f, m_fid, OP_AS_ARRAY); }
     func_decl * get_as_array_func_decl(app * n) const;
+    func_decl * get_map_func_decl(app * n) const;
 };
 
 class array_util : public array_recognizers {
