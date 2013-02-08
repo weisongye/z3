@@ -82,8 +82,7 @@ class split_datatype_quantifiers_tactic : public tactic {
                             sort * s2 = f->get_domain(j);
                             args.push_back(m_m.mk_var(new_sorts.size(), s2));
                             new_sorts.push_back(s2);
-                            //new_symbols.push_back(m_m.get_fresh_symbol(q->get_decl_name(index), j));
-                            new_symbols.push_back(q->get_decl_name(index)); //TODO
+                            new_symbols.push_back(mk_fresh_symbol(q->get_decl_name(index)));
                         }
                         subs.push_back(m_m.mk_app(f,args.size(), args.c_ptr()));
                         bool proc = process(q, index-1, vs, vsh, new_sorts, new_symbols, subs, conj);
