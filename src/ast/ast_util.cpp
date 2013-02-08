@@ -174,3 +174,12 @@ expr * mk_or(ast_manager & m, unsigned num_args, expr * const * args) {
     else
         return m.mk_or(num_args, args);
 }
+
+expr * expand_distinct(ast_manager & m, unsigned num_args, expr * const * args) {
+    expr_ref_buffer new_diseqs(m);
+    for (unsigned i = 0; i < num_args; i++) {
+        for (unsigned j = i + 1; j < num_args; j++)
+            new_diseqs.push_back(m.mk_not(m.mk_eq(args[i], args[j])));
+    }
+    return mk_and(m, new_diseqs.size(), new_diseqs.c_ptr());
+}

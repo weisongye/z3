@@ -115,6 +115,10 @@ expr * mk_and(ast_manager & m, unsigned num_args, expr * const * args);
  */
 expr * mk_or(ast_manager & m, unsigned num_args, expr * const * args);
 
+/**
+   Return the expression (and (not (= args[0] args[1])) (not (= args[0] args[2])) ... (not (= args[num_args-2] args[num_args-1])))
+*/
+expr * expand_distinct(ast_manager & m, unsigned num_args, expr * const * args);
 
 #endif /* _AST_UTIL_H_ */
 

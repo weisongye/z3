@@ -19,6 +19,7 @@ Notes:
 #include"bool_rewriter.h"
 #include"bool_rewriter_params.hpp"
 #include"rewriter_def.h"
+#include"ast_util.h"
 
 void bool_rewriter::updt_params(params_ref const & _p) {
     bool_rewriter_params p(_p);
@@ -748,12 +749,7 @@ br_status bool_rewriter::mk_distinct_core(unsigned num_args, expr * const * args
     }
 
     if (m_blast_distinct && num_args < m_blast_distinct_threshold) {
-        ptr_buffer<expr> new_diseqs;
-        for (unsigned i = 0; i < num_args; i++) {
-            for (unsigned j = i + 1; j < num_args; j++)
-                new_diseqs.push_back(m().mk_not(m().mk_eq(args[i], args[j])));
-        }
-        result = m().mk_and(new_diseqs.size(), new_diseqs.c_ptr());
+        result = expand_distinct(m(), num_args, args);
         return BR_REWRITE3;
     }
     
