@@ -60,6 +60,14 @@ br_status array_rewriter::mk_app_core(func_decl * f, unsigned num_args, expr * c
     case OP_SET_DIFFERENCE:
         SASSERT(num_args == 2);
         return mk_set_difference(args[0], args[1], result);
+    case OP_CURRY:
+        SASSERT(num_args == 1);
+        SASSERT(f->get_num_parameters() == 1);
+        SASSERT(f->get_parameter(0).is_int());
+        return mk_curry_core(f->get_parameter(0).get_int(), args[0], result);
+    case OP_UNCURRY:
+        SASSERT(num_args == 1);
+        return mk_uncurry_core(args[0], result);
     default:
         return BR_FAILED;
     }
@@ -322,6 +330,27 @@ void array_rewriter::mk_select(unsigned num_args, expr * const * args, expr_ref 
 void array_rewriter::mk_map(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result) {
     if (mk_map_core(f, num_args, args, result) == BR_FAILED)
         result = m_util.mk_map(f, num_args, args);
+}
+
+br_status array_rewriter::mk_curry_core(unsigned idx, expr * arg, expr_ref & result) {
+    // curry[i](uncurry(a)) --> a  IF arity of range of a is i
+    if (m_util.is_uncurry(arg)) {
+        expr * arg0 = to_app(arg)->get_arg(0);
+        if (get_array_arity(get_array_range(get_sort(arg0))) == idx) {
+            result = arg0;
+            return BR_DONE;
+        }
+    }
+    return BR_FAILED;
+}
+
+br_status array_rewriter::mk_uncurry_core(expr * arg, expr_ref & result) {
+    // uncurry(curry[i](a)) --> a 
+    if (m_util.is_curry(arg)) {
+        result = to_app(arg)->get_arg(0);
+        return BR_DONE;
+    }
+    return BR_FAILED;
 }
 
 br_status array_rewriter::mk_set_union(unsigned num_args, expr * const * args, expr_ref & result) {

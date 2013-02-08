@@ -50,6 +50,9 @@ public:
     br_status mk_select_core(unsigned num_args, expr * const * args, expr_ref & result);
     br_status mk_map_core(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result);
 
+    br_status mk_curry_core(unsigned idx, expr * arg, expr_ref & result);
+    br_status mk_uncurry_core(expr * arg, expr_ref & result);
+
     void mk_store(unsigned num_args, expr * const * args, expr_ref & result);
     void mk_select(unsigned num_args, expr * const * args, expr_ref & result);
     void mk_map(func_decl * f, unsigned num_args, expr * const * args, expr_ref & result);

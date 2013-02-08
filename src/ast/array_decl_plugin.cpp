@@ -605,6 +605,15 @@ func_decl * array_recognizers::get_map_func_decl(app * n) const {
     return to_func_decl(n->get_decl()->get_parameter(0).get_ast()); 
 }
 
+unsigned array_recognizers::get_curry_index(func_decl * f) const {
+    SASSERT(is_curry(f));
+    return f->get_parameter(0).get_int();
+}
+
+unsigned array_recognizers::get_curry_index(expr * n) const {
+    SASSERT(is_app(n));
+    return get_curry_index(to_app(n)->get_decl());
+}
 
 array_util::array_util(ast_manager& m): 
     array_recognizers(m.mk_family_id("array")),

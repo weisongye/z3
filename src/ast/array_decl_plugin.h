@@ -155,8 +155,11 @@ public:
     bool is_as_array(func_decl * f) const { return is_decl_of(f, m_fid, OP_AS_ARRAY); }
     func_decl * get_as_array_func_decl(app * n) const;
     bool is_curry(func_decl * f) const { return is_decl_of(f, m_fid, OP_CURRY); }
+    bool is_curry(expr * n) const { return is_app_of(n, m_fid, OP_CURRY); }
     unsigned get_curry_index(func_decl * f) const;
+    unsigned get_curry_index(expr * n) const;
     bool is_uncurry(func_decl * f) const { return is_decl_of(f, m_fid, OP_UNCURRY); }
+    bool is_uncurry(expr * n) const { return is_app_of(n, m_fid, OP_UNCURRY); }
 };
 
 class array_util : public array_recognizers {
