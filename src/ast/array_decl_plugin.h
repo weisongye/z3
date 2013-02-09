@@ -199,7 +199,7 @@ public:
 
     app * mk_as_array(func_decl * f) {
         parameter param(f);
-        return m_manager.mk_app(m_fid, OP_CURRY, 1, &param);
+        return m_manager.mk_app(m_fid, OP_AS_ARRAY, 1, &param);
     }
 
     app * mk_empty_set(sort * s) {

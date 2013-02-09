@@ -26,14 +26,81 @@ Revision History:
 class elim_array_tactic : public tactic {
 
     struct rw_cfg : public default_rewriter_cfg {
-        ast_manager & m;
-        array_util    m_util;
-
-        rw_cfg(ast_manager & _m):m(_m), m_util(m) {
+        ast_manager &            m;
+        array_util               m_util;
+        obj_map<func_decl, app*> m_definitions;
+        ast_ref_vector           m_asts;
+        assertion_stream *       m_stream;
+        var_shifter              m_shift;
+        rw_cfg(ast_manager & _m):
+            m(_m), 
+            m_util(m),
+            m_asts(m),
+            m_stream(0),
+            m_shift(m) {
         }
 
         void throw_not_supported() {
             throw tactic_exception("failed to reduce array theory to UF");
+        }
+
+        app * add_def(func_decl * f) {
+            SASSERT(m_stream);
+            if (m_stream->is_frozen(f)) {
+                // this can only happen if the tactic is applied to an
+                // assertion stream where a push was performed but the
+                // tactic was not applied.
+                throw_not_supported();
+            }
+            app * r;
+            if (m_definitions.find(f, r)) {
+                return r;
+            }
+            else {
+                ptr_buffer<sort> d;
+                sbuffer<unsigned> nargs;
+                unsigned arity = f->get_arity();
+                for (unsigned i = 0; i < arity; i++)
+                    d.push_back(f->get_domain(i));
+                sort * r = f->get_range();
+                SASSERT(m_util.is_array(r));
+                while (m_util.is_array(r)) {
+                    unsigned num = get_array_arity(r);
+                    nargs.push_back(num);
+                    for (unsigned i = 0; i < num; i++)
+                        d.push_back(get_array_domain(r, i));
+                    r = get_array_range(r);
+                }
+                SASSERT(!nargs.empty());
+                std::reverse(nargs.begin(), nargs.end());
+                if (arity == 0)
+                    nargs.pop_back();
+                app_ref a(m);
+                a = m_util.mk_as_array(m.mk_fresh_func_decl(f->get_name(), symbol::null, d.size(), d.c_ptr(), r));
+                for (unsigned i = 0; i < nargs.size(); i++) {
+                    a = m_util.mk_curry(nargs[i], a);
+                }
+                if (arity > 0) {
+                    expr_ref_buffer s_args(m);
+                    s_args.push_back(a);
+                    for (unsigned i = 0; i < arity; i++) {
+                        s_args.push_back(m.mk_var(i, f->get_domain(i)));
+                    }
+                    a = m_util.mk_select(s_args.size(), s_args.c_ptr());
+                }
+                m_asts.push_back(f);
+                m_asts.push_back(a);
+                m_definitions.insert(f, a);
+                if (arity > 0) {
+                    // TODO: we have to extend the assertion_stream interface
+                    // It only accepts ground definitions
+                    throw_not_supported();
+                }
+                // TODO: to support proofs we have to create a def_intro object
+                // m_stream->add_definition(v, def, pr, dep);
+                m_stream->add_definition(m.mk_const(f), a, 0, 0);
+                return a;
+            }
         }
 
         br_status reduce_eq(expr * lhs, expr * rhs, expr_ref & result) {
@@ -46,8 +113,12 @@ class elim_array_tactic : public tactic {
             unsigned arity = get_array_arity(s);
             expr_ref_buffer lhs_args(m);
             expr_ref_buffer rhs_args(m);
-            lhs_args.push_back(lhs);
-            rhs_args.push_back(rhs);
+            expr_ref new_lhs(m);
+            expr_ref new_rhs(m);
+            m_shift(lhs, arity, new_lhs);
+            m_shift(rhs, arity, new_rhs);
+            lhs_args.push_back(new_lhs);
+            rhs_args.push_back(new_rhs);
             for (unsigned i = 0; i < arity; i++) {
                 unsigned vidx = arity - i - 1;
                 sort * vsort  = get_array_domain(s, i);
@@ -69,18 +140,35 @@ class elim_array_tactic : public tactic {
             return BR_REWRITE3;
         }
 
+        expr * uncurry(unsigned num, expr * arg) {
+            while (num > 0 && m_util.is_curry(arg)) {
+                arg = to_app(arg)->get_arg(0);
+                num--;
+            }
+            for (unsigned i = 0; i < num; i++)
+                arg = m_util.mk_uncurry(arg);
+            return arg;
+        }
+
         br_status reduce_select(unsigned num, expr * const * args, expr_ref & result) {
             if (!is_app(args[0]))
                 throw_not_supported();
             if (num == 0)
                 return BR_FAILED;
             app * array = to_app(args[0]);
+            unsigned num_uncurry = 0;
+            while (m_util.is_uncurry(array)) {
+                num_uncurry++;
+                if (!is_app(array->get_arg(0)))
+                    throw_not_supported();
+                array = to_app(array->get_arg(0));
+            }
             if (m.is_ite(array)) {
                 // lift ite
-                ptr_buffer<expr> t_args;
-                ptr_buffer<expr> e_args;
-                t_args.push_back(array->get_arg(1));
-                e_args.push_back(array->get_arg(2));
+                expr_ref_buffer t_args(m);
+                expr_ref_buffer e_args(m);
+                t_args.push_back(uncurry(num_uncurry, array->get_arg(1)));
+                e_args.push_back(uncurry(num_uncurry, array->get_arg(2)));
                 for (unsigned i = 1; i < num; i++) {
                     t_args.push_back(args[i]);
                     e_args.push_back(args[i]);
@@ -89,26 +177,39 @@ class elim_array_tactic : public tactic {
                 return BR_REWRITE2;
             }
             else if (m_util.is_store(array)) {
-                SASSERT(array->get_num_args() == num + 1);
+                SASSERT(num_uncurry != 0 || array->get_num_args() == num + 1);
                 expr * array_0 = array->get_arg(0);
                 expr * val     = array->get_arg(num);
                 expr_ref_buffer  eqs(m);
-                ptr_buffer<expr> s_args;
-                s_args.push_back(array_0);
-                for (unsigned i = 1; i < num; i++) {
+                expr_ref_buffer  s_args(m);
+                s_args.push_back(uncurry(num_uncurry, array_0));
+                for (unsigned i = 1; i < array->get_num_args() - 1; i++) {
                     s_args.push_back(args[i]);
                     eqs.push_back(m.mk_eq(array->get_arg(i), args[i]));
                 }
-                result = m.mk_ite(mk_and(m, eqs.size(), eqs.c_ptr()), val, m_util.mk_select(s_args.size(), s_args.c_ptr()));
+                if (num_uncurry == 0) {
+                    result = m.mk_ite(mk_and(m, eqs.size(), eqs.c_ptr()), val, m_util.mk_select(s_args.size(), s_args.c_ptr()));
+                }
+                else {
+                    SASSERT(m_util.is_array(val));
+                    expr_ref_buffer s_v_args(m);
+                    s_v_args.push_back(uncurry(num_uncurry - 1, val));
+                    for (unsigned i = 1 + array->get_num_args(); i < num; i++) {
+                        s_v_args.push_back(args[i]);
+                    }
+                    result = m.mk_ite(mk_and(m, eqs.size(), eqs.c_ptr()), 
+                                      m_util.mk_select(s_v_args.size(), s_v_args.c_ptr()),
+                                      m_util.mk_select(s_args.size(), s_args.c_ptr()));
+                }
                 return BR_REWRITE2;
             }
             else if (m_util.is_map(array)) {
                 func_decl * f = m_util.get_map_func_decl(array);
                 expr_ref_buffer f_args(m);
-                ptr_buffer<expr> s_args;
+                expr_ref_buffer s_args(m);
                 for (unsigned i = 0; i < array->get_num_args(); i++) {
                     s_args.reset();
-                    s_args.push_back(array->get_arg(i));
+                    s_args.push_back(uncurry(num_uncurry, array->get_arg(i)));
                     for (unsigned j = 1; j < num; j++) {
                         s_args.push_back(args[j]);
                     }
@@ -123,25 +224,79 @@ class elim_array_tactic : public tactic {
             }
             else if (m_util.is_as_array(array)) {
                 func_decl * f = m_util.get_as_array_func_decl(array);
-                result = m.mk_app(f, num-1, args+1);
-                return BR_DONE;
+                if (num_uncurry > 0) {
+                    // Here is an example:
+                    //   f : Int -> (Array Bool Int)
+                    // Then, as_array[f] is an array (Array Int (Array Bool Int))
+                    // And, uncurry(as_array[f]) is (Array Int Bool Int)
+                    // We rewrite
+                    //     select(uncurry(as_array[f]), i, j)
+                    // into
+                    //     select(f(i), j)
+                    expr_ref_buffer s_args(m);
+                    s_args.push_back(uncurry(num_uncurry - 1, m.mk_app(f, f->get_arity(), args+1)));
+                    for (unsigned i = f->get_arity() + 1; i < num; i++)
+                        s_args.push_back(args[i]);
+                    result = m_util.mk_select(s_args.size(), s_args.c_ptr());
+                    return BR_REWRITE2;
+                }
+                else {
+                    SASSERT(f->get_arity() == num-1);
+                    result = m.mk_app(f, num-1, args+1);
+                    return BR_DONE;
+                }
             }
             else if (m_util.is_select(array)) {
-                // TODO
+                num_uncurry++;
+                expr_ref_buffer s_args(m);
+                s_args.push_back(uncurry(num_uncurry, to_app(array)->get_arg(0)));
+                for (unsigned i = 1; i < to_app(array)->get_num_args(); i++) {
+                    s_args.push_back(to_app(array)->get_arg(i));
+                }
+                for (unsigned i = 1; i < num; i++) {
+                    s_args.push_back(args[i]);
+                }
+                result = m_util.mk_select(s_args.size(), s_args.c_ptr());
+                return BR_REWRITE1;
             }
-            else if (is_uninterp_const(array)) {
-                // TODO
+            else if (m_util.is_curry(array)) {
+                if (num_uncurry == 0)
+                    return BR_FAILED;
+                else {
+                    expr_ref_buffer s_args(m);
+                    s_args.push_back(uncurry(num_uncurry-1, array->get_arg(0)));
+                    for (unsigned i = 0; i < num; i++)
+                        s_args.push_back(args[i]);
+                    result = m_util.mk_select(s_args.size(), s_args.c_ptr());
+                    return BR_REWRITE1;
+                }
             }
             else {
                 throw_not_supported();
             }
             return BR_FAILED;
         }
+
+        br_status reduce_uninterp(func_decl * f, unsigned num, expr * const * args, expr_ref & result) {
+            app * a = add_def(f);
+            // TODO: to support proofs we have to create a proof object, that uses the proof that a and f are "equivalent"
+            if (num == 0) {
+                result = a;
+                return BR_DONE;
+            }
+            else {
+                // TODO
+                return BR_FAILED;
+            }
+        }
        
         br_status reduce_app(func_decl * f, unsigned num, expr * const * args, expr_ref & result, proof_ref & result_pr) {
             if (m.is_eq(f)) {
                 SASSERT(num == 2);
                 return reduce_eq(args[0], args[1], result);
+            }
+            else if (m.is_ite(f)) {
+                return BR_FAILED;
             }
             else if (m.is_distinct(f)) {
                 return reduce_distinct(num, args, result);
@@ -156,6 +311,8 @@ class elim_array_tactic : public tactic {
                 case OP_CONST_ARRAY:
                 case OP_ARRAY_MAP:
                 case OP_AS_ARRAY:
+                case OP_CURRY:
+                case OP_UNCURRY:
                     // do nothing at this point
                     return BR_FAILED;
                 default:
@@ -166,7 +323,14 @@ class elim_array_tactic : public tactic {
             else {
                 // args should not be array terms
                 for (unsigned i = 0; i < num; i++) {
-                    if (m_util.is_array(get_sort(args[i])))
+                    if (m_util.is_array(get_sort(args[i]))) {
+                        throw_not_supported();
+                    }
+                }
+                if (m_util.is_array(f->get_range())) {
+                    if (is_uninterp(f))
+                        return reduce_uninterp(f, num, args, result);
+                    else
                         throw_not_supported();
                 }
                 return BR_FAILED;
@@ -220,10 +384,10 @@ class elim_array_tactic : public tactic {
         ast_manager & m = g.m();
         stream_report report("elim_array", g);
         bool produce_proofs = g.proofs_enabled();
-
+        fail_if_proof_generation("elim_array", produce_proofs); // TODO: add support for proofs, see comments above
         rw r(m, produce_proofs);
         set_rw s(*this, r);
-
+        r.cfg().m_stream = &g;
         expr_ref   new_curr(m);
         proof_ref  new_pr(m);
         unsigned size = g.size();
