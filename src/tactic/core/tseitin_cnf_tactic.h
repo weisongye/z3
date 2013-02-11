@@ -29,8 +29,8 @@ tactic * mk_tseitin_cnf_core_tactic(ast_manager & m, params_ref const & p = para
 tactic * mk_tseitin_cnf_tactic(ast_manager & m, params_ref const & p = params_ref());
 
 /*
-  ADD_TACTIC("tseitin-cnf", "convert goal into CNF using tseitin-like encoding (note: quantifiers are ignored).", "mk_tseitin_cnf_tactic(m, p)")
-  ADD_TACTIC("tseitin-cnf-core", "convert goal into CNF using tseitin-like encoding (note: quantifiers are ignored). This tactic does not apply required simplifications to the input goal like the tseitin-cnf tactic.", "mk_tseitin_cnf_core_tactic(m, p)")
+  ADD_TACTIC("tseitin_cnf", "convert goal into CNF using tseitin-like encoding (note: quantifiers are ignored).", "mk_tseitin_cnf_tactic(m, p)")
+  ADD_TACTIC("tseitin_cnf_core", "convert goal into CNF using tseitin-like encoding (note: quantifiers are ignored). This tactic does not apply required simplifications to the input goal like the tseitin-cnf tactic.", "mk_tseitin_cnf_core_tactic(m, p)")
 */
 
 MK_SIMPLE_TACTIC_FACTORY(tseitin_cnf_tactic_factory, mk_tseitin_cnf_tactic(m, p));

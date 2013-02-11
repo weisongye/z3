@@ -25,6 +25,6 @@ class tactic;
 
 tactic * mk_bit_blaster_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
-  ADD_TACTIC("bit-blast", "reduce bit-vector expressions into SAT.", "mk_bit_blaster_tactic(m, p)")
+  ADD_TACTIC("bit_blast", "reduce bit-vector expressions into SAT.", "mk_bit_blaster_tactic(m, p)")
 */
 #endif

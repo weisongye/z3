@@ -31,7 +31,7 @@ tactic * mk_pb2bv_tactic(ast_manager & m, params_ref const & p = params_ref());
 probe * mk_is_pb_probe();
 
 /*
-  ADD_PROBE("is-pb", "true if the goal is a pseudo-boolean problem.", "mk_is_pb_probe()")
+  ADD_PROBE("is_pb", "true if the goal is a pseudo-boolean problem.", "mk_is_pb_probe()")
 */
 
 #endif

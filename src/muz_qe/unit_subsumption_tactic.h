@@ -27,7 +27,7 @@ Notes:
 
 tactic * mk_unit_subsumption_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
-  ADD_TACTIC("unit-subsume-simplify", "unit subsumption simplification.", "mk_unit_subsumption_tactic(m, p)")
+  ADD_TACTIC("unit_subsume_simplify", "unit subsumption simplification.", "mk_unit_subsumption_tactic(m, p)")
 */
 
 #endif

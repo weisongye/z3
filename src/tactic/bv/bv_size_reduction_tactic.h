@@ -30,7 +30,7 @@ class tactic;
 
 tactic * mk_bv_size_reduction_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
-  ADD_TACTIC("reduce-bv-size", "try to reduce bit-vector sizes using inequalities.", "mk_bv_size_reduction_tactic(m, p)")
+  ADD_TACTIC("reduce_bv_size", "try to reduce bit-vector sizes using inequalities.", "mk_bv_size_reduction_tactic(m, p)")
 */
 
 #endif

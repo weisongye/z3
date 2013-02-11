@@ -24,7 +24,7 @@ class tactic;
 tactic * mk_distribute_forall_tactic(ast_manager & m, params_ref const & p);
 
 /*
-  ADD_TACTIC("distribute-forall", "distribute forall over conjunctions.", "mk_distribute_forall_tactic(m, p)")
+  ADD_TACTIC("distribute_forall", "distribute forall over conjunctions.", "mk_distribute_forall_tactic(m, p)")
 */
 
 MK_SIMPLE_TACTIC_FACTORY(distribute_forall_tactic_factory, mk_distribute_forall_tactic(m, p));

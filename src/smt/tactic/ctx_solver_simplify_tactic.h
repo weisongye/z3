@@ -23,7 +23,7 @@ Notes:
 
 tactic * mk_ctx_solver_simplify_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
-  ADD_TACTIC("ctx-solver-simplify", "apply solver-based contextual simplification rules.", "mk_ctx_solver_simplify_tactic(m, p)")
+  ADD_TACTIC("ctx_solver_simplify", "apply solver-based contextual simplification rules.", "mk_ctx_solver_simplify_tactic(m, p)")
 */
 
 #endif

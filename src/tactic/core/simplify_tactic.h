@@ -57,7 +57,7 @@ tactic * mk_elim_and_tactic(ast_manager & m, params_ref const & p = params_ref()
 
 /*
   ADD_TACTIC("simplify", "apply simplification rules.", "mk_simplify_tactic(m, p)")
-  ADD_TACTIC("elim-and", "convert (and a b) into (not (or (not a) (not b))).", "mk_elim_and_tactic(m, p)")
+  ADD_TACTIC("elim_and", "convert (and a b) into (not (or (not a) (not b))).", "mk_elim_and_tactic(m, p)")
 */
 
 MK_SIMPLE_TACTIC_FACTORY(simplify_tactic_factory, mk_simplify_tactic(m, p));

@@ -32,7 +32,7 @@ class tactic;
 tactic * mk_bv1_blaster_tactic(ast_manager & m, params_ref const & p = params_ref());
 probe * mk_is_qfbv_eq_probe();
 /*
-  ADD_TACTIC("bv1-blast", "reduce bit-vector expressions into bit-vectors of size 1 (notes: only equality, extract and concat are supported).", "mk_bv1_blaster_tactic(m, p)")
-  ADD_PROBE("is-qfbv-eq", "true if the goal is in a fragment of QF_BV which uses only =, extract, concat.", "mk_is_qfbv_eq_probe()")
+  ADD_TACTIC("bv1_blast", "reduce bit-vector expressions into bit-vectors of size 1 (notes: only equality, extract and concat are supported).", "mk_bv1_blaster_tactic(m, p)")
+  ADD_PROBE("is_qfbv_eq", "true if the goal is in a fragment of QF_BV which uses only =, extract, concat.", "mk_is_qfbv_eq_probe()")
 */
 #endif

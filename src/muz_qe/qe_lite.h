@@ -65,7 +65,7 @@ public:
 
 tactic * mk_qe_lite_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
-  ADD_TACTIC("qe-light", "apply light-weight quantifier elimination.", "mk_qe_lite_tactic(m, p)")
+  ADD_TACTIC("qe_light", "apply light-weight quantifier elimination.", "mk_qe_lite_tactic(m, p)")
 */
 
 #endif 

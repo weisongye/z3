@@ -30,7 +30,7 @@ namespace qe {
     
 };
 /*
-  ADD_TACTIC("qe-sat", "check satisfiability of quantified formulas using quantifier elimination.", "qe::mk_sat_tactic(m, p)")
+  ADD_TACTIC("qe_sat", "check satisfiability of quantified formulas using quantifier elimination.", "qe::mk_sat_tactic(m, p)")
 */
 
 #endif

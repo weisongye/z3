@@ -26,7 +26,7 @@ class expr_replacer;
 tactic * mk_solve_eqs_tactic(ast_manager & m, params_ref const & p = params_ref(), expr_replacer * r = 0);
 
 /*
-  ADD_TACTIC("solve-eqs", "eliminate variables by solving equations.", "mk_solve_eqs_tactic(m, p)")
+  ADD_TACTIC("solve_eqs", "eliminate variables by solving equations.", "mk_solve_eqs_tactic(m, p)")
 */
 
 MK_SIMPLE_TACTIC_FACTORY(solve_eqs_tactic_factory, mk_solve_eqs_tactic(m, p));

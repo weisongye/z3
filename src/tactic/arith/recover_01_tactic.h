@@ -39,7 +39,7 @@ class tactic;
 
 tactic * mk_recover_01_tactic(ast_manager & m, params_ref const & p = params_ref());
 /*
-  ADD_TACTIC("recover-01", "recover 0-1 variables hidden as Boolean variables.", "mk_recover_01_tactic(m, p)")
+  ADD_TACTIC("recover_01", "recover 0-1 variables hidden as Boolean variables.", "mk_recover_01_tactic(m, p)")
 */
 
 #endif

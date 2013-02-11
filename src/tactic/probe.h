@@ -74,11 +74,11 @@ probe * mk_num_arith_consts_probe();
 probe * mk_num_bv_consts_probe();
 
 /*
-  ADD_PROBE("num-exprs", "number of expressions/terms in the given goal.", "mk_num_exprs_probe()")
-  ADD_PROBE("num-consts", "number of non Boolean constants in the given goal.", "mk_num_consts_probe()")
-  ADD_PROBE("num-bool-consts", "number of Boolean constants in the given goal.", "mk_num_bool_consts_probe()")
-  ADD_PROBE("num-arith-consts", "number of arithmetic constants in the given goal.", "mk_num_arith_consts_probe()")
-  ADD_PROBE("num-bv-consts", "number of bit-vector constants in the given goal.", "mk_num_bv_consts_probe()")
+  ADD_PROBE("num_exprs", "number of expressions/terms in the given goal.", "mk_num_exprs_probe()")
+  ADD_PROBE("num_consts", "number of non Boolean constants in the given goal.", "mk_num_consts_probe()")
+  ADD_PROBE("num_bool_consts", "number of Boolean constants in the given goal.", "mk_num_bool_consts_probe()")
+  ADD_PROBE("num_arith_consts", "number of arithmetic constants in the given goal.", "mk_num_arith_consts_probe()")
+  ADD_PROBE("num_bv_consts", "number of bit-vector constants in the given goal.", "mk_num_bv_consts_probe()")
 */
 
 probe * mk_produce_proofs_probe();
@@ -87,10 +87,10 @@ probe * mk_produce_unsat_cores_probe();
 probe * mk_has_pattern_probe();
 
 /*
-  ADD_PROBE("produce-proofs", "true if proof generation is enabled for the given goal.", "mk_produce_proofs_probe()")
-  ADD_PROBE("produce-model", "true if model generation is enabled for the given goal.", "mk_produce_models_probe()")
-  ADD_PROBE("produce-unsat-cores", "true if unsat-core generation is enabled for the given goal.", "mk_produce_unsat_cores_probe()")
-  ADD_PROBE("has-patterns", "true if the goal contains quantifiers with patterns.", "mk_has_pattern_probe()")
+  ADD_PROBE("produce_proofs", "true if proof generation is enabled for the given goal.", "mk_produce_proofs_probe()")
+  ADD_PROBE("produce_model", "true if model generation is enabled for the given goal.", "mk_produce_models_probe()")
+  ADD_PROBE("produce_unsat_cores", "true if unsat-core generation is enabled for the given goal.", "mk_produce_unsat_cores_probe()")
+  ADD_PROBE("has_patterns", "true if the goal contains quantifiers with patterns.", "mk_has_pattern_probe()")
 */
 
 // Some basic combinators for probes
@@ -113,8 +113,8 @@ probe * mk_is_propositional_probe();
 probe * mk_is_qfbv_probe();
 
 /*
-  ADD_PROBE("is-propositional", "true if the goal is in propositional logic.", "mk_is_propositional_probe()")
-  ADD_PROBE("is-qfbv", "true if the goal is in QF_BV.", "mk_is_qfbv_probe()")
+  ADD_PROBE("is_propositional", "true if the goal is in propositional logic.", "mk_is_propositional_probe()")
+  ADD_PROBE("is_qfbv", "true if the goal is in QF_BV.", "mk_is_qfbv_probe()")
 */
 
 #endif

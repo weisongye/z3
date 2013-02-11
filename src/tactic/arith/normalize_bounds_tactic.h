@@ -28,7 +28,7 @@ class tactic;
 tactic * mk_normalize_bounds_tactic(ast_manager & m, params_ref const & p = params_ref());
 
 /*
-  ADD_TACTIC("normalize-bounds", "replace a variable x with lower bound k <= x with x' = x - k.", "mk_normalize_bounds_tactic(m, p)")
+  ADD_TACTIC("normalize_bounds", "replace a variable x with lower bound k <= x with x' = x - k.", "mk_normalize_bounds_tactic(m, p)")
 */
 
 #endif

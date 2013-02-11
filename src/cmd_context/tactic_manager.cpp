@@ -37,15 +37,30 @@ void tactic_manager::insert(probe_info * p) {
     m_probes.push_back(p);
 }
 
+static symbol norm_tactic_name(symbol const & s) {
+    char const * n = s.bare_str();
+    string_buffer<128> new_name;
+    while (*n) {
+        if (*n == '-')
+            new_name.append("_");
+        else if (*n >= 'A' && *n <= 'Z')
+            new_name.append((*n - 'A') + 'a');
+        else
+            new_name.append(*n);
+        n++;
+    }
+    return symbol(new_name.c_str());
+}
+
 tactic_cmd * tactic_manager::find_tactic_cmd(symbol const & s) const {
     tactic_cmd * c = 0;
-    m_name2tactic.find(s, c);
+    m_name2tactic.find(norm_tactic_name(s), c);
     return c;
 }
 
 probe_info * tactic_manager::find_probe(symbol const & s) const {
     probe_info * p = 0;
-    m_name2probe.find(s, p);
+    m_name2probe.find(norm_tactic_name(s), p);
     return p;
 }
 

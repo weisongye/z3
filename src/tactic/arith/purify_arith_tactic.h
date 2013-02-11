@@ -55,7 +55,7 @@ class tactic;
 tactic * mk_purify_arith_tactic(ast_manager & m, params_ref const & p = params_ref());
 
 /*
-  ADD_TACTIC("purify-arith", "eliminate unnecessary operators: -, /, div, mod, rem, is-int, to-int, ^, root-objects.", "mk_purify_arith_tactic(m, p)")
+  ADD_TACTIC("purify_arith", "eliminate unnecessary operators: -, /, div, mod, rem, is-int, to-int, ^, root-objects.", "mk_purify_arith_tactic(m, p)")
 */
 
 #endif
