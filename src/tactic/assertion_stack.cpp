@@ -23,9 +23,11 @@ Revision History:
 #include"expr_replacer.h"
 #include"model.h"
 #include"expr_substitution.h"
+#include"macro_substitution.h"
 #include"for_each_expr.h"
 #include"extension_model_converter.h"
 #include"filter_model_converter.h"
+#include"macro_rewriter.h"
 
 #define MC_TAG_EXTENSION 0
 #define MC_TAG_FILTER    1
@@ -50,6 +52,7 @@ struct assertion_stack::imp {
     // It should be viewed as combination of extension_model_converter and 
     // filter_model_converter for goals.
     expr_substitution            m_csubst;  // substitution for eliminated constants
+    macro_substitution           m_msubst;  // substitution for eliminated functions
 
     // Model converter is just two sequences: func_decl and tag.
     // Tag 0 (extension) func_decl was eliminated, and its definition is in m_vsubst or m_fsubst.
@@ -75,6 +78,7 @@ struct assertion_stack::imp {
         m_deps(m),
         m_frozen(m),
         m_csubst(m, core_enabled),
+        m_msubst(m, core_enabled),
         m_mc(m) {
         init(m.proofs_enabled(), models_enabled, core_enabled);
     }
@@ -86,6 +90,7 @@ struct assertion_stack::imp {
         m_deps(m),
         m_frozen(m),
         m_csubst(m, core_enabled, proofs_enabled),
+        m_msubst(m, core_enabled, proofs_enabled),
         m_mc(m) {
         init(proofs_enabled, models_enabled, core_enabled);
     }
@@ -144,7 +149,7 @@ struct assertion_stack::imp {
     }
 
     void expand(expr * f, proof * pr, expr_dependency * dep, expr_ref & new_f, proof_ref & new_pr, expr_dependency_ref & new_dep) {
-        if (m_csubst.empty()) {
+        if (m_csubst.empty() && m_msubst.empty()) {
             new_f   = f;
             new_pr  = pr;
             new_dep = dep;
@@ -152,6 +157,7 @@ struct assertion_stack::imp {
         else {
             scoped_ptr<expr_replacer> r = mk_default_expr_replacer(m());
             r->set_substitution(&m_csubst);
+            r->set_macro_substitution(&m_msubst);
             (*r)(f, new_f, new_pr, new_dep);
             // new_pr   is a proof for  f == new_f
             // new_dep  are the dependencies for showing f == new_f
@@ -356,7 +362,8 @@ struct assertion_stack::imp {
                 }
                 else {
                     // Arity > 0
-                    // We don't support macros yet.
+                    SASSERT(m_msubst.contains(f));
+                    m_msubst.erase(f);
                 }
             }
         }
@@ -428,7 +435,9 @@ struct assertion_stack::imp {
                 }
                 else {
                     // Arity > 0
-                    // We don't support macros yet.
+                    quantifier * q; proof * pr;
+                    VERIFY(m_msubst.find(f, q, pr));
+                    quick_for_each_expr(p, uf_visited, q->get_expr());
                 }
             }
         }
@@ -452,13 +461,21 @@ struct assertion_stack::imp {
     }
 
     bool is_eliminated(func_decl * f) const {
-        app_ref c(m());
-        c = m().mk_const(f);
-        return is_eliminated(c);
+        if (f->get_arity() == 0) {
+            app_ref c(m());
+            c = m().mk_const(f);
+            return is_eliminated(c);
+        }
+        else {
+            return m_msubst.contains(f);
+        }
     }
     
     bool is_eliminated(app * x) const {
-        return m_csubst.contains(x);
+        if (x->get_num_args() == 0)
+            return m_csubst.contains(x);
+        else
+            return m_msubst.contains(x->get_decl());
     }
     
     void add_filter(func_decl * f) {
@@ -472,6 +489,13 @@ struct assertion_stack::imp {
         m_csubst.insert(c, def, pr, dep);
         func_decl * d = c->get_decl();
         m_mc.push_back(d);
+        m_mc_tag.push_back(MC_TAG_EXTENSION);
+    }
+
+    void add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep) {
+        SASSERT(f->get_arity() > 0);
+        m_msubst.insert(f, q, pr, dep);
+        m_mc.push_back(f);
         m_mc_tag.push_back(MC_TAG_EXTENSION);
     }
 
@@ -502,7 +526,13 @@ struct assertion_stack::imp {
                         }
                         else {
                             // arity > 0
-                            // we don't support macros yet
+                            quantifier * q; proof * pr;
+                            VERIFY(m_msubst.find(f, q, pr));
+                            app * head = 0; expr * def;
+                            m_msubst.get_head_def(q, f, head, def);
+                            expr_ref new_def(m());
+                            normalize_macro(m(), head, def, new_def);
+                            emc.insert(f, new_def);
                         }
                         if (top == 0)
                             break;

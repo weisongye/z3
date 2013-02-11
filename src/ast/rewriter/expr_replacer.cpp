@@ -18,6 +18,8 @@ Notes:
 --*/
 #include"expr_replacer.h"
 #include"rewriter_def.h"
+#include"macro_substitution.h"
+#include"var_subst.h"
 #include"th_rewriter.h"
 #include"cooperate.h"
 
@@ -53,13 +55,21 @@ void expr_replacer::apply_substitution(expr * s, expr * def, expr_ref & t) {
 
 struct default_expr_replacer_cfg : public default_rewriter_cfg  {
     ast_manager &        m;
+    var_subst            m_var_subst;
     expr_substitution *  m_subst;
+    macro_substitution * m_msubst;
     expr_dependency_ref  m_used_dependencies;
 
     default_expr_replacer_cfg(ast_manager & _m):
         m(_m),
+        m_var_subst(m),
         m_subst(0),
+        m_msubst(0),
         m_used_dependencies(_m) {
+    }
+
+    void reset() {
+        m_var_subst.reset();
     }
 
     bool get_subst(expr * s, expr * & t, proof * & pr) { 
@@ -73,8 +83,44 @@ struct default_expr_replacer_cfg : public default_rewriter_cfg  {
         return false;
     }
 
+    br_status reduce_app(func_decl * f, unsigned num, expr * const * args, expr_ref & result, proof_ref & result_pr) {
+        if (m_msubst == 0)
+            return BR_FAILED;
+        quantifier * q;
+        proof * q_pr;
+        expr_dependency * dep;
+        if (m_msubst->find(f, q, q_pr, dep)) {
+            m_used_dependencies = m.mk_join(m_used_dependencies, dep);
+            app * head;
+            expr * def;
+            m_msubst->get_head_def(q, f, head, def);
+            SASSERT(f->get_arity() == num);
+            SASSERT(head->get_num_args() == num);
+            SASSERT(q->get_num_decls() == num);
+            ptr_buffer<expr> xs;
+            xs.resize(num);
+            for (unsigned i = 0; i < num; i++) {
+                var * x = to_var(head->get_arg(i));
+                unsigned xidx = x->get_idx();
+                SASSERT(xidx < num);
+                SASSERT(xs[num - xidx - 1] == 0);
+                xs[num - xidx - 1] = args[i];
+            }
+            m_var_subst(def, xs.size(), xs.c_ptr(), result);
+            if (m.proofs_enabled() && q_pr) {
+                expr_ref instance(m);
+                instantiate(m, q, xs.c_ptr(), instance);
+                proof * qi_pr = m.mk_quant_inst(m.mk_or(m.mk_not(q), instance), xs.size(), xs.c_ptr());
+                proof * prs[2] = { qi_pr, q_pr };
+                result_pr = m.mk_unit_resolution(2, prs);
+            }
+            return BR_REWRITE_FULL;
+        }
+        return BR_FAILED;
+    }
+
     bool max_steps_exceeded(unsigned num_steps) const { 
-        cooperate("simplifier");
+        cooperate("expr_replacer");
         return false;
     }
 };
@@ -95,6 +141,11 @@ public:
     virtual void set_substitution(expr_substitution * s) { 
         m_replacer.cleanup();
         m_replacer.cfg().m_subst = s;
+    }
+
+    virtual void set_macro_substitution(macro_substitution * s) { 
+        m_replacer.cleanup();
+        m_replacer.cfg().m_msubst = s;
     }
     
     virtual void operator()(expr * t, expr_ref & result, proof_ref & result_pr, expr_dependency_ref & result_dep) {
@@ -139,6 +190,8 @@ public:
     virtual ast_manager & m() const { return m_r.m(); }
 
     virtual void set_substitution(expr_substitution * s) { m_r.set_substitution(s); }
+
+    virtual void set_macro_substitution(macro_substitution * s) { m_r.set_macro_substitution(s); }
 
     virtual void operator()(expr * t, expr_ref & result, proof_ref & result_pr, expr_dependency_ref & result_dep) {
         m_r(t, result, result_pr);

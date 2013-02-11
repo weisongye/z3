@@ -24,6 +24,7 @@ Notes:
 #include"params.h"
 
 class expr_substitution;
+class macro_substitution;
 
 class th_rewriter {
     struct     imp;
@@ -52,6 +53,7 @@ public:
     void reset();
 
     void set_substitution(expr_substitution * s);
+    void set_macro_substitution(macro_substitution * s);
     
     // Dependency tracking is very coarse. 
     // The rewriter just keeps accumulating the dependencies of the used substitutions.
