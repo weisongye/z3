@@ -210,6 +210,36 @@ extern "C" {
         Z3_CATCH_RETURN(0);
     }
 
+    Z3_bool Z3_API Z3_is_curry(Z3_context c, Z3_ast a) {
+        Z3_TRY;
+        LOG_Z3_is_curry(c, a);
+        RESET_ERROR_CODE();
+        return is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_CURRY);
+        Z3_CATCH_RETURN(Z3_FALSE);
+    }
+
+    unsigned Z3_API Z3_get_curry_index(Z3_context c, Z3_ast a) {
+        Z3_TRY;
+        LOG_Z3_get_curry_index(c, a);
+        RESET_ERROR_CODE();
+        if (is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_CURRY)) {
+            return to_app(a)->get_decl()->get_parameter(0).get_int();
+        }
+        else {
+            SET_ERROR_CODE(Z3_INVALID_ARG);
+            RETURN_Z3(0);
+        }
+        Z3_CATCH_RETURN(0);
+    }
+
+    Z3_bool Z3_API Z3_is_uncurry(Z3_context c, Z3_ast a) {
+        Z3_TRY;
+        LOG_Z3_is_uncurry(c, a);
+        RESET_ERROR_CODE();
+        return is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_UNCURRY);
+        Z3_CATCH_RETURN(Z3_FALSE);
+    }
+
     void Z3_API Z3_func_interp_inc_ref(Z3_context c, Z3_func_interp f) {
         Z3_TRY;
         LOG_Z3_func_interp_inc_ref(c, f);

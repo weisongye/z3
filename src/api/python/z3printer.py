@@ -30,7 +30,7 @@ _z3_op_to_str = {
     Z3_OP_BASHR : '>>', Z3_OP_BSHL : '<<', Z3_OP_BLSHR : 'LShR', 
     Z3_OP_CONCAT : 'Concat', Z3_OP_EXTRACT : 'Extract', Z3_OP_BV2INT : 'BV2Int',
     Z3_OP_ARRAY_MAP : 'Map', Z3_OP_SELECT : 'Select', Z3_OP_STORE : 'Store', 
-    Z3_OP_CONST_ARRAY : 'K' 
+    Z3_OP_CONST_ARRAY : 'K', Z3_OP_AS_ARRAY : 'AsArray', Z3_OP_CURRY : 'Curry', Z3_OP_UNCURRY : 'UnCurry' 
     }
 
 # List of infix operators
@@ -672,6 +672,14 @@ class Formatter:
     def pp_K(self, a, d, xs):
         return seq1(self.pp_name(a), [ self.pp_sort(a.domain()), self.pp_expr(a.arg(0), d+1, xs) ])
 
+    def pp_as_array(self, a, d, xs):
+        f = z3.get_as_array_func(a)
+        return seq1(self.pp_name(a), [ to_format(f.name()) ])
+
+    def pp_curry(self, a, d, xs):
+        i = z3.get_curry_index(a)
+        return seq1(self.pp_name(a), [to_format(i), self.pp_expr(a.arg(0), d, xs)])
+    
     def pp_app(self, a, d, xs):
         if z3.is_int_value(a):
             return self.pp_int(a)
@@ -681,6 +689,8 @@ class Formatter:
             return self.pp_algebraic(a)
         elif z3.is_bv_value(a):
             return self.pp_bv(a)
+        elif z3.is_as_array(a):
+            return self.pp_as_array(a, d, xs)
         elif z3.is_const(a):
             return self.pp_const(a)
         else:
@@ -700,6 +710,8 @@ class Formatter:
                 return self.pp_map(a, d, xs)
             elif k == Z3_OP_CONST_ARRAY:
                 return self.pp_K(a, d, xs)
+            elif k == Z3_OP_CURRY:
+                return self.pp_curry(a, d, xs)
             elif z3.is_pattern(a):
                 return self.pp_pattern(a, d, xs)
             elif self.is_infix(k):

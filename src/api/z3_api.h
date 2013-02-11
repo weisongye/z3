@@ -311,6 +311,10 @@ typedef enum
    - Z3_OP_AS_ARRAY An array value that behaves as the function graph of the
                     function passed as parameter.
 
+   - Z3_OP_CURRY Operators for currying arrays. Example: (Array Int Int Int) to (Array Int (Array Int Int))
+
+   - Z3_OP_UNCURRY Operators for uncurrying arrays. Example: (Array Int (Array Int Int)) to (Array Int Int Int)
+
    - Z3_OP_BNUM Bit-vector numeral.
 
    - Z3_OP_BIT1 One bit bit-vector.
@@ -924,6 +928,8 @@ typedef enum {
     Z3_OP_SET_COMPLEMENT,
     Z3_OP_SET_SUBSET,
     Z3_OP_AS_ARRAY,
+    Z3_OP_CURRY,
+    Z3_OP_UNCURRY,
 
     // Bit-vectors
     Z3_OP_BNUM = 0x400,
@@ -4631,6 +4637,29 @@ END_MLAPI_EXCLUDE
        def_API('Z3_get_as_array_func_decl', FUNC_DECL, (_in(CONTEXT), _in(AST)))
     */
     Z3_func_decl Z3_API Z3_get_as_array_func_decl(__in Z3_context c, __in Z3_ast a);
+
+    /**
+       \brief Return Z3_TRUE if \c a is the array curry operator.
+       
+       def_API('Z3_is_curry', BOOL, (_in(CONTEXT), _in(AST)))
+    */
+    Z3_bool Z3_API Z3_is_curry(__in Z3_context c, __in Z3_ast a);
+
+    /**
+       \brief Return the number of arguments being curried by the array curry operator.
+
+       \pre Z3_is_curry(c, a)
+
+       def_API('Z3_get_curry_index', UINT, (_in(CONTEXT), _in(AST)))
+    */
+    unsigned Z3_API Z3_get_curry_index(__in Z3_context c, __in Z3_ast a);
+
+    /**
+       \brief Return Z3_TRUE if \c a is the array uncurry operator.
+       
+       def_API('Z3_is_uncurry', BOOL, (_in(CONTEXT), _in(AST)))
+    */
+    Z3_bool Z3_API Z3_is_uncurry(__in Z3_context c, __in Z3_ast a);
 
 #ifdef Conly
     /**

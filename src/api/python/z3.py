@@ -5517,6 +5517,20 @@ def get_as_array_func(n):
         _z3_assert(is_as_array(n), "as-array Z3 expression expected.")
     return FuncDeclRef(Z3_get_as_array_func_decl(n.ctx.ref(), n.as_ast()), n.ctx)
 
+def is_curry(n):
+    """Return true if n is a Z3 expression of the form ((_ curry i) a)."""
+    return isinstance(n, ExprRef) and Z3_is_curry(n.ctx.ref(), n.as_ast())
+
+def is_uncurry(n):
+    """Return true if n is a Z3 expression of the form ((_ uncurry i) a)."""
+    return isinstance(n, ExprRef) and Z3_is_uncurry(n.ctx.ref(), n.as_ast())
+
+def get_curry_index(n):
+    """Given a Z3 expression of the form ((_ curry i) a), return i."""
+    if __debug__:
+        _z3_assert(is_curry(n), "curry Z3 expression expected.")
+    return Z3_get_curry_index(n.ctx.ref(), n.as_ast())
+
 #########################################
 #
 # Statistics
