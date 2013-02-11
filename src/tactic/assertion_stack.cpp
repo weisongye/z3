@@ -847,6 +847,10 @@ void assertion_stack::add_definition(app * c, expr * def, proof * pr, expr_depen
     m_imp->add_definition(c, def, pr, dep);
 }
 
+void assertion_stack::add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep) {
+    m_imp->add_definition(f, q, pr, dep);
+}
+
 bool assertion_stack::is_eliminated(func_decl * f) const {
     return m_imp->is_eliminated(f);
 }

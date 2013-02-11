@@ -22,6 +22,7 @@ Revision History:
 #include"array_decl_plugin.h"
 #include"extension_model_converter.h"
 #include"rewriter_def.h"
+#include"var_subst.h"
 
 class elim_array_tactic : public tactic {
 
@@ -32,12 +33,15 @@ class elim_array_tactic : public tactic {
         ast_ref_vector           m_asts;
         assertion_stream *       m_stream;
         var_shifter              m_shift;
+        var_subst                m_subst;
+
         rw_cfg(ast_manager & _m):
             m(_m), 
             m_util(m),
             m_asts(m),
             m_stream(0),
-            m_shift(m) {
+            m_shift(m),
+            m_subst(m, false /* does not use standard order */) {
         }
 
         void throw_not_supported() {
@@ -80,25 +84,35 @@ class elim_array_tactic : public tactic {
                 for (unsigned i = 0; i < nargs.size(); i++) {
                     a = m_util.mk_curry(nargs[i], a);
                 }
+                // TODO: to support proofs we have to create a def_intro object
                 if (arity > 0) {
-                    expr_ref_buffer s_args(m);
+                    expr_ref_buffer  s_args(m);
+                    expr_ref_buffer  f_args(m);
                     s_args.push_back(a);
                     for (unsigned i = 0; i < arity; i++) {
-                        s_args.push_back(m.mk_var(i, f->get_domain(i)));
+                        var * x = m.mk_var(i, f->get_domain(i));
+                        s_args.push_back(x);
+                        f_args.push_back(x);
+                    }
+                    sbuffer<symbol>  names;
+                    ptr_buffer<sort> sorts;
+                    unsigned i = arity;
+                    while (i > 0) {
+                        --i;
+                        names.push_back(mk_fresh_symbol("x"));
+                        sorts.push_back(f->get_domain(i));
                     }
                     a = m_util.mk_select(s_args.size(), s_args.c_ptr());
+                    quantifier_ref q(m);
+                    q = m.mk_forall(sorts.size(), sorts.c_ptr(), names.c_ptr(), m.mk_eq(m.mk_app(f, f_args.size(), f_args.c_ptr()), a));
+                    m_stream->add_definition(f, q, 0, 0);
+                }
+                else {
+                    m_stream->add_definition(m.mk_const(f), a, 0, 0);
                 }
                 m_asts.push_back(f);
                 m_asts.push_back(a);
                 m_definitions.insert(f, a);
-                if (arity > 0) {
-                    // TODO: we have to extend the assertion_stream interface
-                    // It only accepts ground definitions
-                    throw_not_supported();
-                }
-                // TODO: to support proofs we have to create a def_intro object
-                // m_stream->add_definition(v, def, pr, dep);
-                m_stream->add_definition(m.mk_const(f), a, 0, 0);
                 return a;
             }
         }
@@ -285,8 +299,8 @@ class elim_array_tactic : public tactic {
                 return BR_DONE;
             }
             else {
-                // TODO
-                return BR_FAILED;
+                m_subst(a, num, args, result);
+                return BR_REWRITE1;
             }
         }
        

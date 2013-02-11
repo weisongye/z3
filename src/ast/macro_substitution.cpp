@@ -145,20 +145,7 @@ void macro_substitution::erase(func_decl * f) {
 }
 
 void macro_substitution::get_head_def(quantifier * q, func_decl * f, app * & head, expr * & def) {
-    app * body = to_app(q->get_expr());
-    SASSERT(m_manager.is_eq(body) || m_manager.is_iff(body));
-    expr * lhs = to_app(body)->get_arg(0);
-    expr * rhs = to_app(body)->get_arg(1);
-    SASSERT(is_app_of(lhs, f) || is_app_of(rhs, f));
-    SASSERT(!is_app_of(lhs, f) || !is_app_of(rhs, f));
-    if (is_app_of(lhs, f)) {
-        head = to_app(lhs);
-        def  = rhs;
-    }
-    else {
-        head = to_app(rhs);
-        def  = lhs;
-    }
+    get_macro_head_def(m_manager, q, f, head, def);
 }
 
 bool macro_substitution::find(func_decl * f, quantifier * & q, proof * & pr) {
@@ -179,6 +166,23 @@ bool macro_substitution::find(func_decl * f, quantifier * & q, proof * & pr, exp
         return true;
     }
     return false;
+}
+
+void get_macro_head_def(ast_manager & m, quantifier * q, func_decl * f, app * & head, expr * & def) {
+    app * body = to_app(q->get_expr());
+    SASSERT(m.is_eq(body) || m.is_iff(body));
+    expr * lhs = to_app(body)->get_arg(0);
+    expr * rhs = to_app(body)->get_arg(1);
+    SASSERT(is_app_of(lhs, f) || is_app_of(rhs, f));
+    SASSERT(!is_app_of(lhs, f) || !is_app_of(rhs, f));
+    if (is_app_of(lhs, f)) {
+        head = to_app(lhs);
+        def  = rhs;
+    }
+    else {
+        head = to_app(rhs);
+        def  = lhs;
+    }
 }
 
 
