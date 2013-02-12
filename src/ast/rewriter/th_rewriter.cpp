@@ -539,9 +539,9 @@ struct th_rewriter_cfg : public default_rewriter_cfg {
     }
 
     br_status reduce_macro(func_decl * f, unsigned num, expr * const * args, expr_ref & result, proof_ref & result_pr) {
-        quantifier * q;
-        proof * q_pr;
-        expr_dependency * dep;
+        quantifier * q = 0;
+        proof * q_pr = 0;
+        expr_dependency * dep = 0;
         if (m_msubst->find(f, q, q_pr, dep)) {
             m_used_dependencies = m().mk_join(m_used_dependencies, dep);
             app * head;
@@ -694,6 +694,10 @@ struct th_rewriter_cfg : public default_rewriter_cfg {
         m_subst(0),
         m_msubst(0) {
         updt_local_params(p);
+    }
+
+    ~th_rewriter_cfg() {
+        m_used_dependencies = 0;
     }
 
     void set_substitution(expr_substitution * s) {

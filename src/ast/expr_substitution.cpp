@@ -123,6 +123,8 @@ bool expr_substitution::find(expr * c, expr * & def, proof * & def_pr) {
     if (m_subst.find(c, def)) {
         if (proofs_enabled())
             m_subst_pr->find(c, def_pr);
+        else
+            def_pr = 0;
         return true;
     }
     return false;
@@ -132,8 +134,12 @@ bool expr_substitution::find(expr * c, expr * & def, proof * & def_pr, expr_depe
     if (m_subst.find(c, def)) {
         if (proofs_enabled())
             m_subst_pr->find(c, def_pr);
+        else
+            def_pr = 0;
         if (unsat_core_enabled())
             m_subst_dep->find(c, def_dep);
+        else
+            def_dep = 0;
         return true;
     }
     return false;

@@ -152,6 +152,8 @@ bool macro_substitution::find(func_decl * f, quantifier * & q, proof * & pr) {
     if (m_decl2macro.find(f, q)) {
         if (proofs_enabled())
             m_decl2macro_pr->find(f, pr);
+        else
+            pr = 0;
         return true;
     }
     return false;
@@ -161,8 +163,12 @@ bool macro_substitution::find(func_decl * f, quantifier * & q, proof * & pr, exp
     if (m_decl2macro.find(f, q)) {
         if (proofs_enabled())
             m_decl2macro_pr->find(f, pr);
+        else
+            pr = 0;
         if (unsat_core_enabled())
             m_decl2macro_dep->find(f, dep);
+        else
+            dep = 0;
         return true;
     }
     return false;
