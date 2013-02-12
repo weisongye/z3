@@ -100,7 +100,7 @@ class expand_macros_tactic : public tactic {
             if (found_macros.contains(f))
                 return 0; // f is already selected as a macro
             found_macros.insert(f);
-            if (contains(def, found_macros)) {
+            if (def && contains(def, found_macros)) {
                 found_macros.erase(f);
                 return 0; // cycle detected
             }
@@ -125,9 +125,30 @@ class expand_macros_tactic : public tactic {
             return 0;       
     }
 
+    static func_decl * is_bool_macro(ast_manager & m, quantifier * q, obj_hashtable<func_decl> & found_macros, quantifier_ref & qprime) {
+        unsigned num_decls = q->get_num_decls();
+        expr * b = q->get_expr();
+        func_decl * f = is_macro(b, 0, num_decls, found_macros);
+        if (f) {
+            qprime = m.update_quantifier(q, m.mk_iff(b, m.mk_true()));
+            return f;
+        }
+        else if (m.is_not(b, b)) {
+            f = is_macro(b, 0, num_decls, found_macros);
+            if (f) {
+                qprime = m.update_quantifier(q, m.mk_iff(b, m.mk_false()));
+                return f;
+            }
+        }
+        return 0;
+    }
+
     static void find_macros(ast_manager & m, assertion_stream & g, macro_substitution & ms) {
         obj_hashtable<func_decl> found_macros;
-        unsigned size = g.size();
+        bool proofs_enabled = g.proofs_enabled();
+        unsigned size = g.size(); 
+        quantifier_ref qprime(m);
+        proof_ref pr(m);
         for (unsigned i = g.qhead(); i < size; i++) {
             expr * a = g.form(i);
             if (is_quantifier(a)) {
@@ -138,6 +159,21 @@ class expand_macros_tactic : public tactic {
                     g.add_definition(f, q, g.pr(i), g.dep(i));
                     // remove quantifier
                     g.update(i, m.mk_true(), 0, 0);
+                }
+                else {
+                    func_decl * f = is_bool_macro(m, q, found_macros, qprime);
+                    if (f != 0) {
+                        if (proofs_enabled) {
+                            pr = m.mk_modus_ponens(g.pr(i), m.mk_rewrite(q, qprime));
+                        }
+                        else {
+                            pr = 0;
+                        }
+                        ms.insert(f, qprime, pr, g.dep(i));
+                        g.add_definition(f, qprime, pr, g.dep(i));
+                        // remove quantifier
+                        g.update(i, m.mk_true(), 0, 0);
+                    }
                 }
             }
         }
