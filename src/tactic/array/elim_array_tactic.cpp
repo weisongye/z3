@@ -34,6 +34,8 @@ class elim_array_tactic : public tactic {
         assertion_stream *       m_stream;
         var_shifter              m_shift;
         var_subst                m_subst;
+        
+        bool                     m_fail_if_not_supported;
 
         rw_cfg(ast_manager & _m):
             m(_m), 
@@ -42,10 +44,17 @@ class elim_array_tactic : public tactic {
             m_stream(0),
             m_shift(m),
             m_subst(m, false /* does not use standard order */) {
+
+            m_fail_if_not_supported = false;
+        }
+
+        void throw_unexpected() {
+            throw tactic_exception("failed to reduce array theory to UF, unexpected input");
         }
 
         void throw_not_supported() {
-            throw tactic_exception("failed to reduce array theory to UF");
+            if (m_fail_if_not_supported)
+                throw tactic_exception("failed to reduce array theory to UF");
         }
 
         app * add_def(func_decl * f) {
@@ -54,7 +63,7 @@ class elim_array_tactic : public tactic {
                 // this can only happen if the tactic is applied to an
                 // assertion stream where a push was performed but the
                 // tactic was not applied.
-                throw_not_supported();
+                throw_unexpected();
             }
             app * r;
             if (m_definitions.find(f, r)) {
@@ -165,16 +174,20 @@ class elim_array_tactic : public tactic {
         }
 
         br_status reduce_select(unsigned num, expr * const * args, expr_ref & result) {
-            if (!is_app(args[0]))
+            if (!is_app(args[0])) {
                 throw_not_supported();
+                return BR_FAILED;
+            }
             if (num == 0)
                 return BR_FAILED;
             app * array = to_app(args[0]);
             unsigned num_uncurry = 0;
             while (m_util.is_uncurry(array)) {
                 num_uncurry++;
-                if (!is_app(array->get_arg(0)))
+                if (!is_app(array->get_arg(0))) {
                     throw_not_supported();
+                    return BR_FAILED;
+                }
                 array = to_app(array->get_arg(0));
             }
             if (m.is_ite(array)) {
@@ -336,9 +349,11 @@ class elim_array_tactic : public tactic {
             }
             else {
                 // args should not be array terms
-                for (unsigned i = 0; i < num; i++) {
-                    if (m_util.is_array(get_sort(args[i]))) {
-                        throw_not_supported();
+                if (m_fail_if_not_supported) {
+                    for (unsigned i = 0; i < num; i++) {
+                        if (m_util.is_array(get_sort(args[i]))) {
+                            throw_not_supported();
+                        }
                     }
                 }
                 if (m_util.is_array(f->get_range())) {
