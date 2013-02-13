@@ -1755,6 +1755,10 @@ def ForAll(vs, body, weight=1, qid="", skid="", patterns=[], no_patterns=[]):
     """
     return _mk_quantifier(True, vs, body, weight, qid, skid, patterns, no_patterns)
 
+def Forall(vs, body, weight=1, qid="", skid="", patterns=[], no_patterns=[]):
+    """Alias for ForAll."""
+    return ForAll(vs, body, weight, qid, skid, patterns, no_patterns)
+
 def Exists(vs, body, weight=1, qid="", skid="", patterns=[], no_patterns=[]):
     """Create a Z3 exists formula.
     
