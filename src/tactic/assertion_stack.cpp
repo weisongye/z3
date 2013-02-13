@@ -406,12 +406,22 @@ struct assertion_stack::imp {
         freeze_proc(obj_hashtable<func_decl> & s, func_decl_ref_vector & f):m_frozen_set(s), m_frozen(f) {}
         void operator()(var * n) {}
         void operator()(quantifier * n) {}
+        void freeze(func_decl * f) {
+            if (is_uninterp(f) && !m_frozen_set.contains(f)) {
+                m_frozen_set.insert(f);
+                m_frozen.push_back(f);
+            }
+        }
         void operator()(app * n) {
-            if (is_uninterp(n)) {
-                func_decl * f = n->get_decl();
-                if (!m_frozen_set.contains(f)) {
-                    m_frozen_set.insert(f);
-                    m_frozen.push_back(f);
+            freeze(n->get_decl());
+            func_decl_info * info = n->get_decl()->get_info();
+            if (info) {
+                // we must also process func_decls that are "hidden" in parameters
+                unsigned num = info->get_num_parameters();
+                for (unsigned i = 0; i < num; i++) {
+                    parameter const & p = info->get_parameter(i);
+                    if (p.is_ast() && is_func_decl(p.get_ast()))
+                        freeze(to_func_decl(p.get_ast()));
                 }
             }
         }

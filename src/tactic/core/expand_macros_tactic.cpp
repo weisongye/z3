@@ -98,8 +98,11 @@ class expand_macros_tactic : public tactic {
         return false;
     }
 
-    static bool is_macro_head(expr * h, unsigned num_decls) {
-        if (is_app(h) && to_app(h)->get_family_id() == null_family_id && to_app(h)->get_num_args() == num_decls) {
+    static bool is_macro_head(assertion_stream & g, expr * h, unsigned num_decls) {
+        if (is_app(h) && 
+            to_app(h)->get_family_id() == null_family_id && 
+            to_app(h)->get_num_args() == num_decls &&
+            !g.is_frozen(to_app(h)->get_decl())) {
             sbuffer<bool> found;
             found.resize(num_decls, false);
             for (unsigned i = 0; i < to_app(h)->get_num_args(); i++) {
@@ -123,8 +126,8 @@ class expand_macros_tactic : public tactic {
         }
     }
 
-    static func_decl * is_macro(expr * head, expr * def, unsigned num_decls, obj_hashtable<func_decl> & found_macros, obj_hashtable<func_decl> const & forbidden) {
-        if (is_macro_head(head, num_decls)) {
+    static func_decl * is_macro(assertion_stream & g, expr * head, expr * def, unsigned num_decls, obj_hashtable<func_decl> & found_macros, obj_hashtable<func_decl> const & forbidden) {
+        if (is_macro_head(g, head, num_decls)) {
             func_decl * f = to_app(head)->get_decl();
             if (found_macros.contains(f) || forbidden.contains(f))
                 return 0; // f is already selected as a macro
@@ -141,29 +144,31 @@ class expand_macros_tactic : public tactic {
         }
     }
 
-    static func_decl * is_macro(ast_manager & m, quantifier * q, obj_hashtable<func_decl> & found_macros, obj_hashtable<func_decl> const & forbidden) {
+    static func_decl * is_macro(assertion_stream & g, quantifier * q, obj_hashtable<func_decl> & found_macros, obj_hashtable<func_decl> const & forbidden) {
+        ast_manager & m = g.m();
         unsigned num_decls = q->get_num_decls();
         expr * b = q->get_expr();
         expr * lhs, * rhs;
         if (m.is_eq(b, lhs, rhs) || m.is_iff(b, lhs, rhs)) {
-            func_decl * f = is_macro(lhs, rhs, num_decls, found_macros, forbidden);
+            func_decl * f = is_macro(g, lhs, rhs, num_decls, found_macros, forbidden);
             if (f) return f;
-            return is_macro(rhs, lhs, num_decls, found_macros, forbidden);
+            return is_macro(g, rhs, lhs, num_decls, found_macros, forbidden);
         }
         else
             return 0;       
     }
 
-    static func_decl * is_bool_macro(ast_manager & m, quantifier * q, obj_hashtable<func_decl> & found_macros, quantifier_ref & qprime, obj_hashtable<func_decl> const & forbidden) {
+    static func_decl * is_bool_macro(assertion_stream & g, quantifier * q, obj_hashtable<func_decl> & found_macros, quantifier_ref & qprime, obj_hashtable<func_decl> const & forbidden) {
+        ast_manager & m = g.m();
         unsigned num_decls = q->get_num_decls();
         expr * b = q->get_expr();
-        func_decl * f = is_macro(b, 0, num_decls, found_macros, forbidden);
+        func_decl * f = is_macro(g, b, 0, num_decls, found_macros, forbidden);
         if (f) {
             qprime = m.update_quantifier(q, m.mk_iff(b, m.mk_true()));
             return f;
         }
         else if (m.is_not(b, b)) {
-            f = is_macro(b, 0, num_decls, found_macros, forbidden);
+            f = is_macro(g, b, 0, num_decls, found_macros, forbidden);
             if (f) {
                 qprime = m.update_quantifier(q, m.mk_iff(b, m.mk_false()));
                 return f;
@@ -172,7 +177,8 @@ class expand_macros_tactic : public tactic {
         return 0;
     }
 
-    static void find_macros(ast_manager & m, assertion_stream & g, macro_substitution & ms, obj_hashtable<func_decl> const & forbidden) {
+    static void find_macros(assertion_stream & g, macro_substitution & ms, obj_hashtable<func_decl> const & forbidden) {
+        ast_manager & m = g.m();
         obj_hashtable<func_decl> found_macros;
         bool proofs_enabled = g.proofs_enabled();
         unsigned size = g.size(); 
@@ -182,7 +188,7 @@ class expand_macros_tactic : public tactic {
             expr * a = g.form(i);
             if (is_quantifier(a)) {
                 quantifier * q = to_quantifier(a);
-                func_decl * f = is_macro(m, q, found_macros, forbidden);
+                func_decl * f = is_macro(g, q, found_macros, forbidden);
                 if (f != 0) {
                     ms.insert(f, q, g.pr(i), g.dep(i));
                     g.add_definition(f, q, g.pr(i), g.dep(i));
@@ -190,7 +196,7 @@ class expand_macros_tactic : public tactic {
                     g.update(i, m.mk_true(), 0, 0);
                 }
                 else {
-                    func_decl * f = is_bool_macro(m, q, found_macros, qprime, forbidden);
+                    func_decl * f = is_bool_macro(g, q, found_macros, qprime, forbidden);
                     if (f != 0) {
                         if (proofs_enabled) {
                             pr = m.mk_modus_ponens(g.pr(i), m.mk_rewrite(q, qprime));
@@ -213,7 +219,7 @@ class expand_macros_tactic : public tactic {
         ast_manager & m = g.m();
         stream_report report("expand_macros", g);
         macro_substitution ms(m, g.unsat_core_enabled(), g.proofs_enabled());
-        find_macros(m, g, ms, forbidden);
+        find_macros(g, ms, forbidden);
         if (!ms.empty()) {
             th_rewriter rw(m);
             rw.set_macro_substitution(&ms);
