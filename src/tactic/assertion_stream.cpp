@@ -275,6 +275,23 @@ void goal_and_fmc2stream::add_filter(func_decl * f) {
     m_mc->insert(f);
 }
 
+goal_and_femc2stream::goal_and_femc2stream(goal & g):
+goal_and_emc2stream(g) {
+}
+
+goal_and_femc2stream::~goal_and_femc2stream() {
+}
+
+void goal_and_femc2stream::add_filter(func_decl * f) {
+    if (!m_fmc)
+        m_fmc = alloc(filter_model_converter, m_goal.m());
+    m_fmc->insert(f);
+}
+
+model_converter * goal_and_femc2stream::combined_mc() const { 
+    return concat(m_fmc.get(), m_mc.get());
+}
+
 struct stream_report::imp {
     char const *              m_id;
     assertion_stream const &  m_stack;

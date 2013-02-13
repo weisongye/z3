@@ -25,6 +25,7 @@ Revision History:
 #include"ref.h"
 class assertion_stack;
 class goal;
+class model_converter;
 class extension_model_converter;
 class filter_model_converter;
 
@@ -159,6 +160,7 @@ public:
 };
 
 class goal_and_emc2stream : public goal2stream {
+protected:
     ref<extension_model_converter> m_mc;
 public:
     goal_and_emc2stream(goal & g);
@@ -169,12 +171,22 @@ public:
 };
 
 class goal_and_fmc2stream : public goal2stream {
+protected:
     ref<filter_model_converter> m_mc;
 public:
     goal_and_fmc2stream(goal & g);
     virtual ~goal_and_fmc2stream();
     virtual void add_filter(func_decl * f);
     filter_model_converter * mc() const { return m_mc.get(); }
+};
+
+class goal_and_femc2stream : public goal_and_emc2stream {
+    ref<filter_model_converter>    m_fmc;
+public:
+    goal_and_femc2stream(goal & g);
+    virtual ~goal_and_femc2stream();
+    virtual void add_filter(func_decl * f);
+    model_converter * combined_mc() const;
 };
 
 class stream_report {

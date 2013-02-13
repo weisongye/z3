@@ -23,6 +23,7 @@ Revision History:
 #include"extension_model_converter.h"
 #include"rewriter_def.h"
 #include"var_subst.h"
+#include"ast_pp.h"
 
 class elim_array_tactic : public tactic {
 
@@ -30,6 +31,7 @@ class elim_array_tactic : public tactic {
         ast_manager &            m;
         array_util               m_util;
         obj_map<func_decl, app*> m_definitions;
+        obj_map<app, app*>       m_names; // names for composite array terms that occur as arguments of uninterpreted functions
         ast_ref_vector           m_asts;
         assertion_stream *       m_stream;
         var_shifter              m_shift;
@@ -269,8 +271,15 @@ class elim_array_tactic : public tactic {
                 }
                 else {
                     SASSERT(f->get_arity() == num-1);
-                    result = m.mk_app(f, num-1, args+1);
-                    return BR_DONE;
+                    expr_ref_buffer new_args(m);
+                    if (reduce_array_args_core(num-1, args+1, new_args)) {
+                        result = m.mk_app(f, new_args.size(), new_args.c_ptr());
+                        return BR_REWRITE2;
+                    }
+                    else {
+                        result = m.mk_app(f, num-1, args+1);
+                        return BR_DONE;
+                    }
                 }
             }
             else if (m_util.is_select(array)) {
@@ -304,6 +313,49 @@ class elim_array_tactic : public tactic {
             return BR_FAILED;
         }
 
+        expr * mk_name_for(app * a) {
+            SASSERT(m_util.is_array(a));
+            app * r;
+            if (m_names.find(a, r)) {
+                return r;
+            }
+            else {
+                sort * s = get_sort(a);
+                app * r = m.mk_fresh_const("array", s);
+                m_stream->add_filter(r->get_decl());
+                m_stream->assert_expr(m.mk_eq(r, a));
+                m_asts.push_back(r); 
+                m_asts.push_back(a);
+                m_names.insert(a, r);
+                return r;
+            }
+        }
+
+        bool reduce_array_args_core(unsigned num, expr * const * args, expr_ref_buffer & new_args) {
+            bool reduced = false;
+            for (unsigned i = 0; i < num; i++) {
+                expr * arg = args[i];
+                if (m_util.is_array(arg) && is_app(arg) && to_app(arg)->get_family_id() == m_util.get_family_id()) {
+                    switch (to_app(arg)->get_decl_kind()) {
+                    case OP_STORE:
+                    case OP_CONST_ARRAY:
+                    case OP_ARRAY_MAP: {
+                        new_args.push_back(mk_name_for(to_app(arg)));
+                        reduced = true;
+                        break;
+                    }
+                    default:
+                        new_args.push_back(arg);
+                        break;
+                    }
+                }
+                else {
+                    new_args.push_back(arg);
+                }
+            }
+            return reduced;
+        }
+
         br_status reduce_uninterp(func_decl * f, unsigned num, expr * const * args, expr_ref & result) {
             app * a = add_def(f);
             // TODO: to support proofs we have to create a proof object, that uses the proof that a and f are "equivalent"
@@ -312,8 +364,25 @@ class elim_array_tactic : public tactic {
                 return BR_DONE;
             }
             else {
-                m_subst(a, num, args, result);
-                return BR_REWRITE1;
+                expr_ref_buffer new_args(m);
+                reduce_array_args_core(num, args, new_args);
+                SASSERT(new_args.size() == num);
+                m_subst(a, num, new_args.c_ptr(), result);
+                return BR_REWRITE2;
+            }
+        }
+
+        br_status reduce_array_args(func_decl * f, unsigned num, expr * const * args, expr_ref & result) {
+            SASSERT(!m_fail_if_not_supported);
+            // Create aliases for the array arguments
+            expr_ref_buffer new_args(m);
+            if (reduce_array_args_core(num, args, new_args)) {
+                SASSERT(new_args.size() == num);
+                result = m.mk_app(f, num, new_args.c_ptr());
+                return BR_REWRITE2;
+            }
+            else {
+                return BR_FAILED;
             }
         }
        
@@ -349,18 +418,22 @@ class elim_array_tactic : public tactic {
             }
             else {
                 // args should not be array terms
-                if (m_fail_if_not_supported) {
-                    for (unsigned i = 0; i < num; i++) {
-                        if (m_util.is_array(get_sort(args[i]))) {
-                            throw_not_supported();
-                        }
-                    }
+                bool has_array_arg = false;
+                for (unsigned i = 0; i < num; i++) {
+                    if (m_util.is_array(get_sort(args[i])))
+                        has_array_arg = true;
+                }
+                if (has_array_arg && m_fail_if_not_supported) {
+                    throw_not_supported();
                 }
                 if (m_util.is_array(f->get_range())) {
                     if (is_uninterp(f))
                         return reduce_uninterp(f, num, args, result);
                     else
                         throw_not_supported();
+                }
+                else if (has_array_arg) {
+                    return reduce_array_args(f, num, args, result);
                 }
                 return BR_FAILED;
             }
@@ -419,8 +492,7 @@ class elim_array_tactic : public tactic {
         r.cfg().m_stream = &g;
         expr_ref   new_curr(m);
         proof_ref  new_pr(m);
-        unsigned size = g.size();
-        for (unsigned idx = g.qhead(); idx < size; idx++) {
+        for (unsigned idx = g.qhead(); idx < g.size(); idx++) {
             if (g.inconsistent())
                 break;
             expr * curr = g.form(idx);
@@ -452,10 +524,10 @@ public:
                             expr_dependency_ref & core) {
         TRACE("elim_array_detail", tout << "input goal\n"; g->display(tout););
         mc = 0; pc = 0; core = 0; result.reset();
-        goal_and_emc2stream s(*(g.get()));
+        goal_and_femc2stream s(*(g.get()));
         apply(s);
         if (g->models_enabled())
-            mc = s.mc();
+            mc = s.combined_mc();
         g->inc_depth();
         result.push_back(g.get());
     }
