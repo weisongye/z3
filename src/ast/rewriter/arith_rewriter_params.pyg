@@ -10,6 +10,7 @@ def_module_params(module_name='rewriter',
                           ("sort_sums", BOOL, False, "sort the arguments of + application."),
                           ("gcd_rounding", BOOL, False, "use gcd rounding on integer arithmetic atoms."),
                           ("arith_lhs", BOOL, False, "all monomials are moved to the left-hand-side, and the right-hand-side is just a constant."),
+                          ("ineq_lhs", BOOL, False, "retricted version of arith_lhs where only inequalities are put into left-hand-side form."),
                           ("elim_to_real", BOOL, False, "eliminate to_real from arithmetic predicates that contain only integers."),
                           ("push_to_real", BOOL, True, "distribute to_real over * and +."),
                           ("elim_rem", BOOL, False, "replace (rem x y) with (ite (>= y 0) (mod x y) (- (mod x y))).")))
