@@ -4639,6 +4639,15 @@ END_MLAPI_EXCLUDE
     Z3_func_decl Z3_API Z3_get_as_array_func_decl(__in Z3_context c, __in Z3_ast a);
 
     /**
+       \brief Return the expression <tt>(_ as_array f)</tt>.
+       
+       \sa Z3_is_as_array
+
+       def_API('Z3_mk_as_array', AST, (_in(CONTEXT), _in(FUNC_DECL)))
+    */
+    Z3_ast Z3_API Z3_mk_as_array(__in Z3_context c, __in Z3_func_decl f);
+
+    /**
        \brief Return Z3_TRUE if \c a is the array curry operator.
        
        def_API('Z3_is_curry', BOOL, (_in(CONTEXT), _in(AST)))

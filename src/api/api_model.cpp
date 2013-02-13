@@ -192,7 +192,8 @@ extern "C" {
         Z3_TRY;
         LOG_Z3_is_as_array(c, a);
         RESET_ERROR_CODE();
-        return is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_AS_ARRAY);
+        array_util & au = mk_c(c)->arutil();
+        return is_expr(to_ast(a)) && au.is_as_array(to_expr(a));
         Z3_CATCH_RETURN(Z3_FALSE);
     }
     
@@ -200,8 +201,9 @@ extern "C" {
         Z3_TRY;
         LOG_Z3_get_as_array_func_decl(c, a);
         RESET_ERROR_CODE();
-        if (is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_AS_ARRAY)) {
-            RETURN_Z3(of_func_decl(to_func_decl(to_app(a)->get_decl()->get_parameter(0).get_ast())));
+        array_util & au = mk_c(c)->arutil();
+        if (is_expr(to_ast(a)) && au.is_as_array(to_expr(a))) {
+            RETURN_Z3(of_func_decl(au.get_as_array_func_decl(to_app(a))));
         }
         else {
             SET_ERROR_CODE(Z3_INVALID_ARG);
@@ -210,11 +212,23 @@ extern "C" {
         Z3_CATCH_RETURN(0);
     }
 
+    Z3_ast Z3_API Z3_mk_as_array(Z3_context c, Z3_func_decl f) {
+        Z3_TRY;
+        LOG_Z3_mk_as_array(c, f);
+        RESET_ERROR_CODE();
+        array_util & au = mk_c(c)->arutil();
+        expr * r = au.mk_as_array(to_func_decl(f));
+        mk_c(c)->save_ast_trail(r);
+        RETURN_Z3(of_ast(r));
+        Z3_CATCH_RETURN(0);
+    }
+
     Z3_bool Z3_API Z3_is_curry(Z3_context c, Z3_ast a) {
         Z3_TRY;
         LOG_Z3_is_curry(c, a);
         RESET_ERROR_CODE();
-        return is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_CURRY);
+        array_util & au = mk_c(c)->arutil();
+        return is_expr(to_ast(a)) && au.is_curry(to_expr(a));
         Z3_CATCH_RETURN(Z3_FALSE);
     }
 
@@ -222,8 +236,9 @@ extern "C" {
         Z3_TRY;
         LOG_Z3_get_curry_index(c, a);
         RESET_ERROR_CODE();
-        if (is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_CURRY)) {
-            return to_app(a)->get_decl()->get_parameter(0).get_int();
+        array_util & au = mk_c(c)->arutil();
+        if (is_expr(to_ast(a)) && au.is_curry(to_expr(a))) {
+            return au.get_curry_index(to_app(a));
         }
         else {
             SET_ERROR_CODE(Z3_INVALID_ARG);
@@ -236,7 +251,8 @@ extern "C" {
         Z3_TRY;
         LOG_Z3_is_uncurry(c, a);
         RESET_ERROR_CODE();
-        return is_expr(to_ast(a)) && is_app_of(to_expr(a), mk_c(c)->get_array_fid(), OP_UNCURRY);
+        array_util & au = mk_c(c)->arutil();
+        return is_expr(to_ast(a)) && au.is_uncurry(to_expr(a));
         Z3_CATCH_RETURN(Z3_FALSE);
     }
 

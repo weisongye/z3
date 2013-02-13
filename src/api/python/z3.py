@@ -403,13 +403,6 @@ def _ctx_from_ast_arg_list(args, default_ctx=None):
 def _ctx_from_ast_args(*args):
     return _ctx_from_ast_arg_list(args)
 
-def _to_func_decl_array(args):
-    sz = len(args)
-    _args = (FuncDecl * sz)()
-    for i in range(sz):
-        _args[i] = args[i].as_func_decl()
-    return _args, sz
-
 def _to_ast_array(args):
     sz = len(args)
     _args = (Ast * sz)()
@@ -5506,6 +5499,12 @@ class ModelRef(Z3PPObject):
         for i in range(Z3_model_get_num_funcs(self.ctx.ref(), self.model)):
             r.append(FuncDeclRef(Z3_model_get_func_decl(self.ctx.ref(), self.model, i), self.ctx))
         return r
+
+def AsArray(f):
+    """Return a Z3 expression of the form (_ as-array f). This expression is used for encoding Z3 models."""
+    if __debug__:
+        _z3_assert(is_func_decl(f), "Z3 function declaration expected.")
+    return _to_expr_ref(Z3_mk_as_array(f.ctx_ref(), f.ast), f.ctx)
 
 def is_as_array(n):
     """Return true if n is a Z3 expression of the form (_ as-array f)."""
