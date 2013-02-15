@@ -335,7 +335,21 @@ class elim_array_tactic : public tactic {
             bool reduced = false;
             for (unsigned i = 0; i < num; i++) {
                 expr * arg = args[i];
-                if (m_util.is_array(arg) && is_app(arg) && to_app(arg)->get_family_id() == m_util.get_family_id()) {
+                // In principle, we can relax the condition is_ground(arg).
+                // To do that, we have to create a function instead of a constant.
+                // For example, assume x is a variable and A and i are constants.
+                // Then assume arg is the term.
+                //    store(A, i, x)
+                // Then, we could create a fresh function f that takes two arguments, and replace the store with
+                //    (select (curry (_ as_array f)) x)
+                // The first argument of f is used to pass the value of x, and the second is the index.
+                // We also add the axiom
+                //    forall x, j: f(x, j) = ite(i == j, x, select(A, j))
+                // This can be done to eliminate store, map and const even when they contain variables (i.e., are not ground).
+                // However, the resulting expression is still messy. 
+                // Moreover, this kind of usage pattern is very uncommon. So, I will wait until anybody uses it.
+                // In the meatime, I just keep the store/const/map.
+                if (m_util.is_array(arg) && is_app(arg) && is_ground(arg) && to_app(arg)->get_family_id() == m_util.get_family_id()) {
                     switch (to_app(arg)->get_decl_kind()) {
                     case OP_STORE:
                     case OP_CONST_ARRAY:
