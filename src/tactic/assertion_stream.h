@@ -25,6 +25,7 @@ Revision History:
 #include"ref.h"
 class assertion_stack;
 class goal;
+class model_converter;
 class extension_model_converter;
 class filter_model_converter;
 
@@ -63,6 +64,7 @@ public:
 
     virtual void add_filter(func_decl * f) = 0;
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep) = 0;
+    virtual void add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep) = 0;
     
     virtual void elim_redundancies() = 0;
     virtual void elim_true() = 0;
@@ -105,6 +107,7 @@ public:
 
     virtual void add_filter(func_decl * f);
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
+    virtual void add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep);
 
     virtual void elim_redundancies();
     virtual void elim_true();
@@ -148,6 +151,7 @@ public:
 
     virtual void add_filter(func_decl * f);
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
+    virtual void add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep);
 
     virtual void elim_redundancies();
     virtual void elim_true();
@@ -156,21 +160,33 @@ public:
 };
 
 class goal_and_emc2stream : public goal2stream {
+protected:
     ref<extension_model_converter> m_mc;
 public:
     goal_and_emc2stream(goal & g);
     virtual ~goal_and_emc2stream();
     virtual void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
+    virtual void add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep);
     extension_model_converter * mc() const { return m_mc.get(); }
 };
 
 class goal_and_fmc2stream : public goal2stream {
+protected:
     ref<filter_model_converter> m_mc;
 public:
     goal_and_fmc2stream(goal & g);
     virtual ~goal_and_fmc2stream();
     virtual void add_filter(func_decl * f);
     filter_model_converter * mc() const { return m_mc.get(); }
+};
+
+class goal_and_femc2stream : public goal_and_emc2stream {
+    ref<filter_model_converter>    m_fmc;
+public:
+    goal_and_femc2stream(goal & g);
+    virtual ~goal_and_femc2stream();
+    virtual void add_filter(func_decl * f);
+    model_converter * combined_mc() const;
 };
 
 class stream_report {

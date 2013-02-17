@@ -47,7 +47,7 @@ public:
 
     void insert(func_decl * f, quantifier * m, proof * pr, expr_dependency * dep = 0);
     void erase(func_decl * f);
-    bool contains(func_decl * f) { return m_decl2macro.contains(f); }
+    bool contains(func_decl * f) const { return m_decl2macro.contains(f); }
     bool find(func_decl * f, quantifier * & q, proof * & pr);
     bool find(func_decl * f, quantifier * & q, proof * & pr, expr_dependency * & dep);
     void get_head_def(quantifier * q, func_decl * f, app * & head, expr * & def);
@@ -55,5 +55,7 @@ public:
     void reset();
     void cleanup();
 };
+
+void get_macro_head_def(ast_manager & m, quantifier * q, func_decl * f, app * & head, expr * & def);
 
 #endif

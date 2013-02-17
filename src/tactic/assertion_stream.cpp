@@ -24,6 +24,7 @@ Revision History:
 #include"assertion_stack.h"
 #include"extension_model_converter.h"
 #include"filter_model_converter.h"
+#include"macro_substitution.h"
 #include"stopwatch.h"
 #include"tactic.h"
 
@@ -115,6 +116,10 @@ void assertion_stack2stream::add_filter(func_decl * f) {
 
 void assertion_stack2stream::add_definition(app * c, expr * def, proof * pr, expr_dependency * dep) {
     m_stack.add_definition(c, def, pr, dep);
+}
+
+void assertion_stack2stream::add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep) {
+    m_stack.add_definition(f, q, pr, dep);
 }
 
 void assertion_stack2stream::elim_redundancies() {
@@ -215,7 +220,12 @@ void goal2stream::add_filter(func_decl * f) {
 
 void goal2stream::add_definition(app * c, expr * def, proof * pr, expr_dependency * dep) {
     UNREACHABLE();
-    // goal2stream does not support add_filter, goal_and_emc2stream should be used instead
+    // goal2stream does not support add_definition, goal_and_emc2stream should be used instead
+}
+
+void goal2stream::add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep) {
+    UNREACHABLE();
+    // goal2stream does not support add_definition, goal_and_emc2stream should be used instead
 }
 
 void goal2stream::elim_redundancies() {
@@ -243,6 +253,15 @@ void goal_and_emc2stream::add_definition(app * c, expr * def, proof * pr, expr_d
     m_mc->insert(c->get_decl(), def);
 }
 
+void goal_and_emc2stream::add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep) {
+    if (!m_mc)
+        m_mc = alloc(extension_model_converter, m_goal.m());
+    app * head; expr * def = 0;
+    get_macro_head_def(m(), q, f, head, def);
+    SASSERT(def);
+    m_mc->insert(f, def);
+}
+
 goal_and_fmc2stream::goal_and_fmc2stream(goal & g):
 goal2stream(g) {
 }
@@ -254,6 +273,23 @@ void goal_and_fmc2stream::add_filter(func_decl * f) {
     if (!m_mc)
         m_mc = alloc(filter_model_converter, m_goal.m());
     m_mc->insert(f);
+}
+
+goal_and_femc2stream::goal_and_femc2stream(goal & g):
+goal_and_emc2stream(g) {
+}
+
+goal_and_femc2stream::~goal_and_femc2stream() {
+}
+
+void goal_and_femc2stream::add_filter(func_decl * f) {
+    if (!m_fmc)
+        m_fmc = alloc(filter_model_converter, m_goal.m());
+    m_fmc->insert(f);
+}
+
+model_converter * goal_and_femc2stream::combined_mc() const { 
+    return concat(m_fmc.get(), m_mc.get());
 }
 
 struct stream_report::imp {

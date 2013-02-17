@@ -87,6 +87,7 @@ public:
     bool is_frozen(func_decl * f) const;
     void add_filter(func_decl * f);
     void add_definition(app * c, expr * def, proof * pr, expr_dependency * dep);
+    void add_definition(func_decl * f, quantifier * q, proof * pr, expr_dependency * dep);
 
     bool is_eliminated(func_decl * f) const;
     bool is_eliminated(app * x) const;

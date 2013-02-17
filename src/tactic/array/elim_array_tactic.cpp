@@ -22,6 +22,8 @@ Revision History:
 #include"array_decl_plugin.h"
 #include"extension_model_converter.h"
 #include"rewriter_def.h"
+#include"var_subst.h"
+#include"ast_pp.h"
 
 class elim_array_tactic : public tactic {
 
@@ -29,19 +31,32 @@ class elim_array_tactic : public tactic {
         ast_manager &            m;
         array_util               m_util;
         obj_map<func_decl, app*> m_definitions;
+        obj_map<app, app*>       m_names; // names for composite array terms that occur as arguments of uninterpreted functions
         ast_ref_vector           m_asts;
         assertion_stream *       m_stream;
         var_shifter              m_shift;
+        var_subst                m_subst;
+        
+        bool                     m_fail_if_not_supported;
+
         rw_cfg(ast_manager & _m):
             m(_m), 
             m_util(m),
             m_asts(m),
             m_stream(0),
-            m_shift(m) {
+            m_shift(m),
+            m_subst(m, false /* does not use standard order */) {
+
+            m_fail_if_not_supported = false;
+        }
+
+        void throw_unexpected() {
+            throw tactic_exception("failed to reduce array theory to UF, unexpected input");
         }
 
         void throw_not_supported() {
-            throw tactic_exception("failed to reduce array theory to UF");
+            if (m_fail_if_not_supported)
+                throw tactic_exception("failed to reduce array theory to UF");
         }
 
         app * add_def(func_decl * f) {
@@ -50,7 +65,7 @@ class elim_array_tactic : public tactic {
                 // this can only happen if the tactic is applied to an
                 // assertion stream where a push was performed but the
                 // tactic was not applied.
-                throw_not_supported();
+                throw_unexpected();
             }
             app * r;
             if (m_definitions.find(f, r)) {
@@ -80,25 +95,35 @@ class elim_array_tactic : public tactic {
                 for (unsigned i = 0; i < nargs.size(); i++) {
                     a = m_util.mk_curry(nargs[i], a);
                 }
+                // TODO: to support proofs we have to create a def_intro object
                 if (arity > 0) {
-                    expr_ref_buffer s_args(m);
+                    expr_ref_buffer  s_args(m);
+                    expr_ref_buffer  f_args(m);
                     s_args.push_back(a);
                     for (unsigned i = 0; i < arity; i++) {
-                        s_args.push_back(m.mk_var(i, f->get_domain(i)));
+                        var * x = m.mk_var(i, f->get_domain(i));
+                        s_args.push_back(x);
+                        f_args.push_back(x);
+                    }
+                    sbuffer<symbol>  names;
+                    ptr_buffer<sort> sorts;
+                    unsigned i = arity;
+                    while (i > 0) {
+                        --i;
+                        names.push_back(mk_fresh_symbol("x"));
+                        sorts.push_back(f->get_domain(i));
                     }
                     a = m_util.mk_select(s_args.size(), s_args.c_ptr());
+                    quantifier_ref q(m);
+                    q = m.mk_forall(sorts.size(), sorts.c_ptr(), names.c_ptr(), m.mk_eq(m.mk_app(f, f_args.size(), f_args.c_ptr()), a));
+                    m_stream->add_definition(f, q, 0, 0);
+                }
+                else {
+                    m_stream->add_definition(m.mk_const(f), a, 0, 0);
                 }
                 m_asts.push_back(f);
                 m_asts.push_back(a);
                 m_definitions.insert(f, a);
-                if (arity > 0) {
-                    // TODO: we have to extend the assertion_stream interface
-                    // It only accepts ground definitions
-                    throw_not_supported();
-                }
-                // TODO: to support proofs we have to create a def_intro object
-                // m_stream->add_definition(v, def, pr, dep);
-                m_stream->add_definition(m.mk_const(f), a, 0, 0);
                 return a;
             }
         }
@@ -151,16 +176,20 @@ class elim_array_tactic : public tactic {
         }
 
         br_status reduce_select(unsigned num, expr * const * args, expr_ref & result) {
-            if (!is_app(args[0]))
+            if (!is_app(args[0])) {
                 throw_not_supported();
+                return BR_FAILED;
+            }
             if (num == 0)
                 return BR_FAILED;
             app * array = to_app(args[0]);
             unsigned num_uncurry = 0;
             while (m_util.is_uncurry(array)) {
                 num_uncurry++;
-                if (!is_app(array->get_arg(0)))
+                if (!is_app(array->get_arg(0))) {
                     throw_not_supported();
+                    return BR_FAILED;
+                }
                 array = to_app(array->get_arg(0));
             }
             if (m.is_ite(array)) {
@@ -242,8 +271,15 @@ class elim_array_tactic : public tactic {
                 }
                 else {
                     SASSERT(f->get_arity() == num-1);
-                    result = m.mk_app(f, num-1, args+1);
-                    return BR_DONE;
+                    expr_ref_buffer new_args(m);
+                    if (reduce_array_args_core(num-1, args+1, new_args)) {
+                        result = m.mk_app(f, new_args.size(), new_args.c_ptr());
+                        return BR_REWRITE2;
+                    }
+                    else {
+                        result = m.mk_app(f, num-1, args+1);
+                        return BR_DONE;
+                    }
                 }
             }
             else if (m_util.is_select(array)) {
@@ -277,6 +313,63 @@ class elim_array_tactic : public tactic {
             return BR_FAILED;
         }
 
+        expr * mk_name_for(app * a) {
+            SASSERT(m_util.is_array(a));
+            app * r;
+            if (m_names.find(a, r)) {
+                return r;
+            }
+            else {
+                sort * s = get_sort(a);
+                app * r = m.mk_fresh_const("array", s);
+                m_stream->add_filter(r->get_decl());
+                m_stream->assert_expr(m.mk_eq(r, a));
+                m_asts.push_back(r); 
+                m_asts.push_back(a);
+                m_names.insert(a, r);
+                return r;
+            }
+        }
+
+        bool reduce_array_args_core(unsigned num, expr * const * args, expr_ref_buffer & new_args) {
+            bool reduced = false;
+            for (unsigned i = 0; i < num; i++) {
+                expr * arg = args[i];
+                // In principle, we can relax the condition is_ground(arg).
+                // To do that, we have to create a function instead of a constant.
+                // For example, assume x is a variable and A and i are constants.
+                // Then assume arg is the term.
+                //    store(A, i, x)
+                // Then, we could create a fresh function f that takes two arguments, and replace the store with
+                //    (select (curry (_ as_array f)) x)
+                // The first argument of f is used to pass the value of x, and the second is the index.
+                // We also add the axiom
+                //    forall x, j: f(x, j) = ite(i == j, x, select(A, j))
+                // This can be done to eliminate store, map and const even when they contain variables (i.e., are not ground).
+                // However, the resulting expression is still messy. 
+                // Moreover, this kind of usage pattern is very uncommon. So, I will wait until anybody uses it.
+                // In the meatime, I just keep the store/const/map.
+                if (m_util.is_array(arg) && is_app(arg) && is_ground(arg) && to_app(arg)->get_family_id() == m_util.get_family_id()) {
+                    switch (to_app(arg)->get_decl_kind()) {
+                    case OP_STORE:
+                    case OP_CONST_ARRAY:
+                    case OP_ARRAY_MAP: {
+                        new_args.push_back(mk_name_for(to_app(arg)));
+                        reduced = true;
+                        break;
+                    }
+                    default:
+                        new_args.push_back(arg);
+                        break;
+                    }
+                }
+                else {
+                    new_args.push_back(arg);
+                }
+            }
+            return reduced;
+        }
+
         br_status reduce_uninterp(func_decl * f, unsigned num, expr * const * args, expr_ref & result) {
             app * a = add_def(f);
             // TODO: to support proofs we have to create a proof object, that uses the proof that a and f are "equivalent"
@@ -285,7 +378,24 @@ class elim_array_tactic : public tactic {
                 return BR_DONE;
             }
             else {
-                // TODO
+                expr_ref_buffer new_args(m);
+                reduce_array_args_core(num, args, new_args);
+                SASSERT(new_args.size() == num);
+                m_subst(a, num, new_args.c_ptr(), result);
+                return BR_REWRITE2;
+            }
+        }
+
+        br_status reduce_array_args(func_decl * f, unsigned num, expr * const * args, expr_ref & result) {
+            SASSERT(!m_fail_if_not_supported);
+            // Create aliases for the array arguments
+            expr_ref_buffer new_args(m);
+            if (reduce_array_args_core(num, args, new_args)) {
+                SASSERT(new_args.size() == num);
+                result = m.mk_app(f, num, new_args.c_ptr());
+                return BR_REWRITE2;
+            }
+            else {
                 return BR_FAILED;
             }
         }
@@ -322,16 +432,22 @@ class elim_array_tactic : public tactic {
             }
             else {
                 // args should not be array terms
+                bool has_array_arg = false;
                 for (unsigned i = 0; i < num; i++) {
-                    if (m_util.is_array(get_sort(args[i]))) {
-                        throw_not_supported();
-                    }
+                    if (m_util.is_array(get_sort(args[i])))
+                        has_array_arg = true;
+                }
+                if (has_array_arg && m_fail_if_not_supported) {
+                    throw_not_supported();
                 }
                 if (m_util.is_array(f->get_range())) {
                     if (is_uninterp(f))
                         return reduce_uninterp(f, num, args, result);
                     else
                         throw_not_supported();
+                }
+                else if (has_array_arg) {
+                    return reduce_array_args(f, num, args, result);
                 }
                 return BR_FAILED;
             }
@@ -390,8 +506,7 @@ class elim_array_tactic : public tactic {
         r.cfg().m_stream = &g;
         expr_ref   new_curr(m);
         proof_ref  new_pr(m);
-        unsigned size = g.size();
-        for (unsigned idx = g.qhead(); idx < size; idx++) {
+        for (unsigned idx = g.qhead(); idx < g.size(); idx++) {
             if (g.inconsistent())
                 break;
             expr * curr = g.form(idx);
@@ -423,10 +538,10 @@ public:
                             expr_dependency_ref & core) {
         TRACE("elim_array_detail", tout << "input goal\n"; g->display(tout););
         mc = 0; pc = 0; core = 0; result.reset();
-        goal_and_emc2stream s(*(g.get()));
+        goal_and_femc2stream s(*(g.get()));
         apply(s);
         if (g->models_enabled())
-            mc = s.mc();
+            mc = s.combined_mc();
         g->inc_depth();
         result.push_back(g.get());
     }

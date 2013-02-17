@@ -25,6 +25,7 @@ Notes:
 void arith_rewriter::updt_local_params(params_ref const & _p) {
     arith_rewriter_params p(_p);
     m_arith_lhs       = p.arith_lhs();
+    m_ineq_lhs        = p.ineq_lhs();
     m_gcd_rounding    = p.gcd_rounding();
     m_eq2ineq         = p.eq2ineq();
     m_elim_to_real    = p.elim_to_real();
@@ -323,7 +324,7 @@ br_status arith_rewriter::mk_le_ge_eq_core(expr * arg1, expr * arg2, op_kind kin
         (is_zero(arg2) && is_reduce_power_target(arg1, kind == EQ)))
         return reduce_power(arg1, arg2, kind, result);
     CTRACE("elim_to_real", m_elim_to_real, tout << "after_elim_to_real\n" << mk_ismt2_pp(arg1, m()) << "\n" << mk_ismt2_pp(arg2, m()) << "\n";);
-    br_status st = cancel_monomials(arg1, arg2, m_arith_lhs, new_arg1, new_arg2);
+    br_status st = cancel_monomials(arg1, arg2, m_arith_lhs || (kind != EQ && m_ineq_lhs), new_arg1, new_arg2);
     TRACE("mk_le_bug", tout << "st: " << st << "\n";);
     if (st != BR_FAILED) {
         arg1 = new_arg1;

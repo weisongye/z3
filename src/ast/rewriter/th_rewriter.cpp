@@ -27,6 +27,7 @@ Notes:
 #include"dl_rewriter.h"
 #include"rewriter_def.h"
 #include"expr_substitution.h"
+#include"macro_substitution.h"
 #include"ast_smt2_pp.h"
 #include"cooperate.h"
 #include"var_subst.h"
@@ -43,6 +44,7 @@ struct th_rewriter_cfg : public default_rewriter_cfg {
     dl_rewriter         m_dl_rw;
     arith_util          m_a_util;
     bv_util             m_bv_util;
+    var_subst           m_var_subst;
     unsigned long long  m_max_memory; // in bytes
     unsigned            m_max_steps;
     bool                m_pull_cheap_ite;
@@ -52,8 +54,9 @@ struct th_rewriter_cfg : public default_rewriter_cfg {
     bool                m_push_ite_bv;
 
     // substitution support
-    expr_dependency_ref m_used_dependencies; // set of dependencies of used substitutions
-    expr_substitution * m_subst;
+    expr_dependency_ref  m_used_dependencies; // set of dependencies of used substitutions
+    expr_substitution *  m_subst;
+    macro_substitution * m_msubst;
 
     ast_manager & m() const { return m_b_rw.m(); }
 
@@ -535,9 +538,51 @@ struct th_rewriter_cfg : public default_rewriter_cfg {
         return BR_DONE;
     }
 
+    br_status reduce_macro(func_decl * f, unsigned num, expr * const * args, expr_ref & result, proof_ref & result_pr) {
+        quantifier * q = 0;
+        proof * q_pr = 0;
+        expr_dependency * dep = 0;
+        if (m_msubst->find(f, q, q_pr, dep)) {
+            m_used_dependencies = m().mk_join(m_used_dependencies, dep);
+            app * head;
+            expr * def;
+            m_msubst->get_head_def(q, f, head, def);
+            SASSERT(f->get_arity() == num);
+            SASSERT(head->get_num_args() == num);
+            SASSERT(q->get_num_decls() == num);
+            ptr_buffer<expr> xs;
+            xs.resize(num);
+            for (unsigned i = 0; i < num; i++) {
+                var * x = to_var(head->get_arg(i));
+                unsigned xidx = x->get_idx();
+                SASSERT(xidx < num);
+                SASSERT(xs[num - xidx - 1] == 0);
+                xs[num - xidx - 1] = args[i];
+            }
+            m_var_subst(def, xs.size(), xs.c_ptr(), result);
+            if (m().proofs_enabled() && q_pr) {
+                expr_ref instance(m());
+                instantiate(m(), q, xs.c_ptr(), instance);
+                proof * qi_pr = m().mk_quant_inst(m().mk_or(m().mk_not(q), instance), xs.size(), xs.c_ptr());
+                proof * prs[2] = { qi_pr, q_pr };
+                result_pr = m().mk_unit_resolution(2, prs);
+            }
+            return BR_REWRITE_FULL;
+        }
+        else {
+            return BR_FAILED;
+        }
+    }
+
     br_status reduce_app(func_decl * f, unsigned num, expr * const * args, expr_ref & result, proof_ref & result_pr) {
         result_pr = 0;
-        br_status st = reduce_app_core(f, num, args, result);
+        br_status st;
+        if (m_msubst != 0 && f->get_family_id() == null_family_id) {
+            st = reduce_macro(f, num, args, result, result_pr);
+            if (st != BR_FAILED)
+                return st;
+        }
+        st = reduce_app_core(f, num, args, result);
         if (st != BR_DONE && st != BR_FAILED) {
             CTRACE("th_rewriter_step", st != BR_FAILED, 
                    tout << f->get_name() << "\n";
@@ -644,18 +689,32 @@ struct th_rewriter_cfg : public default_rewriter_cfg {
         m_dl_rw(m),
         m_a_util(m),
         m_bv_util(m),
+        m_var_subst(m),
         m_used_dependencies(m),
-        m_subst(0) {
+        m_subst(0),
+        m_msubst(0) {
         updt_local_params(p);
     }
 
+    ~th_rewriter_cfg() {
+        m_used_dependencies = 0;
+    }
+
     void set_substitution(expr_substitution * s) {
-        reset();
         m_subst = s;
     }
 
-    void reset() {
+    void set_macro_substitution(macro_substitution * s) {
+        m_msubst = s;
+    }
+
+    void reset_substitutions() {
         m_subst = 0;
+        m_msubst = 0;
+    }
+
+    void reset() {
+        m_var_subst.reset();
     }
 
     bool get_subst(expr * s, expr * & t, proof * & pr) {
@@ -737,7 +796,7 @@ void th_rewriter::cleanup() {
 
 void th_rewriter::reset() {
     m_imp->reset();
-    m_imp->cfg().reset();
+    m_imp->cfg().reset_substitutions();
 }
 
 void th_rewriter::operator()(expr_ref & term) {
@@ -763,13 +822,18 @@ void th_rewriter::set_substitution(expr_substitution * s) {
     m_imp->cfg().set_substitution(s);
 }
 
+void th_rewriter::set_macro_substitution(macro_substitution * s) {
+    m_imp->reset(); // reset the cache
+    m_imp->cfg().set_macro_substitution(s);
+}
+
 expr_dependency * th_rewriter::get_used_dependencies() {
     return m_imp->cfg().m_used_dependencies;
 }
 
 void th_rewriter::reset_used_dependencies() {
     if (get_used_dependencies() != 0) {
-        set_substitution(m_imp->cfg().m_subst); // reset cache preserving subst
+        m_imp->reset(); // reset the cache
         m_imp->cfg().m_used_dependencies = 0;
     }
 }

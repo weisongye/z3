@@ -23,6 +23,8 @@ Notes:
 #include"expr_substitution.h"
 #include"params.h"
 
+class macro_substitution;
+
 /**
    \brief Abstract interface for functors that replace constants with expressions.
 */
@@ -33,6 +35,7 @@ public:
 
     virtual ast_manager & m() const = 0;
     virtual void set_substitution(expr_substitution * s) = 0;
+    virtual void set_macro_substitution(macro_substitution * s) = 0;
 
     virtual void operator()(expr * t, expr_ref & result, proof_ref & result_pr, expr_dependency_ref & deps) = 0;
     virtual void operator()(expr * t, expr_ref & result, proof_ref & result_pr);
