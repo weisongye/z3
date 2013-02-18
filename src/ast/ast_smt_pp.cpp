@@ -537,7 +537,7 @@ class smt_printer {
     }
 
     void print_bound(symbol const& name) {
-        if (name.is_numerical() || '?' != name.bare_str()[0]) {
+        if (!m_is_smt2 && (name.is_numerical() || '?' != name.bare_str()[0])) {
             m_out << "?";
         }
         m_out << name;
@@ -642,7 +642,9 @@ class smt_printer {
             m_out << m_var_names[m_num_var_names - idx - 1];
         }
         else {
-            m_out << "?" << idx;
+            if (!m_is_smt2) {
+                m_out << "?" << idx;
+            }
         }
     }
 
@@ -867,7 +869,7 @@ public:
                 for (unsigned j = 0; j < f->get_arity(); ++j) {
                     sort* s2 = f->get_domain(j);
                     if (!mark.is_marked(s2)) {
-                        if (s2->get_family_id() == null_family_id) {
+                        if (m_manager.is_uninterp(s2)) {
                             pp_sort_decl(mark, s2);
                         }
                         else if (!util.is_datatype(s2)) {

@@ -78,10 +78,15 @@ GMP=False
 VS_PAR=False
 VS_PAR_NUM=8
 GPROF=False
+GIT_HASH=False
+
+def check_output(cmd):
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].rstrip('\r\n')
 
 def git_hash():
     try:
-        r = subprocess.check_output(['git', 'show-ref', '--abbrev=12', 'HEAD'], shell=True).rstrip('\r\n')
+        branch = check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
+        r = check_output(['git', 'show-ref', '--abbrev=12', 'refs/heads/%s' % branch])
     except:
         raise MKException("Failed to retrieve git hash")
     ls = r.split(' ')
@@ -414,6 +419,7 @@ def display_help(exit_code):
     else:
         print("  --parallel=num                use cl option /MP with 'num' parallel processes")
     print("  -b <sudir>, --build=<subdir>  subdirectory where Z3 will be built (default: build).")
+    print("  --githash=hash                include the given hash in the binaries.")
     print("  -d, --debug                   compile Z3 in debug mode.")
     print("  -t, --trace                   enable tracing in release mode.")
     if IS_WINDOWS:
@@ -453,7 +459,8 @@ def parse_options():
         options, remainder = getopt.gnu_getopt(sys.argv[1:], 
                                                'b:dsxhmcvtnp:gj', 
                                                ['build=', 'debug', 'silent', 'x64', 'help', 'makefiles', 'showcpp', 'vsproj',
-                                                'trace', 'nodotnet', 'staticlib', 'prefix=', 'gmp', 'java', 'parallel=', 'gprof', 'ml'])
+                                                'trace', 'nodotnet', 'staticlib', 'prefix=', 'gmp', 'java', 'parallel=', 'gprof',
+                                                'githash=', 'ml'])
     except:
         print("ERROR: Invalid command line option")
         display_help(1)
@@ -502,6 +509,8 @@ def parse_options():
             ML_ENABLED = True
         elif opt == '--gprof':
             GPROF = True
+        elif opt == '--githash':
+            GIT_HASH=arg            
         else:
             print("ERROR: Invalid command line option '%s'" % opt)
             display_help(1)
@@ -787,6 +796,8 @@ class Component:
     def mk_win_dist(self, build_path, dist_path):
         return
 
+    def mk_unix_dist(self, build_path, dist_path):
+        return
 
 class LibComponent(Component):
     def __init__(self, name, path, deps, includes2install):
@@ -827,6 +838,9 @@ class LibComponent(Component):
         for include in self.includes2install:
             shutil.copy(os.path.join(self.src_dir, include),
                         os.path.join(dist_path, 'include', include))        
+
+    def mk_unix_dist(self, build_path, dist_path):
+        self.mk_win_dist(build_path, dist_path)
 
 # "Library" containing only .h files. This is just a placeholder for includes files to be installed.
 class HLibComponent(LibComponent):
@@ -907,6 +921,12 @@ class ExeComponent(Component):
             shutil.copy('%s.exe' % os.path.join(build_path, self.exe_name),
                         '%s.exe' % os.path.join(dist_path, 'bin', self.exe_name))
 
+    def mk_unix_dist(self, build_path, dist_path):
+        if self.install:
+            mk_dir(os.path.join(dist_path, 'bin'))
+            shutil.copy(os.path.join(build_path, self.exe_name),
+                        os.path.join(dist_path, 'bin', self.exe_name))
+
 
 class ExtraExeComponent(ExeComponent):
     def __init__(self, name, exe_name, path, deps, install):
@@ -914,6 +934,18 @@ class ExtraExeComponent(ExeComponent):
 
     def main_component(self):
         return False
+
+def get_so_ext():
+    sysname = os.uname()[0]
+    if sysname == 'Darwin':
+        return 'dylib'
+    elif sysname == 'Linux' or sysname == 'FreeBSD':
+        return 'so'
+    elif sysname == 'CYGWIN':
+        return 'dll'
+    else:
+        assert(False)
+        return 'dll'
 
 class DLLComponent(Component):
     def __init__(self, name, dll_name, path, deps, export_files, reexports, install, static):
@@ -1030,6 +1062,15 @@ class DLLComponent(Component):
             shutil.copy('%s.lib' % os.path.join(build_path, self.dll_name),
                         '%s.lib' % os.path.join(dist_path, 'bin', self.dll_name))
 
+    def mk_unix_dist(self, build_path, dist_path):
+        if self.install:
+            mk_dir(os.path.join(dist_path, 'bin'))
+            so = get_so_ext()
+            shutil.copy('%s.%s' % (os.path.join(build_path, self.dll_name), so),
+                        '%s.%s' % (os.path.join(dist_path, 'bin', self.dll_name), so))
+            shutil.copy('%s.a' % os.path.join(build_path, self.dll_name),
+                        '%s.a' % os.path.join(dist_path, 'bin', self.dll_name))
+
 class DotNetDLLComponent(Component):
     def __init__(self, name, dll_name, path, deps, assembly_info_dir):
         Component.__init__(self, name, path, deps)
@@ -1082,6 +1123,9 @@ class DotNetDLLComponent(Component):
             shutil.copy('%s.dll' % os.path.join(build_path, self.dll_name),
                         '%s.dll' % os.path.join(dist_path, 'bin', self.dll_name))
 
+    def mk_unix_dist(self, build_path, dist_path):
+        # Do nothing
+        return
 
 class JavaDLLComponent(Component):
     def __init__(self, name, dll_name, package_name, manifest_file, path, deps):
@@ -1139,6 +1183,19 @@ class JavaDLLComponent(Component):
             mk_dir(os.path.join(dist_path, 'bin'))
             shutil.copy('%s.jar' % os.path.join(build_path, self.package_name),
                         '%s.jar' % os.path.join(dist_path, 'bin', self.package_name))
+            shutil.copy(os.path.join(build_path, 'libz3java.dll'), 
+                        os.path.join(dist_path, 'bin', 'libz3java.dll'))
+            shutil.copy(os.path.join(build_path, 'libz3java.lib'),
+                        os.path.join(dist_path, 'bin', 'libz3java.lib'))
+
+    def mk_unix_dist(self, build_path, dist_path):
+        if JAVA_ENABLED:
+            mk_dir(os.path.join(dist_path, 'bin'))
+            shutil.copy('%s.jar' % os.path.join(build_path, self.package_name),
+                        '%s.jar' % os.path.join(dist_path, 'bin', self.package_name))
+            so = get_so_ext()
+            shutil.copy(os.path.join(build_path, 'libz3java.%s' % so), 
+                        os.path.join(dist_path, 'bin', 'libz3java.%s' % so))
 
 
 class MLComponent(Component):
@@ -1425,18 +1482,23 @@ def mk_config():
             'SO_EXT=.dll\n'
             'SLINK=cl\n'
             'SLINK_OUT_FLAG=/Fe\n')
+        extra_opt = ''
+        if GIT_HASH:
+            extra_opt = '%s /D Z3GITHASH=%s' % (extra_opt, GIT_HASH)
         if DEBUG_MODE:
             config.write(
                 'LINK_FLAGS=/nologo /MDd\n'
                 'SLINK_FLAGS=/nologo /LDd\n')
             if not VS_X64:
                 config.write(
-                    'CXXFLAGS=/c /Zi /nologo /openmp /W3 /WX- /Od /Oy- /D WIN32 /D _DEBUG /D Z3DEBUG /D _CONSOLE /D _TRACE /D _WINDOWS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Gd /analyze- /arch:SSE2\n'
+                    'CXXFLAGS=/c /Zi /nologo /openmp /W3 /WX- /Od /Oy- /D WIN32 /D _DEBUG /D Z3DEBUG %s /D _CONSOLE /D _TRACE /D _WINDOWS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Gd /analyze- /arch:SSE2\n' % extra_opt)
+                config.write(
                     'LINK_EXTRA_FLAGS=/link /DEBUG /MACHINE:X86 /SUBSYSTEM:CONSOLE /INCREMENTAL:NO /STACK:8388608 /OPT:REF /OPT:ICF /TLBID:1 /DYNAMICBASE /NXCOMPAT\n'
                     'SLINK_EXTRA_FLAGS=/link /DEBUG /MACHINE:X86 /SUBSYSTEM:WINDOWS /INCREMENTAL:NO /STACK:8388608 /OPT:REF /OPT:ICF /TLBID:1 /DYNAMICBASE:NO\n')
             else:
                 config.write(
-                    'CXXFLAGS=/c /Zi /nologo /openmp /W3 /WX- /Od /Oy- /D WIN32 /D _AMD64_ /D _DEBUG /D Z3DEBUG /D _CONSOLE /D _TRACE /D _WINDOWS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Gd /analyze-\n'
+                    'CXXFLAGS=/c /Zi /nologo /openmp /W3 /WX- /Od /Oy- /D WIN32 /D _AMD64_ /D _DEBUG /D Z3DEBUG %s /D _CONSOLE /D _TRACE /D _WINDOWS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Gd /analyze-\n' % extra_opt)
+                config.write(
                     'LINK_EXTRA_FLAGS=/link /DEBUG /MACHINE:X64 /SUBSYSTEM:CONSOLE /INCREMENTAL:NO /STACK:8388608 /OPT:REF /OPT:ICF /TLBID:1 /DYNAMICBASE /NXCOMPAT\n'
                     'SLINK_EXTRA_FLAGS=/link /DEBUG /MACHINE:X64 /SUBSYSTEM:WINDOWS /INCREMENTAL:NO /STACK:8388608 /OPT:REF /OPT:ICF /TLBID:1 /DYNAMICBASE:NO\n')
         else:
@@ -1444,9 +1506,8 @@ def mk_config():
             config.write(
                 'LINK_FLAGS=/nologo /MD\n'
                 'SLINK_FLAGS=/nologo /LD\n')
-            extra_opt = ''
             if TRACE:
-                extra_opt = '/D _TRACE'
+                extra_opt = '%s /D _TRACE' % extra_opt
             if not VS_X64:
                 config.write(
                     'CXXFLAGS=/nologo /c /Zi /openmp /W3 /WX- /O2 /Oy- /D _EXTERNAL_RELEASE /D WIN32 /D NDEBUG %s /D _CONSOLE /D _WINDOWS /D ASYNC_COMMANDS /Gm- /EHsc /MD /GS /fp:precise /Zc:wchar_t /Zc:forScope /Gd /analyze- /arch:SSE2\n' % extra_opt)
@@ -1489,6 +1550,8 @@ def mk_config():
             SLIBEXTRAFLAGS = '%s -lgmp' % SLIBEXTRAFLAGS
         else:
             CPPFLAGS = '%s -D_MP_INTERNAL' % CPPFLAGS
+        if GIT_HASH:
+            CPPFLAGS = '%s -DZ3GITHASH=%s' % (CPPFLAGS, GIT_HASH)
         CXXFLAGS = '%s -c' % CXXFLAGS
         HAS_OMP = test_openmp(CXX)
         if HAS_OMP:
@@ -2657,6 +2720,14 @@ def mk_vs_proj(name, components):
 def mk_win_dist(build_path, dist_path):
     for c in get_components():
         c.mk_win_dist(build_path, dist_path)
+    # Add Z3Py to lib directory
+    for pyc in filter(lambda f: f.endswith('.pyc'), os.listdir(build_path)):
+        shutil.copy(os.path.join(build_path, pyc),
+                    os.path.join(dist_path, 'bin', pyc))
+
+def mk_unix_dist(build_path, dist_path):
+    for c in get_components():
+        c.mk_unix_dist(build_path, dist_path)
     # Add Z3Py to lib directory
     for pyc in filter(lambda f: f.endswith('.pyc'), os.listdir(build_path)):
         shutil.copy(os.path.join(build_path, pyc),
