@@ -40,8 +40,6 @@ let  model_converter_test ( ctx : context ) =
 	   ((is_decided_sat (get_subgoal ar 0)) ||  
 	       (is_decided_unsat (get_subgoal ar 0)))) then
       raise (TestFailedException "")
-    else
-      Printf.printf "Test passed.\n"
   );
   (
     let ar = (Tactic.apply (and_then ctx (mk_tactic ctx ("simplify")) (mk_tactic ctx "solve-eqs") []) g4 None) in
