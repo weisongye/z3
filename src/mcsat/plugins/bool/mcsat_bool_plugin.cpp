@@ -36,7 +36,7 @@ namespace mcsat {
         volatile bool         m_cancel;
 
         node_uint_attribute & activity() { SASSERT(m_activity); return *m_activity; }
-
+        
     public:
         bool_plugin() {
             m_name           = "Boolean";
@@ -100,6 +100,13 @@ namespace mcsat {
             return m_assignment[l.index()];
         }
 
+        void assign_value(literal l, clause * jst) {
+            SASSERT(get_value(l) == l_undef);
+            m_assignment[l.index()]          = l_true;
+            m_assignment[~l.index()]         = l_false;
+            m_justification[l.var().index()] = jst;
+        }
+
         void propagate_literal(literal l, clause * c, internalization_context & ctx) {
             if (get_value(l) == l_true) {
                 // nothing to be done
@@ -110,17 +117,23 @@ namespace mcsat {
                 
             }
             else {
-                m_assignment[l.index()]  = l_true;
-                m_assignment[~l.index()] = l_false;
-                m_justification[l.var().index()] = c;
+                assign_value(l, c);
                 ctx.add_propagation(ctx.tm().mk(propagated_literal(l, *this)));
             }
         }
 
-        void internalize_true(node n, expr * t, internalization_context & ctx) {
+        void internalize_true(node n, internalization_context & ctx) {
             init_bvar(n);
-            ctx.add_propagation(ctx.tm().mk(propagated_literal(literal(n, false), *this)));
+            literal l(n, false);
+            assign_value(l, 0);
+            ctx.add_propagation(ctx.tm().mk(propagated_literal(l, *this)));
+        }
 
+        void internalize_false(node n, internalization_context & ctx) {
+            init_bvar(n);
+            literal l(n, true);
+            assign_value(l, 0);
+            ctx.add_propagation(ctx.tm().mk(propagated_literal(~l, *this)));
         }
 
         virtual bool internalize(node n, internalization_context & ctx) {
@@ -129,10 +142,11 @@ namespace mcsat {
                 if (to_app(t)->get_family_id() == m_util.get_family_id()) {
                     switch (to_app(t)->get_decl_kind()) {
                     case OP_TRUE:
-                        init_bvar(n);
-                        
+                        internalize_true(n, ctx);
+                        return true;
                     case OP_FALSE:
-                        init_bvar(n);
+                        internalize_false(n, ctx);
+                        return true;
                     case OP_ITE:
                     case OP_AND:
                     case OP_OR:

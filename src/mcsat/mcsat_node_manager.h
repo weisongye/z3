@@ -44,7 +44,7 @@ namespace mcsat {
         unsigned get_mk_level(node const & n) { return m_node2lvl[n.index()]; }
     public:
         /**
-           \brief Create a new node for the expression if it is not exist yet.
+           \brief Create a new node for the expression if it does not exist yet.
            
            Only expressions that are in the preprocessor stack or stored in the
            expr_manager can be save in the node_manager.

@@ -186,10 +186,13 @@ namespace mcsat {
 
         literal internalize_literal(expr * n) {
             expr * atom;
-            if (m_butil.is_not(n, atom))
+            if (m_butil.is_not(n, atom)) {
+                SASSERT(!m_butil.is_not(atom));
                 return literal(internalize(atom), true);
-            else
+            }
+            else {
                 return literal(internalize(n), false);
+            }
         }
 
         void assert_expr_core(expr * f, proof * pr, bool main) {

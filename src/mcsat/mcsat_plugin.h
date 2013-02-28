@@ -52,8 +52,8 @@ namespace mcsat {
     /**
        \brief MCSat plugins do *not* have direct access to the MCSat kernel.
        They can access limited functionality using contexts provided to them.
-       The internalization context provide the functionality available when
-       clauses are internalized in the kernel.
+       The clause internalization context provides the functionality available when
+       clauses are internalized into the kernel.
        
        This context is provided to the following method:
 
@@ -74,17 +74,20 @@ namespace mcsat {
            
            bool plugin::internalize(node n, internalization_context & ctx);
            
-           it may need to propagate. This method returns a reference to 
-           the trail object manager.
+           it may need to propagate. This method returns a reference to the trail object manager.
+           The trail_manager is used to create new trail objects.
         */
         virtual trail_manager & tm() = 0;
         /**
-           When a plugin is internalizing a node n in
-
+           When a plugin is internalizing a clause c in
+           
+           bool plugin::internalize_clause(clause * c, clause_internalization_context & ctx);
+           
+           OR a node n in
+           
            bool plugin::internalize(node n, internalization_context & ctx);
            
-           it may need to propagate, this method adds a new propagation object
-           to the trail.
+           it may need to propagate, this method adds a new propagation object to the trail.
         */
         virtual void add_propagation(propagation * p) = 0;
     };
