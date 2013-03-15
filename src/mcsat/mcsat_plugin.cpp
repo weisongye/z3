@@ -49,6 +49,9 @@ namespace mcsat {
         return false;
     }
 
+    void plugin::dettach_clause(clause * c) {
+    }
+
     void plugin::full_propagate(propagation_context & ctx) {
     }
 

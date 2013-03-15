@@ -22,7 +22,7 @@ Revision History:
 #include"mcsat_node_manager.h"
 #include"mcsat_value_manager.h"
 #include"mcsat_node_attribute.h"
-#include"mcsat_clause_manager.h"
+#include"mcsat_clause.h"
 #include"mcsat_exception.h"
 #include"mcsat_plugin.h"
 
@@ -40,14 +40,56 @@ namespace mcsat {
         node_attribute_manager    m_attribute_manager;
         value_manager             m_value_manager;
         trail_manager             m_trail_manager;
-        clause_manager            m_clause_manager;
+        small_object_allocator    m_allocator;
+        id_gen                    m_cls_id_gen;
+        clause_vector             m_clauses;
+        clause_vector             m_lemmas;
+        vector<clause_vector>     m_lemmas_to_reinit;
         plugin_ref_vector         m_plugins;
         trail_stack               m_trail_stack;
         node_queue                m_to_internalize; // internalization todo queue.
         expr_proof_pair_vector    m_new_axioms;     // auxiliary axioms created by plugins.
         basic_recognizers         m_butil;
+        unsigned                  m_search_lvl;
+        struct scope {
+            unsigned              m_clauses_lim;
+            bool                  m_inconsistent;
+        };
+        struct base_scope {
+            unsigned              m_lemmas_lim;
+        };
+        svector<scope>            m_scopes;
+        svector<base_scope>       m_base_scopes; // for user defined backtracking points
+
+        // conflict
+        bool                      m_inconsistent;
+        
+        // auxiliary fields
+        ptr_vector<expr>          m_saved_atoms;
+        clause_vector             m_saved_clauses;
+
 
         volatile bool             m_cancel;
+
+        void checkpoint() {
+            // TODO
+        }
+
+        bool inconsistent() const {
+            return m_inconsistent;
+        }
+
+        void add_axiom(expr * ax, proof_ref & pr) {
+            m_new_axioms.push_back(expr_proof_pair(ax, pr));
+        }
+
+        void add_propagation(propagation * p) {
+            if (!inconsistent()) {
+                if (p->kind() == k_conflict)
+                    m_inconsistent = true;
+                m_trail_stack.push_back(p);
+            }
+        }
         
         class init_ctx : public initialization_context {
             imp & m;
@@ -85,7 +127,7 @@ namespace mcsat {
             }
             
             virtual void add_axiom(expr * ax, proof_ref & pr) {
-                m.m_new_axioms.push_back(expr_proof_pair(ax, pr));
+                m.add_axiom(ax, pr);
             }
 
             virtual trail_manager & tm() {
@@ -93,11 +135,11 @@ namespace mcsat {
             }
 
             virtual void add_propagation(propagation * p) {
-                m.m_trail_stack.push_back(p);
+                m.add_propagation(p);
             }
 
             virtual clause * mk_clause(unsigned sz, literal const * lits, proof * pr) {
-                return m.m_clause_manager.mk_aux(sz, lits, pr);
+                return m.mk_aux_clause(sz, lits, pr);
             }
         };
 
@@ -116,21 +158,24 @@ namespace mcsat {
             }
 
             virtual void add_propagation(propagation * p) {
-                m.m_trail_stack.push_back(p);
+                m.add_propagation(p);
             }
 
             virtual void add_axiom(expr * ax, proof_ref & pr) {
-                m.m_new_axioms.push_back(expr_proof_pair(ax, pr));
+                m.add_axiom(ax, pr);
             }
         };
 
         imp(ast_manager & m, bool proofs_enabled):
             m_expr_manager(m),
             m_attribute_manager(m_node_manager),
+            m_allocator("mcsat_kernel"),
             m_butil(m.get_basic_family_id()) {
             m_proofs_enabled = proofs_enabled;
-            m_fresh  = true;
-            m_cancel = false;
+            m_search_lvl     = 0;
+            m_inconsistent   = false;
+            m_fresh          = true;
+            m_cancel         = false;
         }
 	
 	~imp() {
@@ -157,6 +202,107 @@ namespace mcsat {
             return *(m_plugins.get(i));
         }
 
+        unsigned scope_lvl() const {
+            return m_scopes.size();
+        }
+
+        unsigned base_lvl() const {
+            return m_base_scopes.size();
+        }
+
+        bool at_base_lvl() const {
+            return scope_lvl() == base_lvl(); 
+        }
+
+        // -----------------------------------
+        //
+        // Clauses
+        //
+        // -----------------------------------
+
+        // Dettach clause from plugins
+        void dettach_clause(clause * c) {
+            for (unsigned i = 0; i < num_plugins(); i++) {
+                p(i).dettach_clause(c);
+            }
+        }
+
+        void del_clause(clause * c) {
+            dettach_clause(c);
+            // decrement reference counters 
+            unsigned sz = c->size();
+            for (unsigned i = 0; i < sz; i++) {
+                node p   = (*c)[i].var();
+                expr * t = m_node_manager.to_expr(p);
+                m_expr_manager.dec_ref(t);
+            }
+            m_expr_manager.dec_ref(c->pr());
+            // recycle id and delete
+            m_cls_id_gen.recycle(c->id());
+            size_t obj_sz = clause::get_obj_size(sz);
+            c->~clause();
+            m_allocator.deallocate(obj_sz, c);
+        }
+
+        // Let lvl(n) be the scope level where node n was created.
+        // Then, this method returns maximum level of the nodes (atoms) in the given clause.
+        unsigned get_max_node_lvl(clause const & c) {
+            unsigned sz  = c.size();
+            unsigned max = 0;
+            for (unsigned i = 0; i < sz; i++) {
+                node n = c[i].var();
+                unsigned lvl = m_node_manager.get_mk_level(n);
+                if (lvl > max) 
+                    max = lvl;
+            }
+            return max;
+        }
+
+        // Add clause to the appropriate collection.
+        //   - Main and auxiliary clauses go to m_clauses
+        //   - Lemmas that contains nodes that need to be reinitialized go to m_lemmas_to_reinit
+        //   - Lemmas that do not contain nodes that need to be reinitialized go to m_lemmas
+        void push_clause(clause * c) {
+            if (c->is_lemma()) {
+                unsigned lvl = get_max_node_lvl(*c);
+                if (lvl > base_lvl()) {
+                    m_lemmas_to_reinit.reserve(lvl+1);
+                    m_lemmas_to_reinit[lvl].push_back(c);
+                }
+                else {
+                    m_lemmas.push_back(c);
+                }
+            }
+            else {
+                m_clauses.push_back(c);
+            }
+        }
+
+        clause * mk_clause(unsigned sz, literal const * lits, clause::kind k, proof * pr) {
+            unsigned id = m_cls_id_gen.mk();
+            size_t obj_sz = clause::get_obj_size(sz);
+            void * mem;
+            mem = m_allocator.allocate(obj_sz);
+            clause * c = new (mem) clause(id, sz, lits, k, pr);
+            // increase reference counters
+            for (unsigned i = 0; i < sz; i++) {
+                node p   = lits[i].var();
+                expr * t = m_node_manager.to_expr(p);
+                m_expr_manager.inc_ref(t);
+            }
+            m_expr_manager.inc_ref(pr);
+            push_clause(c);
+            return c;
+        }
+
+        clause * mk_aux_clause(unsigned sz, literal const * lits, proof * pr) {
+            return mk_clause(sz, lits, clause::AUX, pr);
+        }
+
+        clause * mk_lemma(unsigned sz, literal const * lits, proof * pr) {
+            return mk_clause(sz, lits, clause::LEMMA, pr);
+        }
+
         // -----------------------------------
         //
         // Internalization
@@ -164,12 +310,17 @@ namespace mcsat {
         // -----------------------------------
 
         void internalize_core(node n) {
-            internalization_ctx ctx(*this);
-            for (unsigned i = 0; i < num_plugins(); i++) {
-                if (p(i).internalize(n, ctx))
-                    return;
+            if (!m_node_manager.internalized(n)) {
+                // node was not internalized yet.
+                internalization_ctx ctx(*this);
+                for (unsigned i = 0; i < num_plugins(); i++) {
+                    if (p(i).internalize(n, ctx)) {
+                        m_node_manager.mark_as_internalized(n);
+                        return;
+                    }
+                }
+                throw exception("MCSat could not handle the problem: none of existing plugins could process one of the expressions");
             }
-            throw exception("MCSat could not handle the problem: none of existing plugins could process one of the expressions");
         }
 
         node internalize(expr * n) {
@@ -195,6 +346,14 @@ namespace mcsat {
             }
         }
 
+        void internalize_clause(clause * c, internalization_ctx & ctx) {
+            for (unsigned i = 0; i < num_plugins(); i++) {
+                if (p(i).internalize(c, ctx))
+                    return; // found plugin to process the clause
+            }
+            throw exception("MCSat could not handle the problem: none of existing plugins could process one of the input clauses");
+        }
+
         void assert_expr_core(expr * f, proof * pr, bool main) {
             internalization_ctx ctx(*this);
             unsigned num_lits;
@@ -212,16 +371,8 @@ namespace mcsat {
                 literal l = internalize_literal(lits[i]);
                 new_lits.push_back(l);
             }
-            clause * c;
-            if (main)
-                c = m_clause_manager.mk(new_lits.size(), new_lits.c_ptr(), pr);
-            else
-                c = m_clause_manager.mk_aux(new_lits.size(), new_lits.c_ptr(), pr);
-            for (unsigned i = 0; i < num_plugins(); i++) {
-                if (p(i).internalize(c, ctx))
-                    return; // found plugin to process the clause
-            }
-            throw exception("MCSat could not handle the problem: none of existing plugins could process one of the input clauses");
+            clause * c = mk_clause(new_lits.size(), new_lits.c_ptr(), main ? clause::MAIN : clause::AUX, pr);
+            internalize_clause(c, ctx);
         }
         
         void assert_expr(expr * f, proof * pr) {
@@ -234,6 +385,90 @@ namespace mcsat {
                 assert_expr_core(p.first, p.second, false);
             }
         }
+
+        // -----------------------------------
+        //
+        // Cleanup using pop()/push() idiom
+        //
+        // -----------------------------------
+
+        // Auxiliary method for cleanup.
+        // The nodes representing the atoms may be deleted during the cleanup. 
+        // Thus, we save the associated expressions
+        void save_clause_atoms(clause * c, ptr_vector<expr> & saved_atoms) {
+            unsigned sz = c->size();
+            for (unsigned i = 0; i < sz; i++) {
+                node p   = (*c)[i].var();
+                expr * t = m_node_manager.to_expr(p);
+                saved_atoms.push_back(t);
+            }
+        }
+
+        // Auxiliary method for cleanup.
+        // See save_clause_atoms.
+        void restore_clause_atoms(clause * c, internalization_ctx & ctx, unsigned & head, ptr_vector<expr> & saved_atoms) {
+            unsigned sz = c->size();
+            for (unsigned i = 0; i < sz; i++, head++) {
+                expr * t      = saved_atoms[head];
+                node p        = internalize(t);
+                literal old_l = (*c)[i];
+                (*c)[i]       = literal(p, old_l.sign()); // update literal
+            }
+            internalize_clause(c, ctx);
+        }
+
+        void restore_clauses(clause_vector & saved_clauses, ptr_vector<expr> & saved_atoms) {
+            internalization_ctx ctx(*this);
+            unsigned ahead = 0; // head for saved_atoms
+            unsigned sz = saved_clauses.size();
+            for (unsigned i = 0; i < sz; i++) {
+                clause * c = saved_clauses[i];
+                SASSERT(c->is_main() || c->is_lemma());
+                restore_clause_atoms(c, ctx, ahead, saved_atoms);
+                push_clause(c);
+            }
+        }
+        
+        // Cleanup routine can only be performed at base level, and the level should be greater than 0.
+        // This method will probably create many opportunities for propagation.
+        void cleanup() {
+            SASSERT(at_base_lvl());
+            SASSERT(!m_scopes.empty());
+            // Since we are in a base level, m_lemmas_to_reinit does not contain any clauses.
+            ptr_vector<clause> & saved_clauses = m_saved_clauses; m_saved_clauses.reset(); // main and lemmas that should be saved.
+            ptr_vector<expr>   & saved_atoms   = m_saved_atoms;   m_saved_atoms.reset();
+            // Save main clauses
+            unsigned cls_begin = m_scopes.empty() ? 0 : m_scopes.back().m_clauses_lim;
+            unsigned cls_end   = m_clauses.size();
+            unsigned j         = cls_begin;
+            for (unsigned i = cls_begin; i < cls_end; i++) {
+                if (m_clauses[i]->is_main()) {
+                    saved_clauses.push_back(m_clauses[i]);
+                    dettach_clause(m_clauses[i]);
+                    save_clause_atoms(m_clauses[i], saved_atoms);
+                }
+                else {
+                    m_clauses[j] = m_clauses[i];
+                    j++;
+                }
+            }
+            m_clauses.shrink(j);
+            // Save lemmas
+            unsigned lemmas_begin = m_base_scopes.empty() ? 0 : m_base_scopes.back().m_lemmas_lim;
+            unsigned lemmas_end   = m_lemmas.size();
+            SASSERT(lemmas_end >= lemmas_begin);
+            for (unsigned i = lemmas_begin; i < lemmas_end; i++) {
+                saved_clauses.push_back(m_lemmas[i]);
+                dettach_clause(m_clauses[i]);
+                save_clause_atoms(m_lemmas[i], saved_atoms);
+            }
+            m_lemmas.shrink(lemmas_begin);
+            // Cleanup 
+            pop(1, true);
+            // Restore 
+            push(true);
+            restore_clauses(saved_clauses, saved_atoms);
+        }
         
         // -----------------------------------
         //
@@ -244,16 +479,66 @@ namespace mcsat {
         void push(bool user) {
             SASSERT(m_new_axioms.empty());
             SASSERT(m_to_internalize.empty());
+            SASSERT(user || m_scopes.size() == m_base_scopes.size());
+            SASSERT(m_scopes.size() >= m_base_scopes.size());
             m_expr_manager.push();
             m_node_manager.push();
             m_value_manager.push();
             m_trail_manager.push();
-            m_clause_manager.push(user);
+            m_scopes.push_back(scope());
+            scope & s = m_scopes.back();
+            s.m_clauses_lim  = m_clauses.size();
+            s.m_inconsistent = m_inconsistent;
+            if (user) {
+                m_base_scopes.push_back(base_scope());
+                base_scope & bs = m_base_scopes.back();
+                bs.m_lemmas_lim = m_lemmas.size();
+            }
             m_trail_stack.push();
             unsigned sz = m_plugins.size();
             for (unsigned i = 0; i < sz; i++) {
                 m_plugins.get(i)->push();
             }
+        }
+
+        void del_clauses(clause_vector & cs, unsigned old_sz) {
+            unsigned sz = cs.size();
+            SASSERT(old_sz <= sz);
+            for (unsigned i = old_sz; i < sz; i++) {
+                clause * c = cs[i];
+                del_clause(c);
+            }
+            cs.shrink(old_sz);
+        }
+
+        // Store in saved_clauses the lemmas that need to be reinitialized.
+        // Store in saved_atoms the atoms occuring in these clauses.
+        void save_lemmas_to_reinit(unsigned new_lvl, clause_vector & saved_clauses, ptr_vector<expr> & saved_atoms) {
+            saved_atoms.reset();
+            saved_clauses.reset();
+            unsigned sz = m_lemmas_to_reinit.size();
+            if (sz > new_lvl) {
+                for (unsigned i = new_lvl; i < sz; i++) {
+                    clause_vector const & cs = m_lemmas_to_reinit[i];
+                    unsigned cs_sz = cs.size();
+                    for (unsigned j = 0; j < cs_sz; j++) {
+                        clause * c = cs[j];
+                        saved_clauses.push_back(c);
+                        dettach_clause(c);
+                        save_clause_atoms(c, saved_atoms);
+                    }
+                }
+                m_lemmas_to_reinit.shrink(new_lvl);
+            }
+        }
+
+        void reinit_lemmas(clause_vector & saved_clauses, ptr_vector<expr> & saved_atoms) {
+            restore_clauses(saved_clauses, saved_atoms);
+        }
+
+        void reset_inconsistent() {
+            m_inconsistent = false;
+            // In the future, we should also reset unsat core, proof, etc.
         }
 
         void pop(unsigned num_scopes, bool user) {
@@ -262,11 +547,32 @@ namespace mcsat {
                 m_plugins.get(i)->pop(num_scopes);
             }
             m_trail_stack.pop(num_scopes);
-            m_clause_manager.pop(num_scopes, user);
+            SASSERT(user || m_scopes.size() == m_base_scopes.size());
+            SASSERT(m_scopes.size() >= m_base_scopes.size());
+            SASSERT(num_scopes <= m_scopes.size());
+            unsigned new_lvl    = m_scopes.size() - num_scopes;
+            scope & s           = m_scopes[new_lvl];
+            save_lemmas_to_reinit(new_lvl, m_saved_clauses, m_saved_atoms);
+            SASSERT(m_lemmas_to_reinit.size() <= new_lvl);
+            del_clauses(m_clauses, s.m_clauses_lim);
+            if (!s.m_inconsistent && m_inconsistent) {
+                reset_inconsistent();
+            }
+            m_scopes.shrink(new_lvl);
+            if (user) {
+                SASSERT(m_saved_clauses.empty()); // we do not have to reinit clauses when backtracking user scopes.
+                SASSERT(num_scopes <= m_base_scopes.size());
+                unsigned new_lvl    = m_base_scopes.size() - num_scopes;
+                base_scope & bs     = m_base_scopes[new_lvl];
+                del_clauses(m_clauses, bs.m_lemmas_lim);
+                m_base_scopes.shrink(new_lvl);
+            }
             m_trail_manager.pop(num_scopes);
             m_value_manager.pop(num_scopes);
             m_node_manager.pop(num_scopes);
             m_expr_manager.pop(num_scopes);
+            reinit_lemmas(m_saved_clauses, m_saved_atoms);
+            propagate();
         }
 
         // -----------------------------------
@@ -276,9 +582,18 @@ namespace mcsat {
         // -----------------------------------
         
         void propagate() {
-            
+            while (true) {
+                for (unsigned i = 0; i < num_plugins(); i++) {
+                    if (inconsistent())
+                        return;
+                    checkpoint();
+                    propagation_ctx ctx(*this, i);
+                    p(i).propagate(ctx);
+                }
+                if (m_trail_stack.fully_propagated())
+                    return;
+            }
         }
-
 
         // -----------------------------------
         //

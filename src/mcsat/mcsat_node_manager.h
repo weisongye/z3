@@ -34,6 +34,7 @@ namespace mcsat {
         obj_map<expr, node> m_expr2node;
         ptr_vector<expr>    m_node2expr;
         unsigned_vector     m_node2lvl;
+        svector<char>       m_internalized;
         unsigned_vector     m_scopes;
 
         friend class kernel;
@@ -41,7 +42,18 @@ namespace mcsat {
         ~node_manager();
         void push();
         void pop(unsigned num_scopes);
+        /**
+           \brief Return the level where the given node was created.
+        */
         unsigned get_mk_level(node const & n) { return m_node2lvl[n.index()]; }
+        /**
+           \brief Return true if the node has already been internalized.
+        */
+        bool internalized(node const & n) const { return m_internalized[n.index()]; }
+        /**
+           \brief Mark the node as internalized.
+        */
+        void mark_as_internalized(node const & n) { m_internalized[n.index()] = true; }
     public:
         /**
            \brief Create a new node for the expression if it does not exist yet.

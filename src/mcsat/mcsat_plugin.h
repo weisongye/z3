@@ -329,8 +329,22 @@ namespace mcsat {
            One of the plugins must be responsible for making sure the clause is satisfied.
            
            When a plugin returns "true", it means it is responsible for making sure the clause is satisfied.
+
+           See method dettach_clause.
+
+           If c is not a lemma, then the plugin can assume that c will be deleted when the scope level
+           where c was created is backtracked. 
+           This is not the case when c is a lemma.
         */
         virtual bool internalize(clause * c, clause_internalization_context & ctx);
+
+        /**
+           \brief This method is invoked when clause c should be dettached from the internal
+           data-structures (indexing) used in the plugin. 
+
+           This happens when c is going to be deleted, or the nodes contained in c must be recreated.
+        */
+        virtual void dettach_clause(clause * c);
 
         // -----------------------------------
         //

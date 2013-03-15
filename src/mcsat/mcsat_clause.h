@@ -42,7 +42,6 @@ namespace mcsat {
         node_approx_set m_approx;
         unsigned        m_used:1;
         unsigned        m_kind:2;
-        unsigned        m_reinit_stack:1;
         unsigned        m_mark:1;
         proof *         m_pr;
         literal         m_lits[0];
@@ -53,12 +52,10 @@ namespace mcsat {
         static size_t get_obj_size(unsigned num_lits);
         clause(unsigned id, unsigned sz, literal const * lits, kind k, proof * pr);
 
-        bool on_reinit_stack() const { return m_reinit_stack; }
-        void set_reinit_stack(bool f) { m_reinit_stack = f; }
         void mark() { m_mark = true; }
         void reset_mark() { m_mark = false; }
         bool is_marked() const { return m_mark; }
-
+        literal & operator[](unsigned idx) { SASSERT(idx < m_size); return m_lits[idx]; }
     public:
         unsigned id() const { return m_id; }
         unsigned size() const { return m_size; }
@@ -72,6 +69,13 @@ namespace mcsat {
         void mark_used() { m_used = true; }
         void unmark_used() { m_used = false; }
         proof * pr() const { return m_pr; }
+        /**
+           \brief Swap literals at positions i and j.
+
+           \pre i < size()
+           \pre j < size()
+        */
+        void swap_lits(unsigned i, unsigned j);
     };
 
     typedef ptr_vector<clause> clause_vector;

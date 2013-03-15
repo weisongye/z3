@@ -41,6 +41,7 @@ namespace mcsat {
     const trail_kind k_model_assignment      = 5;
     const trail_kind k_assign_interp         = 6;
     const trail_kind k_assign_func_interp    = 7;
+    const trail_kind k_conflict              = 8;
     const trail_kind k_first_extra           = 100;
 
     /**
@@ -102,18 +103,33 @@ namespace mcsat {
     class propagator {
     public:
         /**
-           \brief Store into anteantecedents and new_antecedents an explanation for consequent.
+           \brief Store into antecedents and new_antecedents an explanation for consequent.
 
            antecedents AND new_antecedents IMPLIES consequent 
            
            (modulo the assertions in the problem).
 
            If proof generation is enabled, then a proof should be stored in pr.
+           
            If (antecedents AND new_antecedents IMPLIES consequent) is a valid formula,
            then the propagator may leave pr == 0. In this case, the propagator is assuming
            that it is trivial to check the valid formula.
         */
         virtual void explain(propagation & consequent, trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) = 0;
+
+        
+        /**
+           \brief Store into antecedents and new_antecedents an explanation for FALSE.
+
+           antecedents AND new_antecedents IMPLIES FALSE
+
+           If proof generation is enabled, then a proof should be stored in pr.
+
+           If (antecedents AND new_antecedents IMPLIES FALSE) is a valid formula,
+           then the propagator may leave pr == 0. In this case, the propagator is assuming
+           that it is trivial to check the valid formula.
+        */
+        virtual void explain_conflict(trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) = 0;
     };
 
     /**
@@ -136,7 +152,7 @@ namespace mcsat {
     class propagated_literal : public propagation {
         literal m_literal;
     public:
-        propagated_literal(literal l, propagator & p):propagation(p), m_literal(l) {}
+        propagated_literal(literal const & l, propagator & p):propagation(p), m_literal(l) {}
 
         virtual literal lit() const;
 
@@ -284,6 +300,27 @@ namespace mcsat {
         virtual trail_kind kind() const;
     };
 
+    // -----------------------------------
+    //
+    // Conflict
+    //
+    // -----------------------------------
+
+    /**
+       \brief A conflict is essentially propagating FALSE.
+    */
+    class conflict : public propagation {
+    public:
+        conflict(propagator & p):propagation(p) {}
+        virtual trail_kind kind() const;
+    };
+
+    // -----------------------------------
+    //
+    // Manager
+    //
+    // -----------------------------------
+
     /**
        \brief Auxiliary class for creating trail objects.
     */
@@ -315,10 +352,12 @@ namespace mcsat {
     public:
         trail_stack();
         ~trail_stack();
+        unsigned size() const { return m_stack.size(); }
         void push();
         void pop(unsigned num_scopes);
         void push_back(trail * t);
         trail * next(unsigned pidx);
+        bool fully_propagated() const;
     };
     
 };    

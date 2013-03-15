@@ -96,6 +96,38 @@ namespace mcsat {
                 m_curr_functor->set_cancel(f);
         }
     }
+    
+    void expr_manager::inc_ref(expr * n) {
+        #pragma omp critical (mcsat_expr_manager)
+        {
+            m().inc_ref(n);
+        }
+    }
+    
+    void expr_manager::dec_ref(expr * n) {
+        #pragma omp critical (mcsat_expr_manager)
+        {
+            m().dec_ref(n);
+        }
+    }
+
+    void expr_manager::inc_ref(ptr_vector<expr> const & ns) {
+        #pragma omp critical (mcsat_expr_manager)
+        {
+            unsigned sz = ns.size();
+            for (unsigned i = 0; i < sz; i++)
+                m().inc_ref(ns[i]);
+        }
+    }
+    
+    void expr_manager::dec_ref(ptr_vector<expr> const & ns) {
+        #pragma omp critical (mcsat_expr_manager)
+        {
+            unsigned sz = ns.size();
+            for (unsigned i = 0; i < sz; i++)
+                m().dec_ref(ns[i]);
+        }
+    }
 
 #define MK_BEGIN_CORE()                         \
     std::string msg;                            \
@@ -128,7 +160,7 @@ namespace mcsat {
     MK_END_CORE();                              \
     m_new_exprs.push_back(r);                   \
     return r;
-            
+
     app * expr_manager::mk_app(func_decl * decl, unsigned num_args, expr * const * args) {
         MK_BEGIN();
         #pragma omp critical (mcsat_expr_manager)

@@ -84,6 +84,10 @@ namespace mcsat {
         return k_assign_func_interp;
     }
 
+    trail_kind conflict::kind() const {
+        return k_conflict;
+    }
+
     trail_manager::trail_manager() {
         m_next_kind = k_first_extra;
     }
@@ -142,6 +146,15 @@ namespace mcsat {
         trail * t = m_stack[m_plugin_qhead[i]];
         m_plugin_qhead[i]++;
         return t;
+    }
+
+    bool trail_stack::fully_propagated() const {
+        unsigned sz = m_plugin_qhead.size();
+        for (unsigned i = 0; i < sz; i++) {
+            if (m_plugin_qhead[i] < m_stack.size())
+                return false;
+        }
+        return true;
     }
 
 };

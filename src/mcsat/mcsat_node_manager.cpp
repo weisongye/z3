@@ -43,6 +43,7 @@ namespace mcsat {
         }
         m_node2expr.shrink(old_sz);
         m_node2lvl.shrink(old_sz);
+        m_internalized.shrink(old_sz);
         m_scopes.shrink(new_lvl);
     }
 
@@ -53,6 +54,7 @@ namespace mcsat {
             return kd.m_value; // node already exists.
         m_node2expr.push_back(n);
         m_node2lvl.push_back(m_scopes.size());
+        m_internalized.push_back(false);
         return r;
     }
 

@@ -39,7 +39,6 @@ namespace mcsat {
     };
     
     const node null_node;
-
 };
 
 #endif

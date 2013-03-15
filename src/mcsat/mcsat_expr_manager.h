@@ -58,6 +58,21 @@ namespace mcsat {
         functor *       m_curr_functor;
         expr_manager(ast_manager & m);
         ~expr_manager();
+        
+        // The kernel uses reference counting when creating clauses.
+        // When the kernel creates a clause, it bumps the reference
+        // counter of the expressions representing the literals.
+        // It needs to do that because:
+        //   1) lemmas may remain alive even after the scope level 
+        //      that created them is backtracked.
+        //   2) pop/push cleanup idiom. We destroy the current scope level
+        //      and recreate it. 
+        void inc_ref(expr * n);
+        void dec_ref(expr * n);
+        void inc_ref(ptr_vector<expr> const & ns);
+        void dec_ref(ptr_vector<expr> const & ns);
+        //
+
         void push();
         void pop(unsigned num_scopes);
         ast_manager & m() const { return m_manager; }

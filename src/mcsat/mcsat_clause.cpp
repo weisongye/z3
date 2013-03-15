@@ -37,7 +37,6 @@ namespace mcsat {
         m_approx(mk_approx(sz, lits)),
         m_used(false),
         m_kind(k),
-        m_reinit_stack(false),
         m_mark(false),
         m_pr(pr) {
         for (unsigned i = 0; i < sz; i++)
@@ -56,6 +55,12 @@ namespace mcsat {
             if (m_lits[i].var() == v)
                 return true;
         return false;
+    }
+
+    void clause::swap_lits(unsigned i, unsigned j) {
+        SASSERT(i < size());
+        SASSERT(j < size());
+        std::swap(m_lits[i], m_lits[j]);
     }
 
 };

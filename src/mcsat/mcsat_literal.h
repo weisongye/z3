@@ -48,7 +48,6 @@ namespace mcsat {
 
     const literal null_literal;
     typedef svector<literal> literal_vector;
-    
-};
+ };
 
 #endif
