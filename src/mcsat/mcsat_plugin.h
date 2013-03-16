@@ -356,7 +356,6 @@ namespace mcsat {
            \brief New facts added to the trail can be read using the method ctx.next().
            ctx.next() method returns 0 if there are no more new facts in the trail.
            A new propagation can be added to the trail using ctx.add_propagation. 
-           A conflict is set by propagating false.
         */
         virtual void propagate(propagation_context & ctx) = 0;
         

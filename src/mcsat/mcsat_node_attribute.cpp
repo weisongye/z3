@@ -56,20 +56,20 @@ namespace mcsat {
     }
 
     template<typename T>
-    bool node_attribute<T>::contains(node const & n) const {
+    bool node_attribute<T>::contains(node n) const {
         unsigned idx = n.index();
         return idx < m_contains.size() && m_contains[idx] != 0;
     }
     
     template<typename T>
-    T const & node_attribute<T>::get_value(node const & n, T const & def) const {
+    T const & node_attribute<T>::get_value(node n, T const & def) const {
         if (!contains(n))
             return def;
         return m_values[n.index()];
     }
     
     template<typename T>
-    void node_attribute<T>::set(node const & n, T const & v) {
+    void node_attribute<T>::set(node n, T const & v) {
         unsigned idx = n.index();
         if (idx >= m_values.size()) {
             m_contains.resize(idx+1, 0);

@@ -30,6 +30,7 @@ Revision History:
 
 namespace mcsat {
     class plugin;
+    class expr_manager;
 
     typedef unsigned trail_kind;
 
@@ -41,7 +42,6 @@ namespace mcsat {
     const trail_kind k_model_assignment      = 5;
     const trail_kind k_assign_interp         = 6;
     const trail_kind k_assign_func_interp    = 7;
-    const trail_kind k_conflict              = 8;
     const trail_kind k_first_extra           = 100;
 
     /**
@@ -64,6 +64,7 @@ namespace mcsat {
         unsigned m_mark:1;
         unsigned scope_lvl() const { return m_scope_lvl; }
         bool is_marked() const { return m_mark != 0; }
+        void mark(bool f) { m_mark = f; }
     public:
         trail():m_scope_lvl(0), m_mark(0) {}
         /**
@@ -90,6 +91,10 @@ namespace mcsat {
 
     typedef ptr_vector<trail> trail_vector;
 
+    class model_decision;
+    
+    typedef ptr_vector<model_decision> model_decision_vector;
+
     // -----------------------------------
     //
     // Propagations
@@ -105,31 +110,47 @@ namespace mcsat {
         /**
            \brief Store into antecedents and new_antecedents an explanation for consequent.
 
-           antecedents AND new_antecedents IMPLIES consequent 
+           literal_antecedents AND trail_antecedents AND new_antecedents IMPLIES consequent 
            
            (modulo the assertions in the problem).
 
            If proof generation is enabled, then a proof should be stored in pr.
            
-           If (antecedents AND new_antecedents IMPLIES consequent) is a valid formula,
+           If (literal_antecedents AND trail_antecedents AND new_antecedents IMPLIES consequent) is a valid formula,
            then the propagator may leave pr == 0. In this case, the propagator is assuming
            that it is trivial to check the valid formula.
-        */
-        virtual void explain(propagation & consequent, trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) = 0;
 
+           The new_antecedents must be false in the partial model induced by the current trail.
+           For each new_antecedents[i] we have that decisions[i] is a trail that makes new_antecedents[i] false.
+           That is, the trail stack is of the form
+           
+                   M decisions[i] ...
+           
+           new_antecedents[i] evaluates to false in 
+           
+                   M decisions[i]
+
+           but is undefined in
+           
+                   M
+        */
+        virtual void explain(propagation & consequent, 
+                             literal_vector & literal_antecedents, 
+                             trail_vector & trail_antecedents, 
+                             expr_ref_vector & new_antecedents, 
+                             model_decision_vector & decisions,
+                             proof_ref & pr) = 0;
         
         /**
-           \brief Store into antecedents and new_antecedents an explanation for FALSE.
+           \brief This method in only invoked when:
+               - Proof generation is enabled.
+               - consequent.lit() == null_literal 
+               - consequent is not propagated_eq nor propagated_diseq 
 
-           antecedents AND new_antecedents IMPLIES FALSE
-
-           If proof generation is enabled, then a proof should be stored in pr.
-
-           If (antecedents AND new_antecedents IMPLIES FALSE) is a valid formula,
-           then the propagator may leave pr == 0. In this case, the propagator is assuming
-           that it is trivial to check the valid formula.
+           Example: a module that perform bound propagation but does not want to create
+           a literal for each propagated bound.
         */
-        virtual void explain_conflict(trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) = 0;
+        virtual expr * consequent_as_expr(propagation & consequent, expr_manager & m);
     };
 
     /**
@@ -235,6 +256,13 @@ namespace mcsat {
 
         virtual trail_kind kind() const;
     };
+
+    /**
+       \brief A decision related to model construction.
+    */
+    class model_decision : public decision {
+    public:
+    };
     
     /**
        \brief A model assignment.
@@ -264,7 +292,7 @@ namespace mcsat {
        We also have func_assign_interpretation object for assigning
        interpretations to uninterpreted functions.
     */
-    class model_assignment : public decision {
+    class model_assignment : public model_decision {
         node  m_node;
         value m_value;
     public:
@@ -276,7 +304,7 @@ namespace mcsat {
         virtual trail_kind kind() const;
     };
     
-    class assign_interpretation : public decision {
+    class assign_interpretation : public model_decision {
         value  m_value;
         expr * m_interp;
     public:
@@ -288,7 +316,7 @@ namespace mcsat {
         virtual trail_kind kind() const;
     };
 
-    class assign_func_interpretation : public decision {
+    class assign_func_interpretation : public model_decision {
         func_decl * m_f;
         expr *      m_interp;
     public:
@@ -297,21 +325,6 @@ namespace mcsat {
         func_decl * decl() const { return m_f; }
         expr * interp() const { return m_interp; }
 
-        virtual trail_kind kind() const;
-    };
-
-    // -----------------------------------
-    //
-    // Conflict
-    //
-    // -----------------------------------
-
-    /**
-       \brief A conflict is essentially propagating FALSE.
-    */
-    class conflict : public propagation {
-    public:
-        conflict(propagator & p):propagation(p) {}
         virtual trail_kind kind() const;
     };
 
@@ -346,13 +359,17 @@ namespace mcsat {
     };
 
     class trail_stack {
+        friend class kernel;
         ptr_vector<trail> m_stack;
         unsigned_vector   m_scopes;
         unsigned_vector   m_plugin_qhead;
+        unsigned size() const { return m_stack.size(); }
+        trail * operator[](unsigned i) const { return m_stack[i]; }
+        // Return the end of the given level.
+        unsigned end_lvl(unsigned lvl) const;
     public:
         trail_stack();
         ~trail_stack();
-        unsigned size() const { return m_stack.size(); }
         void push();
         void pop(unsigned num_scopes);
         void push_back(trail * t);

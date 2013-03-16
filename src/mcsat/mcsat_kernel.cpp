@@ -32,6 +32,8 @@ namespace mcsat {
         typedef std::pair<expr *, proof *> expr_proof_pair;
         typedef svector<expr_proof_pair>   expr_proof_pair_vector;
         typedef svector<node>              node_queue;
+        typedef svector<char>              node2value;     
+        typedef trail_vector               node2justification;
 
         bool                      m_fresh;
         bool                      m_proofs_enabled;
@@ -47,6 +49,10 @@ namespace mcsat {
         vector<clause_vector>     m_lemmas_to_reinit;
         plugin_ref_vector         m_plugins;
         trail_stack               m_trail_stack;
+        // Boolean node assignment and justification
+        node2value                m_node2value;
+        node2justification        m_node2justification;
+        // 
         node_queue                m_to_internalize; // internalization todo queue.
         expr_proof_pair_vector    m_new_axioms;     // auxiliary axioms created by plugins.
         basic_recognizers         m_butil;
@@ -62,7 +68,8 @@ namespace mcsat {
         svector<base_scope>       m_base_scopes; // for user defined backtracking points
 
         // conflict
-        bool                      m_inconsistent;
+        propagated_literal *      m_conflict_l;
+        trail *                   m_conflict_not_l;
         
         // auxiliary fields
         ptr_vector<expr>          m_saved_atoms;
@@ -76,21 +83,75 @@ namespace mcsat {
         }
 
         bool inconsistent() const {
-            return m_inconsistent;
+            return m_conflict_l != 0;
         }
 
         void add_axiom(expr * ax, proof_ref & pr) {
             m_new_axioms.push_back(expr_proof_pair(ax, pr));
         }
 
+        lbool get_value(node n) const {
+            return static_cast<lbool>(m_node2value[n.index()]);
+        }
+
+        lbool get_value(literal l) const {
+            lbool r = get_value(l.var());
+            return l.sign() ? ~r : r;
+        }
+
+        trail * get_justification(node n) const {
+            SASSERT(get_value(n) != l_undef);
+            return m_node2justification[n.index()];
+        }
+
+        void assign_literal(literal l, trail * t) {
+            SASSERT(get_value(l) == l_undef);
+            unsigned p_idx              = l.var().index();
+            m_node2value[p_idx]         = l.sign() ? l_false : l_true;
+            m_node2justification[p_idx] = t;
+        }
+        
         void add_propagation(propagation * p) {
             if (!inconsistent()) {
-                if (p->kind() == k_conflict)
-                    m_inconsistent = true;
+                literal l = p->lit();
+                if (l != null_literal) {
+                    lbool l_value = get_value(l);
+                    if (l_value == l_true) {
+                        // redundant
+                        return; 
+                    }
+                    else if (l_value == l_false) {
+                        // conflict
+                        m_conflict_l     = static_cast<propagated_literal*>(p);
+                        m_conflict_not_l = get_justification(l.var());
+                    }
+                    else {
+                        assign_literal(l, p);
+                    }
+                }
                 m_trail_stack.push_back(p);
             }
         }
+
+        node mk_new_node(expr * n) {
+            SASSERT(!m_node_manager.contains(n));
+            node r = m_node_manager.mk_node(n);
+            unsigned r_idx = r.index();
+            m_node2value.reserve(r_idx+1);
+            m_node2justification.reserve(r_idx+1);
+            m_node2value[r_idx]         = l_undef;
+            m_node2justification[r_idx] = 0;
+            SASSERT(m_node_manager.contains(n));
+            return r;
+        }
         
+        node mk_node(expr * n) {
+            if (m_node_manager.contains(n))
+                return m_node_manager.mk_node(n);
+            else
+                return mk_new_node(n);
+        }
+
         class init_ctx : public initialization_context {
             imp & m;
         public:
@@ -116,14 +177,7 @@ namespace mcsat {
             }
 
             virtual node mk_node(expr * n) { 
-                if (m.m_node_manager.contains(n)) {
-                    return m.m_node_manager.mk_node(n);
-                }
-                else {
-                    node r = m.m_node_manager.mk_node(n);
-                    m.m_to_internalize.push_back(r);
-                    return r;
-                }
+                return m.mk_node(n);
             }
             
             virtual void add_axiom(expr * ax, proof_ref & pr) {
@@ -173,7 +227,8 @@ namespace mcsat {
             m_butil(m.get_basic_family_id()) {
             m_proofs_enabled = proofs_enabled;
             m_search_lvl     = 0;
-            m_inconsistent   = false;
+            m_conflict_l     = 0;
+            m_conflict_not_l = 0;
             m_fresh          = true;
             m_cancel         = false;
         }
@@ -310,29 +365,30 @@ namespace mcsat {
         // -----------------------------------
 
         void internalize_core(node n) {
-            if (!m_node_manager.internalized(n)) {
-                // node was not internalized yet.
-                internalization_ctx ctx(*this);
-                for (unsigned i = 0; i < num_plugins(); i++) {
-                    if (p(i).internalize(n, ctx)) {
-                        m_node_manager.mark_as_internalized(n);
-                        return;
-                    }
-                }
-                throw exception("MCSat could not handle the problem: none of existing plugins could process one of the expressions");
+            // node was not internalized yet.
+            internalization_ctx ctx(*this);
+            for (unsigned i = 0; i < num_plugins(); i++) {
+                if (p(i).internalize(n, ctx))
+                    return;
             }
+            throw exception("MCSat could not handle the problem: none of existing plugins could process one of the expressions");
         }
 
         node internalize(expr * n) {
             SASSERT(m_to_internalize.empty());
-            node r = m_node_manager.mk_node(n);
-            internalize_core(r);
-            while (!m_to_internalize.empty()) {
-                node n = m_to_internalize.back();
-                m_to_internalize.pop_back();
-                internalize_core(n);
+            if (m_node_manager.contains(n)) {
+                return m_node_manager.mk_node(n);
             }
-            return r;
+            else {
+                node r = mk_new_node(n);
+                internalize_core(r);
+                while (!m_to_internalize.empty()) {
+                    node n = m_to_internalize.back();
+                    m_to_internalize.pop_back();
+                    internalize_core(n);
+                }
+                return r;
+            }
         }
 
         literal internalize_literal(expr * n) {
@@ -488,7 +544,7 @@ namespace mcsat {
             m_scopes.push_back(scope());
             scope & s = m_scopes.back();
             s.m_clauses_lim  = m_clauses.size();
-            s.m_inconsistent = m_inconsistent;
+            s.m_inconsistent = m_conflict_l != 0;
             if (user) {
                 m_base_scopes.push_back(base_scope());
                 base_scope & bs = m_base_scopes.back();
@@ -537,8 +593,25 @@ namespace mcsat {
         }
 
         void reset_inconsistent() {
-            m_inconsistent = false;
+            m_conflict_l     = 0;
+            m_conflict_not_l = 0;
             // In the future, we should also reset unsat core, proof, etc.
+        }
+
+        void restore_assignment(unsigned new_lvl) {
+            unsigned i = m_trail_stack.size();
+            unsigned begin = m_trail_stack.end_lvl(new_lvl);
+            while (i > begin) {
+                --i;
+                trail * t = m_trail_stack[i];
+                literal l = t->lit();
+                if (l != null_literal) {
+                    unsigned p_idx = l.var().index();
+                    SASSERT(m_node2value[p_idx] != l_undef);
+                    m_node2value[p_idx]         = l_undef;
+                    m_node2justification[p_idx] = 0;
+                }
+            }
         }
 
         void pop(unsigned num_scopes, bool user) {
@@ -546,16 +619,17 @@ namespace mcsat {
             for (unsigned i = 0; i < sz; i++) {
                 m_plugins.get(i)->pop(num_scopes);
             }
-            m_trail_stack.pop(num_scopes);
             SASSERT(user || m_scopes.size() == m_base_scopes.size());
             SASSERT(m_scopes.size() >= m_base_scopes.size());
             SASSERT(num_scopes <= m_scopes.size());
             unsigned new_lvl    = m_scopes.size() - num_scopes;
-            scope & s           = m_scopes[new_lvl];
+            restore_assignment(new_lvl);
+            m_trail_stack.pop(num_scopes);
             save_lemmas_to_reinit(new_lvl, m_saved_clauses, m_saved_atoms);
             SASSERT(m_lemmas_to_reinit.size() <= new_lvl);
+            scope & s           = m_scopes[new_lvl];
             del_clauses(m_clauses, s.m_clauses_lim);
-            if (!s.m_inconsistent && m_inconsistent) {
+            if (!s.m_inconsistent && inconsistent()) {
                 reset_inconsistent();
             }
             m_scopes.shrink(new_lvl);
@@ -573,6 +647,15 @@ namespace mcsat {
             m_expr_manager.pop(num_scopes);
             reinit_lemmas(m_saved_clauses, m_saved_atoms);
             propagate();
+        }
+
+        // 
+        bool resolve() {
+            SASSERT(inconsistent());
+            unsigned i = m_trail_stack.size();
+            SASSERT(i > 0);
+            
+            return false;
         }
 
         // -----------------------------------

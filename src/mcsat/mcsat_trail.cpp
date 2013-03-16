@@ -35,6 +35,10 @@ namespace mcsat {
     literal trail::lit() const {
         return null_literal;
     }
+
+    expr * propagator::consequent_as_expr(propagation & consequent, expr_manager & m) {
+        return 0;
+    }
     
     trail_kind propagated_literal::kind() const {
         return k_propagated_literal;
@@ -84,10 +88,6 @@ namespace mcsat {
         return k_assign_func_interp;
     }
 
-    trail_kind conflict::kind() const {
-        return k_conflict;
-    }
-
     trail_manager::trail_manager() {
         m_next_kind = k_first_extra;
     }
@@ -113,6 +113,10 @@ namespace mcsat {
     }
     
     trail_stack::~trail_stack() {
+    }
+
+    unsigned trail_stack::end_lvl(unsigned lvl) const {
+        return lvl == 0 ? 0 : m_scopes[lvl];
     }
 
     void trail_stack::push() {

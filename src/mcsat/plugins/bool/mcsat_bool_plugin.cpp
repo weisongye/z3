@@ -25,26 +25,6 @@ Revision History:
 
 namespace mcsat {
 
-    /**
-       \brief Marks a conflicting trail that contains l and (not l).
-    */
-    class l_not_l_conflict : public conflict {
-        class prop : public propagator {
-            propagated_literal * m_l; // l occurs after (not l), thus it can't be a decision.
-            trail *              m_not_l;
-        public:
-            prop(propagated_literal * l, trail * not_l):m_l(l), m_not_l(not_l) {}
-            virtual void explain(propagation & consequent, trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) { UNREACHABLE(); }
-            virtual void explain_conflict(trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) {
-                antecedents.push_back(m_l);
-                antecedents.push_back(m_not_l);
-            }
-        };
-        prop m_prop;
-    public:
-        l_not_l_conflict(propagated_literal * l, trail * not_l):conflict(m_prop), m_prop(l, not_l) {}
-    };
-
     class propagated_clause_literal : public propagated_literal {
         clause * m_clause;
     public:
@@ -66,16 +46,10 @@ namespace mcsat {
         basic_recognizers      m_util;
         bool                   m_proofs_enabled;
         vector<clause_vector>  m_watches;
-        svector<lbool>         m_assignment;
-        ptr_vector<trail>      m_justification;
+        svector<lbool>         m_assignment; // we keep a copy of the assignment for performance reasons.
         node_uint_attribute *  m_activity;
         unsigned               m_activity_inc;
         literal_vector         m_local_trail;
-        // When a conflict is detected, m_conflict_l contains a literal l such that (not l) is also in the trail.
-        literal                m_conflict_l; 
-        // Justification for m_conflict_l. 
-        // Note that, m_justification[m_conflict_l.var().index()] contains the justification for (not l).
-        trail *                m_conflict_justification; 
         struct scope {
             unsigned           m_local_trail_lim;
         };
@@ -117,7 +91,6 @@ namespace mcsat {
         }
 
         virtual void push() {
-            SASSERT(m_conflict_l == null_literal);
             m_scopes.push_back(scope());
             scope & s = m_scopes.back();
             s.m_local_trail_lim = m_local_trail.size();
@@ -130,7 +103,6 @@ namespace mcsat {
                 literal l = m_local_trail[i];
                 m_assignment[l.index()]          = l_undef;
                 m_assignment[(~l).index()]       = l_undef;
-                m_justification[l.var().index()] = 0;
             }
             m_local_trail.shrink(old_sz);
         }
@@ -154,13 +126,11 @@ namespace mcsat {
 
         void init_bvar(node n) {
             unsigned idx = n.index();
-            if (idx >= m_justification.size()) {
+            if (idx*2 >= m_assignment.size()) {
                 unsigned new_sz = idx + 1;
                 m_assignment.resize(new_sz*2, l_undef);
                 m_watches.resize(new_sz*2);
-                m_justification.resize(new_sz);
             }
-            SASSERT(idx < m_justification.size());
             literal l(n, false);
             unsigned l_idx          = l.index();
             unsigned not_l_idx      = (~l).index();
@@ -168,7 +138,6 @@ namespace mcsat {
             m_assignment[not_l_idx] = l_undef;
             m_watches[l_idx]        .reset();
             m_watches[not_l_idx]    .reset();
-            m_justification[idx]    = 0;
             m_activity              ->set(n, 0);
         }
 
@@ -181,30 +150,18 @@ namespace mcsat {
             m_local_trail.push_back(l);
             m_assignment[l.index()]          = l_true;
             m_assignment[~l.index()]         = l_false;
-            m_justification[l.var().index()] = t;
         }
 
         void propagate_literal(literal l, clause * c, internalization_context & ctx) {
-            if (m_conflict_l == null_literal)
-                return;
             if (get_value(l) == l_true) {
                 // nothing to be done
                 return; 
             }
             else {
                 propagated_literal * p = ctx.tm().mk(propagated_clause_literal(l, c, *this));
-                if (get_value(l) == l_false) {
-                    // conflict
-                    SASSERT(m_conflict_l == null_literal);
-                    m_conflict_l             = l;
-                    m_conflict_justification = p;
-                    ctx.add_propagation(p);
-                    ctx.add_propagation(ctx.tm().mk(l_not_l_conflict(p, m_justification[l.var().index()])));
-                }
-                else {
+                if (get_value(l) == l_undef)
                     assign_value(l, p);
-                    ctx.add_propagation(p);
-                }
+                ctx.add_propagation(p);
             }
         }
 
@@ -275,30 +232,26 @@ namespace mcsat {
             // TODO
         }
 
-        virtual void explain(propagation & consequent, trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) {
+        virtual void explain(propagation & consequent, 
+                             literal_vector & literal_antecedents, 
+                             trail_vector & trail_antecedents, 
+                             expr_ref_vector & new_antecedents, 
+                             model_decision_vector & decisions,
+                             proof_ref & pr) {
             SASSERT(consequent.kind() == k_propagated_literal);
+            SASSERT(consequent.lit()  != null_literal);
+            propagated_clause_literal * t = static_cast<propagated_clause_literal*>(&consequent);
             literal l = consequent.lit();
-            SASSERT(l != null_literal);
             node p = l.var();
             inc_activity(p);
-            propagated_clause_literal * t;
-            if (l == m_conflict_l) 
-                t = static_cast<propagated_clause_literal*>(m_conflict_justification);
-            else
-                t = static_cast<propagated_clause_literal*>(m_justification[p.index()]);
             if (t->get_clause()) {
                 clause const & c = *(t->get_clause());
                 SASSERT(c[0] == l);
                 unsigned sz = c.size();
                 for (unsigned i = 1; i < sz; i++) {
-                    literal const & l_prime = c[i];
-                    antecedents.push_back(m_justification[l_prime.var().index()]);
+                    literal_antecedents.push_back(c[i]);
                 }
             }
-        }
-
-        virtual void explain_conflict(trail_vector & antecedents, expr_ref_vector & new_antecedents, proof_ref & pr) {
-            UNREACHABLE();
         }
 
         virtual unsigned priority() const {

@@ -51,9 +51,9 @@ namespace mcsat {
     public:
         virtual ~node_attribute();
         
-        bool contains(node const & n) const;
-        T const & get_value(node const & n, T const & def) const;
-        void set(node const & n, T const & v);
+        bool contains(node n) const;
+        T const & get_value(node n, T const & def) const;
+        void set(node n, T const & v);
     };
 
     typedef node_attribute<unsigned> node_uint_attribute;

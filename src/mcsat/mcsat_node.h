@@ -33,9 +33,9 @@ namespace mcsat {
         node():m_val(UINT_MAX >> 1) {}
         unsigned index() const { return m_val; }
         unsigned hash() const { return m_val; }
-        friend bool operator==(node const & n1, node const & n2) { return n1.m_val == n2.m_val; }
-        friend bool operator!=(node const & n1, node const & n2) { return n1.m_val != n2.m_val; }
-        friend bool operator<(node const & n1, node const & n2)  { return n1.m_val < n2.m_val; }
+        friend bool operator==(node n1, node n2) { return n1.m_val == n2.m_val; }
+        friend bool operator!=(node n1, node n2) { return n1.m_val != n2.m_val; }
+        friend bool operator<(node n1, node n2)  { return n1.m_val < n2.m_val; }
     };
     
     const node null_node;
