@@ -28,17 +28,31 @@ namespace mcsat {
     class propagated_clause_literal : public propagated_literal {
         clause * m_clause;
     public:
-        propagated_clause_literal(literal const & l, clause * c, propagator & p):
-            propagated_literal(l, p),
+        propagated_clause_literal(literal const & l, clause * c):
+            propagated_literal(l),
             m_clause(c) {
             // m_clause may be 0 (NULL)
             // the bool_plugin also uses propagated_clause_literal to justify the literal true.
         }
-        propagated_clause_literal(literal const & l, propagator & p):
-            propagated_literal(l, p),
+        propagated_clause_literal(literal const & l):
+            propagated_literal(l),
             m_clause(0) {
         }
-        clause * get_clause() const { return m_clause; }
+
+        virtual void explain(literal_vector & literal_antecedents, 
+                             trail_vector & trail_antecedents, 
+                             expr_ref_vector & new_antecedents, 
+                             model_decision_vector & decisions,
+                             proof_ref & pr) {
+            if (m_clause) {
+                clause const & c = *m_clause;
+                SASSERT(c[0] == lit());
+                unsigned sz = c.size();
+                for (unsigned i = 1; i < sz; i++) {
+                    literal_antecedents.push_back(c[i]);
+                }
+            }
+        }
     };
 
     class bool_plugin : public plugin {
@@ -158,7 +172,7 @@ namespace mcsat {
                 return; 
             }
             else {
-                propagated_literal * p = ctx.tm().mk(propagated_clause_literal(l, c, *this));
+                propagated_literal * p = ctx.tm().mk(propagated_clause_literal(l, c));
                 if (get_value(l) == l_undef)
                     assign_value(l, p);
                 ctx.add_propagation(p);
@@ -168,7 +182,7 @@ namespace mcsat {
         void internalize_true(node n, internalization_context & ctx) {
             init_bvar(n);
             literal l(n, false);
-            propagation * p = ctx.tm().mk(propagated_clause_literal(l, *this));
+            propagation * p = ctx.tm().mk(propagated_clause_literal(l));
             assign_value(l, p);
             ctx.add_propagation(p);
         }
@@ -176,7 +190,7 @@ namespace mcsat {
         void internalize_false(node n, internalization_context & ctx) {
             init_bvar(n);
             literal l(n, true);
-            propagation * p = ctx.tm().mk(propagated_clause_literal(~l, *this));
+            propagation * p = ctx.tm().mk(propagated_clause_literal(~l));
             assign_value(~l, p);
             ctx.add_propagation(p);
         }
@@ -230,28 +244,6 @@ namespace mcsat {
 
         void inc_activity(node n) {
             // TODO
-        }
-
-        virtual void explain(propagation & consequent, 
-                             literal_vector & literal_antecedents, 
-                             trail_vector & trail_antecedents, 
-                             expr_ref_vector & new_antecedents, 
-                             model_decision_vector & decisions,
-                             proof_ref & pr) {
-            SASSERT(consequent.kind() == k_propagated_literal);
-            SASSERT(consequent.lit()  != null_literal);
-            propagated_clause_literal * t = static_cast<propagated_clause_literal*>(&consequent);
-            literal l = consequent.lit();
-            node p = l.var();
-            inc_activity(p);
-            if (t->get_clause()) {
-                clause const & c = *(t->get_clause());
-                SASSERT(c[0] == l);
-                unsigned sz = c.size();
-                for (unsigned i = 1; i < sz; i++) {
-                    literal_antecedents.push_back(c[i]);
-                }
-            }
         }
 
         virtual unsigned priority() const {

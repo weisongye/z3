@@ -199,7 +199,7 @@ namespace mcsat {
        - propagators (for pruning the seach space)
        - and any other form of object that can interact with the trail.
     */
-    class plugin : public propagator {
+    class plugin {
         unsigned m_ref_count;
     public:
         virtual ~plugin();

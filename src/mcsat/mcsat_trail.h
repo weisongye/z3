@@ -29,7 +29,6 @@ Revision History:
 #include"region.h"
 
 namespace mcsat {
-    class plugin;
     class expr_manager;
 
     typedef unsigned trail_kind;
@@ -52,9 +51,6 @@ namespace mcsat {
 
        Plugins may create new trail objects (e.g., propagated_bound).
        However, no trail object should require a destructor.
-       
-       Moreover, if a propagator needs more information/context for 
-       explaining the propagation, it should store it inside the plugin.
     */
     class trail {
         friend class kernel;
@@ -100,71 +96,56 @@ namespace mcsat {
     // Propagations
     //
     // -----------------------------------
-    class propagation;
-
-    /**
-       \brief A propagation can be performed by any object that knows how to explain it.
-    */
-    class propagator {
-    public:
-        /**
-           \brief Store into antecedents and new_antecedents an explanation for consequent.
-
-           literal_antecedents AND trail_antecedents AND new_antecedents IMPLIES consequent 
-           
-           (modulo the assertions in the problem).
-
-           If proof generation is enabled, then a proof should be stored in pr.
-           
-           If (literal_antecedents AND trail_antecedents AND new_antecedents IMPLIES consequent) is a valid formula,
-           then the propagator may leave pr == 0. In this case, the propagator is assuming
-           that it is trivial to check the valid formula.
-
-           The new_antecedents must be false in the partial model induced by the current trail.
-           For each new_antecedents[i] we have that decisions[i] is a trail that makes new_antecedents[i] false.
-           That is, the trail stack is of the form
-           
-                   M decisions[i] ...
-           
-           new_antecedents[i] evaluates to false in 
-           
-                   M decisions[i]
-
-           but is undefined in
-           
-                   M
-        */
-        virtual void explain(propagation & consequent, 
-                             literal_vector & literal_antecedents, 
-                             trail_vector & trail_antecedents, 
-                             expr_ref_vector & new_antecedents, 
-                             model_decision_vector & decisions,
-                             proof_ref & pr) = 0;
-        
-        /**
-           \brief This method in only invoked when:
-               - Proof generation is enabled.
-               - consequent.lit() == null_literal 
-               - consequent is not propagated_eq nor propagated_diseq 
-
-           Example: a module that perform bound propagation but does not want to create
-           a literal for each propagated bound.
-        */
-        virtual expr * consequent_as_expr(propagation & consequent, expr_manager & m);
-    };
 
     /**
        \brief Any fact propagated based on the set of clauses
        and facts already in the trail.
        
-       The propagator must be capable of explaining this fact.
-       In most cases the propagator is a plugin.
+       The propagation object must be capable of explaining this fact.
     */
     class propagation : public trail {
-        propagator & m_propagator;
     public:
-        propagation(propagator & p):m_propagator(p) {}
-        propagator & get_propagator() const { return m_propagator; }
+        /**
+           \brief Store into literal_antecedents, trail_antecedents
+           and new_antecedents an explanation for this propagation.
+
+           Let consequent be this propagation. Then
+
+           literal_antecedents AND trail_antecedents AND new_antecedents IMPLIES consequent 
+           
+           If proof generation is enabled, then a proof should be stored in pr.
+           
+           If (literal_antecedents AND trail_antecedents AND new_antecedents IMPLIES consequent) is a valid formula,
+           then we may leave pr == 0. In this case, we are assuming that it is trivial to check the valid formula.
+
+           The new_antecedents must be false in the partial model induced by the current trail.
+           For each new_antecedents[i] we have that decisions[i] is a trail that makes new_antecedents[i] false.
+           That is, the trail stack is of the form
+                   M decisions[i] ...
+           new_antecedents[i] evaluates to false in 
+                   M decisions[i]
+           but is undefined in
+                   M
+                   
+                   
+        */
+        virtual void explain(literal_vector &        literal_antecedents, 
+                             trail_vector &          trail_antecedents, 
+                             expr_ref_vector &       new_antecedents, 
+                             model_decision_vector & decisions,
+                             proof_ref &             pr) = 0;
+
+
+        /**
+           \brief This method in only invoked when:
+               - Proof generation is enabled.
+               - lit() == null_literal 
+               - propagation is not propagated_eq nor propagated_diseq 
+
+           Example: a module that performs bound propagation but does not want to create
+           a literal for each propagated bound.
+        */
+        virtual expr * as_expr(expr_manager & m);
     };
     
     /**
@@ -173,7 +154,7 @@ namespace mcsat {
     class propagated_literal : public propagation {
         literal m_literal;
     public:
-        propagated_literal(literal const & l, propagator & p):propagation(p), m_literal(l) {}
+        propagated_literal(literal const & l):m_literal(l) {}
 
         virtual literal lit() const;
 
@@ -191,7 +172,7 @@ namespace mcsat {
         node m_lhs;
         node m_rhs;
     public:
-        propagated_eq(node lhs, node rhs, propagator & p):propagation(p), m_lhs(lhs), m_rhs(rhs) {}
+        propagated_eq(node lhs, node rhs):m_lhs(lhs), m_rhs(rhs) {}
 
         node lhs() const { return m_lhs; }
         node rhs() const { return m_rhs; }
@@ -210,7 +191,7 @@ namespace mcsat {
         node m_lhs;
         node m_rhs;
     public:
-        propagated_diseq(node lhs, node rhs, propagator & p):propagation(p), m_lhs(lhs), m_rhs(rhs) {}
+        propagated_diseq(node lhs, node rhs):m_lhs(lhs), m_rhs(rhs) {}
 
         node lhs() const { return m_lhs; }
         node rhs() const { return m_rhs; }

@@ -36,7 +36,7 @@ namespace mcsat {
         return null_literal;
     }
 
-    expr * propagator::consequent_as_expr(propagation & consequent, expr_manager & m) {
+    expr * propagation::as_expr(expr_manager & m) {
         return 0;
     }
     
