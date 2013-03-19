@@ -1012,7 +1012,7 @@ enum basic_op_kind {
     PR_DISTRIBUTIVITY, PR_AND_ELIM, PR_NOT_OR_ELIM, PR_REWRITE, PR_REWRITE_STAR, PR_PULL_QUANT, 
     PR_PULL_QUANT_STAR, PR_PUSH_QUANT, PR_ELIM_UNUSED_VARS, PR_DER, PR_QUANT_INST,
     
-    PR_HYPOTHESIS, PR_LEMMA, PR_UNIT_RESOLUTION, PR_IFF_TRUE, PR_IFF_FALSE, PR_COMMUTATIVITY, PR_DEF_AXIOM,
+    PR_HYPOTHESIS, PR_LEMMA, PR_UNIT_RESOLUTION, PR_RESOLUTION, PR_IFF_TRUE, PR_IFF_FALSE, PR_COMMUTATIVITY, PR_DEF_AXIOM,
 
     PR_DEF_INTRO, PR_APPLY_DEF, PR_IFF_OEQ, PR_NNF_POS, PR_NNF_NEG, PR_NNF_STAR, PR_SKOLEMIZE, PR_CNF_STAR, 
     PR_MODUS_PONENS_OEQ, PR_TH_LEMMA, PR_HYPER_RESOLVE, LAST_BASIC_PR
@@ -1065,6 +1065,7 @@ protected:
     func_decl * m_def_axiom_decl;
     func_decl * m_lemma_decl;
     ptr_vector<func_decl> m_unit_resolution_decls;
+    func_decl * m_resolution_decl;
 
     func_decl * m_def_intro_decl;    
     func_decl * m_iff_oeq_decl;
@@ -2076,6 +2077,7 @@ public:
     bool is_rewrite(expr const * e) const { return is_app_of(e, m_basic_family_id, PR_REWRITE); }
     bool is_rewrite_star(expr const * e) const { return is_app_of(e, m_basic_family_id, PR_REWRITE_STAR); }
     bool is_unit_resolution(expr const * e) const { return is_app_of(e, m_basic_family_id, PR_UNIT_RESOLUTION); }
+    bool is_resolution(expr const * e) const { return is_app_of(e, m_basic_family_id, PR_RESOLUTION); }
     bool is_lemma(expr const * e) const { return is_app_of(e, m_basic_family_id, PR_LEMMA); }
     bool is_quant_inst(expr const* e, expr*& not_q_or_i, ptr_vector<expr>& binding) const;
     bool is_rewrite(expr const* e, expr*& r1, expr*& r2) const;
@@ -2140,6 +2142,7 @@ public:
     proof * mk_def_axiom(expr * ax);
     proof * mk_unit_resolution(unsigned num_proofs, proof * const * proofs); 
     proof * mk_unit_resolution(unsigned num_proofs, proof * const * proofs, expr * new_fact);
+    proof * mk_resolution(proof * pr1, proof * pr2);
     proof * mk_hypothesis(expr * h);
     proof * mk_lemma(proof * p, expr * lemma);
 

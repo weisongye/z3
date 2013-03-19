@@ -604,6 +604,15 @@ typedef enum
           [unit-resolution T1 ... T(n+1)]: (or l_1' ... l_m')
           }
 
+   - Z3_OP_PR_RESOLUTION: Binary resolution
+       \nicebox{
+          T1:      (or l_1 ... l_n   l)
+          T2:      (or l_1' ... l_m' (not l))
+          [unit-resolution T1 T2]: (or l_1 ... l_n l_1' ... l_m')
+          }
+       l and (not l) are not necessarily the last arguments of T1 and T2.
+       Repeated literals are removed.
+
    - Z3_OP_PR_IFF_TRUE: 
       \nicebox{
        T1: p
@@ -1020,6 +1029,7 @@ typedef enum {
     Z3_OP_PR_HYPOTHESIS, 
     Z3_OP_PR_LEMMA, 
     Z3_OP_PR_UNIT_RESOLUTION, 
+    Z3_OP_PR_RESOLUTION, 
     Z3_OP_PR_IFF_TRUE, 
     Z3_OP_PR_IFF_FALSE, 
     Z3_OP_PR_COMMUTATIVITY, 

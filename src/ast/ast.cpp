@@ -668,6 +668,7 @@ basic_decl_plugin::basic_decl_plugin():
     m_commutativity_decl(0),
     m_def_axiom_decl(0),
     m_lemma_decl(0),
+    m_resolution_decl(0),
 
     m_def_intro_decl(0),
     m_iff_oeq_decl(0),
@@ -829,6 +830,7 @@ func_decl * basic_decl_plugin::mk_proof_decl(basic_op_kind k, unsigned num_paren
     case PR_HYPOTHESIS:                   return mk_proof_decl("hypothesis", k, 0, m_hypothesis_decl);
     case PR_LEMMA:                        return mk_proof_decl("lemma", k, 1, m_lemma_decl);
     case PR_UNIT_RESOLUTION:              return mk_proof_decl("unit-resolution", k, num_parents, m_unit_resolution_decls);
+    case PR_RESOLUTION:                   return mk_proof_decl("resolution", k, 2, m_resolution_decl);
     case PR_IFF_TRUE:                     return mk_proof_decl("iff-true", k, 1, m_iff_true_decl);
     case PR_IFF_FALSE:                    return mk_proof_decl("iff-false", k, 1, m_iff_false_decl);
     case PR_COMMUTATIVITY:                return mk_proof_decl("commutativity", k, 0, m_commutativity_decl);
@@ -957,6 +959,7 @@ void basic_decl_plugin::finalize() {
     DEC_REF(m_def_axiom_decl);
     DEC_REF(m_lemma_decl);
     DEC_ARRAY_REF(m_unit_resolution_decls);
+    DEC_REF(m_resolution_decl);
 
     DEC_REF(m_def_intro_decl);
     DEC_REF(m_iff_oeq_decl);
@@ -2772,17 +2775,7 @@ proof * ast_manager::mk_unit_resolution(unsigned num_proofs, proof * const * pro
                 SASSERT(found.get(i, false));
             }
         });
-        switch (new_lits.size()) {
-        case 0:
-            fact = mk_false();
-            break;
-        case 1:
-            fact = new_lits[0];
-            break;
-        default:
-            fact = mk_or(new_lits.size(), new_lits.c_ptr());
-            break;
-        }
+        fact = ::mk_or(*this, new_lits.size(), new_lits.c_ptr());
     }
     args.push_back(fact);
     proof * pr = mk_app(m_basic_family_id, PR_UNIT_RESOLUTION, args.size(), args.c_ptr());
@@ -2809,10 +2802,10 @@ proof * ast_manager::mk_unit_resolution(unsigned num_proofs, proof * const * pro
         SASSERT(is_or(f1));
         app * cls            = to_app(f1);
         unsigned cls_sz      = cls->get_num_args();
-		CTRACE("cunit_bug", !(num_proofs == cls_sz || (num_proofs == cls_sz + 1 && is_false(new_fact))),
-          for (unsigned i = 0; i < num_proofs; i++) tout << mk_pp(get_fact(proofs[i]), *this) << "\n";
-          tout << "===>\n";
-          tout << mk_pp(new_fact, *this) << "\n";);
+        CTRACE("cunit_bug", !(num_proofs == cls_sz || (num_proofs == cls_sz + 1 && is_false(new_fact))),
+               for (unsigned i = 0; i < num_proofs; i++) tout << mk_pp(get_fact(proofs[i]), *this) << "\n";
+               tout << "===>\n";
+               tout << mk_pp(new_fact, *this) << "\n";);
         SASSERT(num_proofs == cls_sz || (num_proofs == cls_sz + 1 && is_false(new_fact)));
         unsigned num_matches = 0;
         for (unsigned i = 0; i < cls_sz; i++) {
@@ -2836,6 +2829,90 @@ proof * ast_manager::mk_unit_resolution(unsigned num_proofs, proof * const * pro
     proof * pr = mk_app(m_basic_family_id, PR_UNIT_RESOLUTION, args.size(), args.c_ptr());
     TRACE("unit_resolution", tout << "unit_resolution using fact\n" << mk_ll_pp(pr, *this););
     return pr;
+}
+
+static void get_clause_literals(ast_manager & m, expr * cls, unsigned & num_lits, expr * const * & lits) {
+    if (m.is_or(cls)) {
+        num_lits = to_app(cls)->get_num_args();
+        lits     = to_app(cls)->get_args();
+    }
+    else {
+        num_lits = 1;
+        lits     = &cls;
+    } 
+        
+}
+
+proof * ast_manager::mk_resolution(proof * pr1, proof * pr2) {
+    if (m_proof_mode == PGM_DISABLED) 
+        return m_undef_proof;
+    expr * f1 = get_fact(pr1);
+    expr * f2 = get_fact(pr2);
+    expr_fast_mark1 neg_lits;
+    expr_fast_mark2 pos_lits;
+    expr * const * f1_lits;
+    unsigned       f1_sz;
+    get_clause_literals(*this, f1, f1_sz, f1_lits);
+    expr * const * f2_lits;
+    unsigned       f2_sz;
+    get_clause_literals(*this, f2, f2_sz, f2_lits);
+    for (unsigned i = 0; i < f1_sz; i++) {
+        expr * arg = f1_lits[i];
+        if (is_not(arg)) {
+            expr * atom = to_app(arg)->get_arg(0);
+            SASSERT(!pos_lits.is_marked(atom));
+            neg_lits.mark(atom);
+        }
+        else {
+            SASSERT(!neg_lits.is_marked(arg));
+            pos_lits.mark(arg);
+        }
+    }
+    expr * l = 0; // literal that is being resolved
+    for (unsigned i = 0; i < f2_sz; i++) {
+        expr * arg = f2_lits[i];
+        if (is_not(arg)) {
+            expr * atom = to_app(arg)->get_arg(0);
+            if (pos_lits.is_marked(atom)) {
+                l = atom;
+                break;
+            }
+        }
+        else {
+            if (neg_lits.is_marked(arg)) {
+                l = arg;
+                break;
+            }
+        }
+    }
+    SASSERT(l);
+    pos_lits.reset();
+    neg_lits.reset();
+    ptr_buffer<expr> new_fact;
+    for (unsigned k = 0; k < 2; k++) {
+        expr * const * f_lits = k == 0 ? f1_lits : f2_lits;
+        unsigned       f_sz   = k == 0 ? f1_sz   : f2_sz;
+        for (unsigned i = 0; i < f_sz; i++) {
+            expr * arg = f_lits[i];
+            if (is_not(arg)) {
+                expr * atom = to_app(arg)->get_arg(0);
+                if (atom == l || neg_lits.is_marked(atom))
+                    continue;
+                SASSERT(!pos_lits.is_marked(atom));
+                neg_lits.mark(atom);
+                new_fact.push_back(arg);
+            }
+            else {
+                if (arg == l || pos_lits.is_marked(arg))
+                    continue;
+                SASSERT(!neg_lits.is_marked(arg));
+                pos_lits.mark(arg);
+                new_fact.push_back(arg);
+            }
+        }
+    }
+    expr * args[3] = { f1, f2, ::mk_or(*this, new_fact.size(), new_fact.c_ptr()) };
+    return mk_app(m_basic_family_id, PR_RESOLUTION, 3, args);
 }
 
 proof * ast_manager::mk_hypothesis(expr * h) {

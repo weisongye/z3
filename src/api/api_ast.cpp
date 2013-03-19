@@ -953,6 +953,7 @@ extern "C" {
             case PR_HYPOTHESIS: return Z3_OP_PR_HYPOTHESIS; 
             case PR_LEMMA: return Z3_OP_PR_LEMMA; 
             case PR_UNIT_RESOLUTION: return Z3_OP_PR_UNIT_RESOLUTION; 
+            case PR_RESOLUTION: return Z3_OP_PR_RESOLUTION; 
             case PR_IFF_TRUE: return Z3_OP_PR_IFF_TRUE; 
             case PR_IFF_FALSE: return Z3_OP_PR_IFF_FALSE; 
             case PR_COMMUTATIVITY: return Z3_OP_PR_COMMUTATIVITY; 
