@@ -26,10 +26,11 @@ Revision History:
 #include"ast.h"
 #include"mcsat_literal.h"
 #include"mcsat_value.h"
+#include"mcsat_expr_manager.h"
 #include"region.h"
 
 namespace mcsat {
-    class expr_manager;
+    class to_expr_functor;
 
     typedef unsigned trail_kind;
 
@@ -82,6 +83,12 @@ namespace mcsat {
         */
         virtual literal lit() const;
 
+        /**
+           \brief This method in only invoked when proof generation is enabled.
+           The default implementation uses lit(), and assumes lit() != null_literal
+        */
+        virtual expr * as_expr(ast_manager & m, to_expr_functor const & f);
+
         virtual trail_kind kind() const = 0;
     };
 
@@ -129,23 +136,21 @@ namespace mcsat {
                    
                    
         */
-        virtual void explain(literal_vector &        literal_antecedents, 
+        virtual void explain(expr_manager &          m,
+                             literal_vector &        literal_antecedents, 
                              trail_vector &          trail_antecedents, 
-                             expr_ref_vector &       new_antecedents, 
+                             ts_expr_ref_vector &    new_antecedents, 
                              model_decision_vector & decisions,
-                             proof_ref &             pr) = 0;
-
-
+                             ts_proof_ref &          pr) = 0;
+        
         /**
-           \brief This method in only invoked when:
-               - Proof generation is enabled.
-               - lit() == null_literal 
-               - propagation is not propagated_eq nor propagated_diseq 
+           \brief This method is only invoked when:
+               - Proof generation is enabled, and pr was set to 0 by explain.
 
-           Example: a module that performs bound propagation but does not want to create
-           a literal for each propagated bound.
+           The family_id is used to create a theory lemma proof using,
+           the consequence produced by the as_expr method, the literal_antecedents, trail_antecedents and new_antecedents returned by explain.
         */
-        virtual expr * as_expr(expr_manager & m);
+        virtual family_id get_family_id(ast_manager & m) const;
     };
     
     /**
@@ -177,6 +182,8 @@ namespace mcsat {
         node lhs() const { return m_lhs; }
         node rhs() const { return m_rhs; }
 
+        virtual expr * as_expr(ast_manager & m, to_expr_functor const & f);
+
         virtual trail_kind kind() const;
     }; 
 
@@ -195,6 +202,8 @@ namespace mcsat {
 
         node lhs() const { return m_lhs; }
         node rhs() const { return m_rhs; }
+
+        virtual expr * as_expr(ast_manager & m, to_expr_functor const & f);
 
         virtual trail_kind kind() const;
     }; 

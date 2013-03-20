@@ -175,6 +175,14 @@ expr * mk_or(ast_manager & m, unsigned num_args, expr * const * args) {
         return m.mk_or(num_args, args);
 }
 
+expr * mk_not(ast_manager & m, expr * arg) {
+    expr * atom;
+    if (m.is_not(arg, atom))
+        return atom;
+    else
+        return m.mk_not(arg);
+}
+
 expr * expand_distinct(ast_manager & m, unsigned num_args, expr * const * args) {
     expr_ref_buffer new_diseqs(m);
     for (unsigned i = 0; i < num_args; i++) {

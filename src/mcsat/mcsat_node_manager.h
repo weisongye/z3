@@ -66,7 +66,13 @@ namespace mcsat {
         */
         expr * to_expr(node n) const { return m_node2expr[n.index()]; }
     };
-    
+
+    class to_expr_functor {
+        node_manager const & m;
+    public:
+        to_expr_functor(node_manager const & _m):m(_m) {}
+        expr * operator()(node n) const { return m.to_expr(n); }
+    };
 };
 
 #endif

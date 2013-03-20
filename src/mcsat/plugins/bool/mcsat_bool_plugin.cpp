@@ -39,20 +39,30 @@ namespace mcsat {
             m_clause(0) {
         }
 
-        virtual void explain(literal_vector & literal_antecedents, 
+        virtual void explain(expr_manager & m,
+                             literal_vector & literal_antecedents, 
                              trail_vector & trail_antecedents, 
-                             expr_ref_vector & new_antecedents, 
+                             ts_expr_ref_vector & new_antecedents, 
                              model_decision_vector & decisions,
-                             proof_ref & pr) {
+                             ts_proof_ref & pr) {
             if (m_clause) {
                 clause const & c = *m_clause;
                 SASSERT(c[0] == lit());
                 unsigned sz = c.size();
                 for (unsigned i = 1; i < sz; i++) {
-                    literal_antecedents.push_back(c[i]);
+                    literal_antecedents.push_back(~c[i]);
                 }
+                pr = m_clause->pr();
+            }
+            else {
+                pr = 0;
             }
         }
+
+        virtual family_id get_family_id(expr_manager & m) const {
+            return m.get_basic_family_id();
+        }
+
     };
 
     class bool_plugin : public plugin {

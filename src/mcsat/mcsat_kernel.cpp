@@ -25,6 +25,7 @@ Revision History:
 #include"mcsat_clause.h"
 #include"mcsat_exception.h"
 #include"mcsat_plugin.h"
+#include"ast_util.h"
 
 namespace mcsat {
 
@@ -74,7 +75,15 @@ namespace mcsat {
         // auxiliary fields
         ptr_vector<expr>          m_saved_atoms;
         clause_vector             m_saved_clauses;
-
+        // auxiliary fields for conflict resolution
+        literal_vector            m_literal_antecedents;
+        trail_vector              m_trail_antecedents;
+        ts_expr_ref_vector        m_new_antecedents;
+        model_decision_vector     m_decisions;
+        
+        literal_vector            m_lemma_literals;
+        ts_expr_ref_vector        m_lemma_new_literals;
+        
 
         volatile bool             m_cancel;
 
@@ -224,7 +233,9 @@ namespace mcsat {
             m_expr_manager(m),
             m_attribute_manager(m_node_manager),
             m_allocator("mcsat_kernel"),
-            m_butil(m.get_basic_family_id()) {
+            m_butil(m.get_basic_family_id()),
+            m_new_antecedents(m_expr_manager),
+            m_lemma_new_literals(m_expr_manager) {
             m_proofs_enabled = proofs_enabled;
             m_search_lvl     = 0;
             m_conflict_l     = 0;
@@ -239,6 +250,14 @@ namespace mcsat {
         // Return true if the kernel is "fresh" and assertions were not added yet.
         bool is_fresh() const {
             return m_fresh;
+        }
+
+        expr * lit2expr(literal l) {
+            expr * atom = m_node_manager.to_expr(l.var());
+            if (l.sign())
+                return m_expr_manager.mk_app(m_expr_manager.get_basic_family_id(), OP_NOT, atom);
+            else
+                return atom;
         }
 
         void add_plugin(plugin * p) {
@@ -649,11 +668,89 @@ namespace mcsat {
             propagate();
         }
 
+        struct em_functor : public expr_manager::functor {
+            imp & m_kernel;
+
+            em_functor(imp & k):m_kernel(k) {}
+            
+            expr * lit2expr(ast_manager & m, literal l) const {
+                expr * atom = m_kernel.m_node_manager.to_expr(l.var());
+                if (l.sign())
+                    return m.mk_not(atom);
+                else
+                    return atom;
+            }
+            
+            expr * consequent2expr(ast_manager & m, trail * t) const {
+                literal l = t->lit();
+                if (l == null_literal) {
+                    expr * c = t->as_expr(m, to_expr_functor(m_kernel.m_node_manager));
+                    SASSERT(c);
+                    return c;
+                }
+                else {
+                    return lit2expr(m, l);
+                }
+            }
+        };
+
+        // Create a theory lemma for a propagation.
+        // The functor assumes that m_literal_antecedents, m_trail_antecedents, and m_new_antecedents contain the
+        // antecedents for the consequent of the propagation.
+        struct propagation2th_lemma : public em_functor {
+            propagation *  m_propagation;
+            ts_proof_ref & m_pr;
+
+            propagation2th_lemma(imp & k, propagation * p, ts_proof_ref & pr):em_functor(k), m_propagation(p), m_pr(pr) {}
+            
+            virtual void operator()(ast_manager & m, expr_manager::store_expr_functor & to_save) {
+                expr_ref_buffer pr_lits(m);
+                pr_lits.push_back(consequent2expr(m, m_propagation));
+                for (unsigned i = 0; i < m_kernel.m_literal_antecedents.size(); i++) {
+                    literal l = m_kernel.m_literal_antecedents[i];
+                    pr_lits.push_back(lit2expr(m, ~l));
+                }
+                expr_ref aux(m);
+                for (unsigned i = 0; i < m_kernel.m_trail_antecedents.size(); i++) {
+                    trail * t = m_kernel.m_trail_antecedents[i];
+                    aux = consequent2expr(m, t);
+                    pr_lits.push_back(mk_not(m, aux));
+                }
+                for (unsigned i = 0; i < m_kernel.m_new_antecedents.size(); i++) {
+                    expr * l = m_kernel.m_new_antecedents.get(i);
+                    pr_lits.push_back(mk_not(m, l));
+                }
+                m_pr = m.mk_th_lemma(m_propagation->get_family_id(m), mk_or(m, pr_lits.size(), pr_lits.c_ptr()), 0, 0);
+            }
+
+            virtual void set_cancel(bool f) {}
+        };
+
+
+        void process_antecedent(propagation * p, ts_proof_ref & pr) {
+            m_literal_antecedents.reset();
+            m_trail_antecedents.reset();
+            m_new_antecedents.reset();
+            m_decisions.reset();
+
+            p->explain(m_expr_manager, m_literal_antecedents, m_trail_antecedents, m_new_antecedents, m_decisions, pr);
+            if (m_proofs_enabled && !pr) {
+                propagation2th_lemma proc(*this, p, pr);
+                m_expr_manager.apply(proc);
+            }
+            // TODO
+        }
+
+
         // 
         bool resolve() {
             SASSERT(inconsistent());
+            SASSERT(m_conflict_l);
+            SASSERT(m_conflict_not_l);
+            
             unsigned i = m_trail_stack.size();
             SASSERT(i > 0);
+
             
             return false;
         }

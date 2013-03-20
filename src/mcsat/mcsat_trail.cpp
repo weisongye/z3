@@ -21,9 +21,9 @@ Revision History:
 
 */
 #include"mcsat_trail.h"
+#include"mcsat_node_manager.h"
 
 namespace mcsat {
-
     bool trail::is_decision() const {
         return false;
     }
@@ -36,8 +36,19 @@ namespace mcsat {
         return null_literal;
     }
 
-    expr * propagation::as_expr(expr_manager & m) {
-        return 0;
+    expr * trail::as_expr(ast_manager & m, to_expr_functor const & f) {
+        literal l = lit();
+        SASSERT(l != null_literal);
+        expr * atom = f(l.var());
+        if (l.sign())
+            return m.mk_not(atom);
+        else
+            return atom;
+    }
+
+    family_id propagation::get_family_id(ast_manager & m) const {
+        UNREACHABLE();
+        return null_family_id;
     }
     
     trail_kind propagated_literal::kind() const {
@@ -52,8 +63,16 @@ namespace mcsat {
         return k_propagated_eq;
     }
 
+    expr * propagated_eq::as_expr(ast_manager & m, to_expr_functor const & f) {
+        return m.mk_eq(f(m_lhs), f(m_rhs));
+    }
+
     trail_kind propagated_diseq::kind() const {
         return k_propagated_diseq;
+    }
+
+    expr * propagated_diseq::as_expr(ast_manager & m, to_expr_functor const & f) {
+        return m.mk_not(m.mk_eq(f(m_lhs), f(m_rhs)));
     }
 
     bool decision::is_decision() const {

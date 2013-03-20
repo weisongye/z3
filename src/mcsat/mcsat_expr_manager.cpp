@@ -75,6 +75,10 @@ namespace mcsat {
         }
     }
 
+    family_id expr_manager::get_basic_family_id() const {
+        return m().get_basic_family_id();
+    }
+
     family_id expr_manager::get_family_id(symbol const & s) const {
         family_id fid;
         #pragma omp critical (mcsat_expr_manager)
@@ -111,19 +115,17 @@ namespace mcsat {
         }
     }
 
-    void expr_manager::inc_ref(ptr_vector<expr> const & ns) {
+    void expr_manager::inc_ref(unsigned sz, expr * const * ns) {
         #pragma omp critical (mcsat_expr_manager)
         {
-            unsigned sz = ns.size();
             for (unsigned i = 0; i < sz; i++)
                 m().inc_ref(ns[i]);
         }
     }
     
-    void expr_manager::dec_ref(ptr_vector<expr> const & ns) {
+    void expr_manager::dec_ref(unsigned sz, expr * const * ns) {
         #pragma omp critical (mcsat_expr_manager)
         {
-            unsigned sz = ns.size();
             for (unsigned i = 0; i < sz; i++)
                 m().dec_ref(ns[i]);
         }
