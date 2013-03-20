@@ -78,11 +78,11 @@ namespace mcsat {
         // auxiliary fields for conflict resolution
         literal_vector            m_literal_antecedents;
         trail_vector              m_trail_antecedents;
-        ts_expr_ref_vector        m_new_antecedents;
+        ptr_vector<expr>          m_new_antecedents;
         model_decision_vector     m_decisions;
         
         literal_vector            m_lemma_literals;
-        ts_expr_ref_vector        m_lemma_new_literals;
+        ptr_vector<expr>          m_lemma_new_literals;
         
 
         volatile bool             m_cancel;
@@ -233,9 +233,7 @@ namespace mcsat {
             m_expr_manager(m),
             m_attribute_manager(m_node_manager),
             m_allocator("mcsat_kernel"),
-            m_butil(m.get_basic_family_id()),
-            m_new_antecedents(m_expr_manager),
-            m_lemma_new_literals(m_expr_manager) {
+            m_butil(m.get_basic_family_id()) {
             m_proofs_enabled = proofs_enabled;
             m_search_lvl     = 0;
             m_conflict_l     = 0;
@@ -699,9 +697,9 @@ namespace mcsat {
         // antecedents for the consequent of the propagation.
         struct propagation2th_lemma : public em_functor {
             propagation *  m_propagation;
-            ts_proof_ref & m_pr;
+            proof * &      m_pr;
 
-            propagation2th_lemma(imp & k, propagation * p, ts_proof_ref & pr):em_functor(k), m_propagation(p), m_pr(pr) {}
+            propagation2th_lemma(imp & k, propagation * p, proof * & pr):em_functor(k), m_propagation(p), m_pr(pr) {}
             
             virtual void operator()(ast_manager & m, expr_manager::store_expr_functor & to_save) {
                 expr_ref_buffer pr_lits(m);
@@ -721,13 +719,14 @@ namespace mcsat {
                     pr_lits.push_back(mk_not(m, l));
                 }
                 m_pr = m.mk_th_lemma(m_propagation->get_family_id(m), mk_or(m, pr_lits.size(), pr_lits.c_ptr()), 0, 0);
+                to_save(m_pr);
             }
 
             virtual void set_cancel(bool f) {}
         };
 
 
-        void process_antecedent(propagation * p, ts_proof_ref & pr) {
+        void process_antecedent(propagation * p, proof * & pr) {
             m_literal_antecedents.reset();
             m_trail_antecedents.reset();
             m_new_antecedents.reset();
@@ -738,6 +737,7 @@ namespace mcsat {
                 propagation2th_lemma proc(*this, p, pr);
                 m_expr_manager.apply(proc);
             }
+            
             // TODO
         }
 

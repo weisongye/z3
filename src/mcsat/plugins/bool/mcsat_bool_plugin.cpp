@@ -39,12 +39,12 @@ namespace mcsat {
             m_clause(0) {
         }
 
-        virtual void explain(expr_manager & m,
-                             literal_vector & literal_antecedents, 
-                             trail_vector & trail_antecedents, 
-                             ts_expr_ref_vector & new_antecedents, 
+        virtual void explain(expr_manager &          m,
+                             literal_vector &        literal_antecedents, 
+                             trail_vector &          trail_antecedents, 
+                             ptr_vector<expr> &      new_antecedents, 
                              model_decision_vector & decisions,
-                             ts_proof_ref & pr) {
+                             proof * &               pr) {
             if (m_clause) {
                 clause const & c = *m_clause;
                 SASSERT(c[0] == lit());

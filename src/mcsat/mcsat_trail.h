@@ -139,9 +139,9 @@ namespace mcsat {
         virtual void explain(expr_manager &          m,
                              literal_vector &        literal_antecedents, 
                              trail_vector &          trail_antecedents, 
-                             ts_expr_ref_vector &    new_antecedents, 
+                             ptr_vector<expr> &      new_antecedents, 
                              model_decision_vector & decisions,
-                             ts_proof_ref &          pr) = 0;
+                             proof * &               pr) = 0;
         
         /**
            \brief This method is only invoked when:
