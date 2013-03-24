@@ -81,6 +81,7 @@ namespace mcsat {
         ptr_vector<expr>          m_new_antecedents;
         model_decision_vector     m_decisions;
         
+        trail_vector              m_todo_literals;
         literal_vector            m_lemma_literals;
         ptr_vector<expr>          m_lemma_new_literals;
         
@@ -692,6 +693,16 @@ namespace mcsat {
             }
         };
 
+        // top is a position in the trail stack.
+        // keep decrementing top until m_trail_stack[top]->scope_lvl <= lvl
+        void move_top_to_lvl(unsigned & top, unsigned lvl) {
+            while (true) {
+                if (m_trail_stack[top]->scope_lvl() <= lvl)
+                    return;
+                top--;
+            }
+        }
+
         // Create a theory lemma for a propagation.
         // The functor assumes that m_literal_antecedents, m_trail_antecedents, and m_new_antecedents contain the
         // antecedents for the consequent of the propagation.
@@ -725,8 +736,31 @@ namespace mcsat {
             virtual void set_cancel(bool f) {}
         };
 
+        void fuip_process_trail_antecedent(trail * t, unsigned conflict_lvl, unsigned & num_marks) {
+            if (t->is_marked())
+                return;
+            unsigned lvl = t->scope_lvl();
+            if (lvl == conflict_lvl) {
+                t->mark(true);
+                num_marks++;
+            }
+            else if (lvl == base_lvl() && !m_proofs_enabled) {
+                // ignore
+                return;
+            }
+            else {
+                m_todo_literals.push_back(t);
+                t->mark(true);
+            }
+        }
 
-        void process_antecedent(propagation * p, proof * & pr) {
+        void updt_max_md_lvl(trail * t, unsigned & max_md_lvl) {
+            unsigned lvl     = t->scope_lvl();
+            if (lvl > max_md_lvl)
+                max_md_lvl = lvl;
+        }
+        
+        void fuip_process_antecedents(propagation * p, proof * & pr, unsigned conflict_lvl,unsigned & num_marks, unsigned & max_md_lvl) {
             m_literal_antecedents.reset();
             m_trail_antecedents.reset();
             m_new_antecedents.reset();
@@ -737,8 +771,67 @@ namespace mcsat {
                 propagation2th_lemma proc(*this, p, pr);
                 m_expr_manager.apply(proc);
             }
+
+            unsigned sz = m_literal_antecedents.size();
+            for (unsigned i = 0; i < sz; i++) {
+                literal l = m_literal_antecedents[i];
+                fuip_process_trail_antecedent(m_node2justification[l.var()], conflict_lvl, num_marks);
+            }
+
+            sz = m_trail_antecedents.size();
+            for (unsigned i = 0; i < sz; i++) {
+                fuip_process_trail_antecedent(m_trail_antecedents[i], conflict_lvl, num_marks);
+            }
+
+            sz = m_new_antecedents.size();
+            SASSERT(sz == m_decisions.size());
+            for (unsigned i = 0; i < sz; i++) {
+                m_lemma_new_literals.push_back(m_new_antecedents[i]);
+                updt_max_md_lvl(m_decisions[i], max_md_lvl);
+            }
+        }
+
+        unsigned max_lvl(unsigned sz, trail * const * ts) {
+            unsigned max = 0;
+            for (unsigned i = 0; i < sz; i++) {
+                unsigned lvl = ts->scope_lvl();
+                if (lvl > max)
+                    max = lvl;
+            }
+            return max;
+        }
+
+        void move_lits_to_lemma(unsigned & max_md_lvl) {
+            unsigned sz = m_lemma_todo.size();
+            unsigned j  = 0;
+            for (unsigned i = 0; i < sz; i++) {
+                trail * t = m_lemma_todo.size();
+                SASSERT(t->is_marked());
+                literal l = t->lit();
+                if (l != null_literal) {
+                    t->mark(false);
+                    m_lemma_new_literals.push_back(l);
+                }
+                else if (t->is_decision()) {
+                    // t is a model decision
+                    t->mark(false);
+                    unsigned lvl = t->scope_lvl();
+                    if (lvl > max_md_lvl)
+                        max_md_lvl = lvl;
+                }
+                else {
+                    m_lemma_todo[j] = t;
+                    j++;
+                }
+            }
+            m_lemma_todo.shrink(j);
+        }
+
+        void process_lemma_todo() {
+            unsigned sz      = m_lemma_todo.size();
+            unsigned max_lvl = 0;
+            for (unsigned i = 0; i < 
             
-            // TODO
         }
 
 
