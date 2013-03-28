@@ -775,7 +775,7 @@ namespace mcsat {
             unsigned sz = m_literal_antecedents.size();
             for (unsigned i = 0; i < sz; i++) {
                 literal l = m_literal_antecedents[i];
-                fuip_process_trail_antecedent(m_node2justification[l.var()], conflict_lvl, num_marks);
+                fuip_process_trail_antecedent(m_node2justification[l.var().index()], conflict_lvl, num_marks);
             }
 
             sz = m_trail_antecedents.size();
@@ -794,7 +794,7 @@ namespace mcsat {
         unsigned max_lvl(unsigned sz, trail * const * ts) {
             unsigned max = 0;
             for (unsigned i = 0; i < sz; i++) {
-                unsigned lvl = ts->scope_lvl();
+                unsigned lvl = ts[i]->scope_lvl();
                 if (lvl > max)
                     max = lvl;
             }
@@ -802,15 +802,15 @@ namespace mcsat {
         }
 
         void move_lits_to_lemma(unsigned & max_md_lvl) {
-            unsigned sz = m_lemma_todo.size();
+            unsigned sz = m_todo_literals.size();
             unsigned j  = 0;
             for (unsigned i = 0; i < sz; i++) {
-                trail * t = m_lemma_todo.size();
+                trail * t = m_todo_literals[i];
                 SASSERT(t->is_marked());
                 literal l = t->lit();
                 if (l != null_literal) {
                     t->mark(false);
-                    m_lemma_new_literals.push_back(l);
+                    m_lemma_literals.push_back(l);
                 }
                 else if (t->is_decision()) {
                     // t is a model decision
@@ -820,18 +820,16 @@ namespace mcsat {
                         max_md_lvl = lvl;
                 }
                 else {
-                    m_lemma_todo[j] = t;
+                    m_todo_literals[j] = t;
                     j++;
                 }
             }
-            m_lemma_todo.shrink(j);
+            m_todo_literals.shrink(j);
         }
 
-        void process_lemma_todo() {
-            unsigned sz      = m_lemma_todo.size();
-            unsigned max_lvl = 0;
-            for (unsigned i = 0; i < 
-            
+        void process_todo_literals() {
+            // unsigned sz      = m_todo_literals.size();
+            // unsigned max_lvl = 0;
         }
 
 
