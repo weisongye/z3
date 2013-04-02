@@ -253,7 +253,7 @@ static void saturate_basis(hilbert_basis& hb) {
     case l_true:  
         std::cout << "sat\n"; 
         hb.display(std::cout);
-        validate_sat(hb);
+        //validate_sat(hb);
         break;
     case l_false: 
         std::cout << "unsat\n"; 
@@ -508,6 +508,35 @@ static void tst15() {
     saturate_basis(hb);
 }
 
+static void tst16() {
+    hilbert_basis hb;
+    hb.add_le(vec(1, 0), R(100));
+    saturate_basis(hb);
+}
+
+static void tst17() {
+    hilbert_basis hb;
+    hb.add_eq(vec(1,  0), R(0));
+    hb.add_eq(vec(-1, 0), R(0));
+    hb.add_eq(vec(0,  2), R(0));
+    hb.add_eq(vec(0, -2), R(0));
+    saturate_basis(hb);
+
+}
+
+static void tst18() {
+    hilbert_basis hb;
+    hb.add_eq(vec(0, 1), R(0));
+    hb.add_eq(vec(1, -1), R(2));
+    saturate_basis(hb);    
+}
+
+static void tst19() {
+    hilbert_basis hb;
+    hb.add_eq(vec(0,  1, 0), R(0));
+    hb.add_eq(vec(1, -1, 0), R(2));
+    saturate_basis(hb);    
+}
 
 void tst_hilbert_basis() {
     std::cout << "hilbert basis test\n";
@@ -516,11 +545,23 @@ void tst_hilbert_basis() {
 
     g_use_ordered_support = true;
 
+    tst18();
+    return;
+
+    tst19();
+    return;
+    tst17();
+
     if (true) {
         tst1();
         tst2();
         tst3();
         tst4();
+        tst4();
+        tst4();
+       tst4();
+       tst4();
+       tst4();
         tst5();
         tst6();
         tst7();
@@ -532,6 +573,7 @@ void tst_hilbert_basis() {
         tst13();
         tst14();
         tst15();
+        tst16();
         gorrila_test(0, 4, 3, 20, 5);
         gorrila_test(1, 4, 3, 20, 5);
         //gorrila_test(2, 4, 3, 20, 5);

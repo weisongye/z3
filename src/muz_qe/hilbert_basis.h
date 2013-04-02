@@ -18,6 +18,11 @@ Author:
 
 Revision History:
 
+    Hilbert basis can be templatized 
+    based on traits that define numeral:
+    as rational, mpz, checked_int64 
+    (checked or unchecked).
+
 --*/
 
 #ifndef _HILBERT_BASIS_H_
@@ -26,14 +31,28 @@ Revision History:
 #include "rational.h"
 #include "lbool.h"
 #include "statistics.h"
+#include "checked_int64.h"
+
+typedef vector<rational> rational_vector;
 
 class hilbert_basis {
-public:
-    typedef rational numeral;
+
+    static const bool check = true;
+    typedef checked_int64<check> numeral;
     typedef vector<numeral> num_vector;
-private:
+    static checked_int64<check> to_numeral(rational const& r) {
+        if (!r.is_int64()) {
+            throw checked_int64<check>::overflow_exception();
+        }
+        return checked_int64<check>(r.get_int64());
+    }
+    static rational to_rational(checked_int64<check> const& i) {
+        return rational(i.get_int64(), rational::i64());
+    }
+
     class value_index1;
     class value_index2;
+    class value_index3;
     class index;
     class passive;
     class passive2;
@@ -56,12 +75,14 @@ private:
     class values {
         numeral* m_values;
     public:
-        values(numeral* v):m_values(v) {}
-        numeral& weight() { return m_values[0]; } // value of a*x 
-        numeral& operator[](unsigned i) { return m_values[i+1]; } // value of x_i
-        numeral const& weight() const { return m_values[0]; } // value of a*x 
-        numeral const& operator[](unsigned i) const { return m_values[i+1]; } // value of x_i
-        numeral const* operator()() const { return m_values + 1; }
+        values(unsigned offset, numeral* v): m_values(v+offset) { }
+        numeral& weight()             { return m_values[-1]; } // value of a*x 
+        numeral const& weight() const { return m_values[-1]; } // value of a*x 
+        numeral& weight(int i)   { return m_values[-2-i]; } // value of b_i*x for 0 <= i < current inequality. 
+        numeral const& weight(int i) const { return m_values[-2-i]; } // value of b_i*x 
+        numeral& operator[](unsigned i) { return m_values[i]; } // value of x_i
+        numeral const& operator[](unsigned i) const { return m_values[i]; } // value of x_i
+        numeral const* operator()() const { return m_values; }
     };
 
     vector<num_vector> m_ineqs;      // set of asserted inequalities
@@ -110,11 +131,11 @@ private:
     unsigned get_num_vars() const;
     numeral get_weight(values const & val, num_vector const& ineq) const;
     bool is_geq(values const& v, values const& w) const;
-    static bool is_abs_geq(numeral const& v, numeral const& w);
+    bool is_abs_geq(numeral const& v, numeral const& w) const;
     bool is_subsumed(offset_t idx);
     bool is_subsumed(offset_t i, offset_t j) const;
     void recycle(offset_t idx);
-    bool can_resolve(offset_t i, offset_t j) const;
+    bool can_resolve(offset_t i, offset_t j, bool check_sign) const;
     sign_t get_sign(offset_t idx) const;
     bool add_goal(offset_t idx);
     offset_t alloc_vector();
@@ -145,16 +166,16 @@ public:
     // add inequality v*x >= 0
     // add inequality v*x <= 0
     // add equality   v*x = 0
-    void add_ge(num_vector const& v);
-    void add_le(num_vector const& v);
-    void add_eq(num_vector const& v);
+    void add_ge(rational_vector const& v);
+    void add_le(rational_vector const& v);
+    void add_eq(rational_vector const& v);
 
     // add inequality v*x >= b
     // add inequality v*x <= b
     // add equality   v*x = b
-    void add_ge(num_vector const& v, numeral const& b);
-    void add_le(num_vector const& v, numeral const& b);
-    void add_eq(num_vector const& v, numeral const& b);
+    void add_ge(rational_vector const& v, rational const& b);
+    void add_le(rational_vector const& v, rational const& b);
+    void add_eq(rational_vector const& v, rational const& b);
 
     void set_is_int(unsigned var_index);
     bool get_is_int(unsigned var_index) const;
@@ -162,10 +183,10 @@ public:
     lbool saturate();
 
     unsigned get_basis_size() const { return m_basis.size(); }
-    void get_basis_solution(unsigned i, num_vector& v, bool& is_initial);
+    void get_basis_solution(unsigned i, rational_vector& v, bool& is_initial);
 
     unsigned get_num_ineqs() const { return m_ineqs.size(); }
-    void get_ge(unsigned i, num_vector& v, numeral& b, bool& is_eq);    
+    void get_ge(unsigned i, rational_vector& v, rational& b, bool& is_eq);    
 
     void set_cancel(bool f) { m_cancel = f; }
 

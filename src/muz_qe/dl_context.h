@@ -42,19 +42,18 @@ Revision History:
 #include"params.h"
 #include"trail.h"
 #include"model_converter.h"
-#include"proof_converter.h"
 #include"model2expr.h"
 #include"smt_params.h"
+#include"dl_rule_transformer.h"
 
 namespace datalog {
-
-    class rule_transformer;
 
     enum execution_result {
         OK,
         TIMEOUT,
         MEMOUT,
-        INPUT_ERROR
+        INPUT_ERROR,
+        CANCELED
     };
 
     class context {
@@ -85,7 +84,7 @@ namespace datalog {
         th_rewriter        m_rewriter;
         var_subst          m_var_subst;
         rule_manager       m_rule_manager;
-
+        rule_transformer   m_transf;
         trail_stack<context> m_trail;
         ast_ref_vector     m_pinned;
         app_ref_vector     m_vars;
@@ -94,9 +93,12 @@ namespace datalog {
         sym2decl           m_preds_by_name;
         pred2syms          m_argument_var_names;
         rule_set           m_rule_set;
+        rule_set           m_transformed_rule_set;
         expr_ref_vector    m_rule_fmls;
         svector<symbol>    m_rule_names;
         expr_ref_vector    m_background;
+        model_converter_ref m_mc;
+        proof_converter_ref m_pc;
 
         scoped_ptr<pdr::dl_interface>   m_pdr;
         scoped_ptr<bmc>                 m_bmc;
@@ -109,6 +111,8 @@ namespace datalog {
         expr_ref           m_last_answer;
         DL_ENGINE          m_engine;
         volatile bool      m_cancel;
+
+
 
         bool is_fact(app * head) const;
         bool has_sort_domain(relation_sort s) const;
@@ -140,6 +144,7 @@ namespace datalog {
         var_subst & get_var_subst() { return m_var_subst; }
         dl_decl_util & get_decl_util()  { return m_decl_util; }
 
+        bool generate_proof_trace() const { return m_params.generate_proof_trace(); }
         bool output_profile() const { return m_params.output_profile(); }
         bool fix_unbound_vars() const { return m_params.fix_unbound_vars(); }
         symbol default_table() const { return m_params.default_table(); }
@@ -313,11 +318,17 @@ namespace datalog {
         void reopen();
         void ensure_opened();
 
-        void transform_rules(model_converter_ref& mc, proof_converter_ref& pc);
-        void transform_rules(rule_transformer& trans, model_converter_ref& mc, proof_converter_ref& pc);
-        void replace_rules(rule_set & rs);
+        model_converter_ref& get_model_converter() { return m_mc; }
+        void add_model_converter(model_converter* mc) { m_mc = concat(m_mc.get(), mc); }
+        proof_converter_ref& get_proof_converter() { return m_pc; }
+        void add_proof_converter(proof_converter* pc) { m_pc = concat(m_pc.get(), pc); }
 
-        void apply_default_transformation(model_converter_ref& mc, proof_converter_ref& pc);
+        void transform_rules(); 
+        void transform_rules(rule_transformer& transf); 
+        void replace_rules(rule_set & rs);
+        void record_transformed_rules();
+
+        void apply_default_transformation(); 
 
         void collect_params(param_descrs& r);
         
@@ -342,6 +353,8 @@ namespace datalog {
 
         void display_smt2(unsigned num_queries, expr* const* queries, std::ostream& out);
 
+        void display_profile(std::ostream& out) const;
+
         // -----------------------------------
         //
         // basic usage methods
@@ -349,6 +362,7 @@ namespace datalog {
         // -----------------------------------
 
         void cancel();
+        bool canceled() const { return m_cancel; }
 
         void cleanup();
         void reset_cancel() { cleanup(); }
