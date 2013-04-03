@@ -1,0 +1,5 @@
+Solver adapters allow us to extend a giving solver object with some capability.
+Example:
+- The preprocessor adapter adds a preprocessing step based on a sequence of tactic objects.
+- The quantifier adapter adds support for quantifier reasoning to a solved that can process quantifier free problems.
+
