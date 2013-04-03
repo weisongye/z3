@@ -933,8 +933,12 @@ namespace mcsat {
         m_imp->add_plugin(p);
     }
    
-    void kernel::assert_expr(expr * f, proof * pr) {
+    void kernel::assert_expr_proof(expr * f, proof * pr) {
         m_imp->assert_expr(f, pr);
+    }
+
+    void kernel::assert_expr(expr * t) { 
+        assert_expr_proof(t, 0);
     }
         
     void kernel::push() {
@@ -975,6 +979,22 @@ namespace mcsat {
     
     void kernel::display(std::ostream & out) const {
         m_imp->display(out);
+    }
+
+    void kernel::collect_param_descrs(param_descrs & r) {
+    }
+
+    void kernel::set_produce_models(bool f) {
+    }
+
+    void kernel::set_progress_callback(progress_callback * callback) {
+    }
+
+    void kernel::updt_params(params_ref const & p) {
+    }
+
+    void kernel::get_labels(svector<symbol> & r) {
+        // TODO: throw exception?
     }
 
 };

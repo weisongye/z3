@@ -216,7 +216,7 @@ extern "C" {
         init_solver(c, s);
         CHECK_FORMULA(a,);
         CHECK_FORMULA(p,);
-        to_solver_ref(s)->assert_expr(to_expr(a), to_expr(p));
+        to_solver_ref(s)->assert_expr_assumption(to_expr(a), to_expr(p));
         Z3_CATCH;
     }
     

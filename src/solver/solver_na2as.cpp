@@ -8,7 +8,7 @@ Module Name:
 Abstract:
 
     Solver that implements "named" assertions using assumptions (aka answer literals).
-    That is, a named assertion assert_expr(t, a) is mapped into
+    That is, a named assertion assert_expr_assumption(t, a) is mapped into
           a implies t
     and 'a' is used as an extra assumption for check_sat.
 
@@ -30,7 +30,7 @@ solver_na2as::~solver_na2as() {
     restore_assumptions(0);
 }
 
-void solver_na2as::assert_expr(expr * t, expr * a) {
+void solver_na2as::assert_expr_assumption(expr * t, expr * a) {
     if (a == 0) {
         assert_expr(t);
     }

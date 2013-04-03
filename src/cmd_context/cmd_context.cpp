@@ -1176,7 +1176,7 @@ void cmd_context::assert_expr(symbol const & name, expr * t) {
     m().inc_ref(ans);
     m_assertion_names.push_back(ans);
     if (m_solver)
-        m_solver->assert_expr(t, ans);
+        m_solver->assert_expr_assumption(t, ans);
 }
 
 void cmd_context::push() {

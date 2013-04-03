@@ -32,6 +32,7 @@ Notes:
 */
 class tactic2solver : public solver_na2as {
     expr_ref_vector              m_assertions;
+    proof_ref_vector             m_proofs;
     unsigned_vector              m_scopes;
     ref<simple_check_sat_result> m_result;
     tactic_ref                   m_tactic;
@@ -50,6 +51,7 @@ public:
     virtual void set_produce_models(bool f) { m_produce_models = f; }
 
     virtual void assert_expr(expr * t);
+    virtual void assert_expr_proof(expr * t, proof * pr);
 
     virtual void push_core();
     virtual void pop_core(unsigned n);
@@ -74,7 +76,8 @@ public:
 
 tactic2solver::tactic2solver(ast_manager & m, tactic * t, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores, symbol const & logic):
     solver_na2as(m),
-    m_assertions(m) {
+    m_assertions(m),
+    m_proofs(m) {
 
     m_tactic = t;
     m_logic  = logic;
@@ -99,6 +102,15 @@ void tactic2solver::collect_param_descrs(param_descrs & r) {
 
 void tactic2solver::assert_expr(expr * t) {
     m_assertions.push_back(t);
+    if (m_produce_proofs)
+        m_proofs.push_back(0);
+    m_result = 0;
+}
+
+void tactic2solver::assert_expr_proof(expr * t, proof * pr) {
+    m_assertions.push_back(t);
+    if (m_produce_proofs)
+        m_proofs.push_back(pr);
     m_result = 0;
 }
 
@@ -127,7 +139,10 @@ lbool tactic2solver::check_sat_core(unsigned num_assumptions, expr * const * ass
 
     unsigned sz = m_assertions.size();
     for (unsigned i = 0; i < sz; i++) {
-        g->assert_expr(m_assertions.get(i));
+        if (m_produce_proofs)
+            g->assert_expr(m_assertions.get(i));
+        else
+            g->assert_expr(m_assertions.get(i), m_proofs.get(i), 0);
     }
     for (unsigned i = 0; i < num_assumptions; i++) {
         g->assert_expr(assumptions[i], m.mk_asserted(assumptions[i]), m.mk_leaf(assumptions[i]));

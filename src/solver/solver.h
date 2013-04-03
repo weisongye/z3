@@ -32,7 +32,7 @@ public:
 };
 
 /**
-   \brief Abstract interface for making solvers available in the Z3
+   \brief Basic abstract interface for making solvers available in the Z3
    API and front-ends such as SMT 2.0 and (legacy) SMT 1.0.
 
    It provides the basic functionality for incremental solvers.
@@ -43,9 +43,9 @@ public:
      - results based on check_sat_result API
      - interruption (set_cancel)
 */
-class solver : public check_sat_result {
+class core_solver : public check_sat_result {
 public:
-    virtual ~solver() {}
+    virtual ~core_solver() {}
     /**
        \brief Update the solver internal settings. 
     */
@@ -71,11 +71,9 @@ public:
     virtual void assert_expr(expr * t) = 0;
 
     /**
-       \brief Add a new formula \c t to the assertion stack, and "tag" it with \c a.
-       The propositional varialbe \c a is used to track the use of \c t in a proof
-       of unsatisfiability.
+       \brief Add a new formula with the given justification (i.e., proof).
     */
-    virtual void assert_expr(expr * t, expr * a) = 0;
+    virtual void assert_expr_proof(expr * t, proof * pr) = 0;
 
     /**
        \brief Create a backtracking point.
@@ -86,11 +84,6 @@ public:
        \brief Remove \c n backtracking points. All assertions between the pop and matching push are removed. 
     */
     virtual void pop(unsigned n) = 0;
-
-    /**
-       \brief Return the number of backtracking points.
-    */
-    virtual unsigned get_scope_level() const = 0;
 
     /**
        \brief Check if the set of assertions in the assertion stack is satisfiable modulo the given assumptions.
@@ -115,6 +108,27 @@ public:
        This is essentially for backward compatibility and integration with VCC tools.
     */
     virtual void set_progress_callback(progress_callback * callback) = 0;
+};
+
+/**
+   \brief Basic abstract interface for making solvers available in the Z3.
+
+   \see core_solver
+*/
+class solver : public core_solver {
+public:
+    virtual ~solver() {}
+    /**
+       \brief Add a new formula \c t to the assertion stack, and "tag" it with \c a.
+       The propositional varialbe \c a is used to track the use of \c t in a proof
+       of unsatisfiability.
+    */
+    virtual void assert_expr_assumption(expr * t, expr * a) = 0;
+
+    /**
+       \brief Return the number of backtracking points.
+    */
+    virtual unsigned get_scope_level() const = 0;
     
     /**
        \brief Return the number of assertions in the assertion stack.
@@ -131,5 +145,6 @@ public:
     */
     virtual void display(std::ostream & out) const;
 };
+
 
 #endif

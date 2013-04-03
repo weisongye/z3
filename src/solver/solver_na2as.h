@@ -8,7 +8,7 @@ Module Name:
 Abstract:
 
     Solver that implements "named" assertions using assumptions (aka answer literals).
-    That is, a named assertion assert_expr(t, a) is mapped into
+    That is, a named assertion assert_expr_assumption(t, a) is mapped into
           a implies t
     and 'a' is used as an extra assumption for check_sat.
 
@@ -33,8 +33,9 @@ public:
     solver_na2as(ast_manager & m);
     virtual ~solver_na2as();
 
-    virtual void assert_expr(expr * t, expr * a);
     virtual void assert_expr(expr * t) = 0;
+    virtual void assert_expr_assumption(expr * t, expr * a);
+    virtual void assert_expr_proof(expr * t, proof * pr) = 0;
     
     // Subclasses of solver_na2as should redefine the following *_core methods instead of these ones.
     virtual lbool check_sat(unsigned num_assumptions, expr * const * assumptions);

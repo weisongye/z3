@@ -58,6 +58,10 @@ namespace smt {
             m_context.assert_expr(t);
         }
 
+        virtual void assert_expr_proof(expr * t, proof * pr) {
+            m_context.assert_expr(t, pr);
+        }
+
         virtual void push_core() {
             m_context.push();
         }

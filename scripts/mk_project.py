@@ -34,6 +34,7 @@ def init_project_def():
     add_lib('subpaving_tactic', ['core_tactics', 'subpaving'], 'math/subpaving/tactic')
     add_lib('aig_tactic', ['tactic'], 'tactic/aig')
     add_lib('solver', ['model', 'tactic'])
+    add_lib('solver_pp', ['solver'], 'solver/adapters/preprocessor')
     add_lib('cmd_context', ['solver', 'rewriter'])
     add_lib('extra_cmds', ['cmd_context', 'subpaving_tactic', 'arith_tactics'], 'cmd_context/extra_cmds')
     add_lib('smt2parser', ['cmd_context', 'parser_util'], 'parsers/smt2')
@@ -62,7 +63,7 @@ def init_project_def():
     add_lib('portfolio', ['smtlogic_tactics', 'ufbv_tactic', 'fpa', 'aig_tactic', 'muz_qe', 'sls_tactic', 'subpaving_tactic'], 'tactic/portfolio')
     add_lib('smtparser', ['portfolio'], 'parsers/smt')
     # MCSat components
-    add_lib('mcsat', ['solver', 'core_tactics', 'arith_tactics'])
+    add_lib('mcsat', ['solver_pp', 'core_tactics', 'arith_tactics'])
     add_lib('mcsat_bool_plugin', ['mcsat'], 'mcsat/plugins/bool')
     add_lib('mcsat_solvers', ['mcsat', 'mcsat_bool_plugin'], 'mcsat/solvers')
     add_extra_exe('mcsat_shell', ['cmd_context', 'smt2parser', 'mcsat_solvers'], 'mcsat/shell', exe_name='mcs') 

@@ -152,12 +152,20 @@ public:
             m_solver2->assert_expr(t);
     }
 
-    virtual void assert_expr(expr * t, expr * a) {
+    virtual void assert_expr_proof(expr * t, proof * pr) {
         if (m_check_sat_executed)
             switch_inc_mode();
-        m_solver1->assert_expr(t, a);
+        m_solver1->assert_expr_proof(t, pr);
+        if (m_solver2_initialized)
+            m_solver2->assert_expr_proof(t, pr);
+    }
+
+    virtual void assert_expr_assumption(expr * t, expr * a) {
+        if (m_check_sat_executed)
+            switch_inc_mode();
+        m_solver1->assert_expr_assumption(t, a);
         init_solver2_assertions();
-        m_solver2->assert_expr(t, a);
+        m_solver2->assert_expr_assumption(t, a);
     }
 
     virtual void push() {
