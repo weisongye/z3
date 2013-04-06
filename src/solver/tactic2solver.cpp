@@ -139,7 +139,7 @@ lbool tactic2solver::check_sat_core(unsigned num_assumptions, expr * const * ass
 
     unsigned sz = m_assertions.size();
     for (unsigned i = 0; i < sz; i++) {
-        if (m_produce_proofs)
+        if (!m_produce_proofs)
             g->assert_expr(m_assertions.get(i));
         else
             g->assert_expr(m_assertions.get(i), m_proofs.get(i), 0);
