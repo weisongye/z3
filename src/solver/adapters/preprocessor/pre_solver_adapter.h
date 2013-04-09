@@ -27,7 +27,7 @@ class pre_solver_adapter : public solver {
     imp *  m_imp;
     friend class pre_solver_adapter_factory;
 public:
-    pre_solver_adapter(ast_manager & m, core_solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores);
+    pre_solver_adapter(ast_manager & m, solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores);
     virtual ~pre_solver_adapter();
     virtual void collect_param_descrs(param_descrs & r);
     virtual void set_produce_models(bool f);

@@ -43,19 +43,19 @@ public:
      - results based on check_sat_result API
      - interruption (set_cancel)
 */
-class core_solver : public check_sat_result {
+class solver : public check_sat_result {
 public:
-    virtual ~core_solver() {}
+    virtual ~solver();
     /**
        \brief Update the solver internal settings. 
     */
-    virtual void updt_params(params_ref const & p) {}
+    virtual void updt_params(params_ref const & p);
 
     /**
        \brief Store in \c r a description of the configuration
        parameters available in this solver.
     */
-    virtual void collect_param_descrs(param_descrs & r) {}
+    virtual void collect_param_descrs(param_descrs & r);
     
     /**
        \brief Enable/Disable model generation for this solver object.
@@ -63,7 +63,7 @@ public:
        It is invoked before init(m, logic). 
        The user may optionally invoke it after init(m, logic).
     */
-    virtual void set_produce_models(bool f) {}
+    virtual void set_produce_models(bool f);
     
     /**
        \brief Add a new formula to the assertion stack.
@@ -92,7 +92,7 @@ public:
     */
     virtual lbool check_sat(unsigned num_assumptions, expr * const * assumptions) = 0;
 
-    virtual void set_cancel(bool f) {}
+    virtual void set_cancel(bool f);
     /**
        \brief Interrupt this solver.
     */
@@ -108,16 +108,7 @@ public:
        This is essentially for backward compatibility and integration with VCC tools.
     */
     virtual void set_progress_callback(progress_callback * callback) = 0;
-};
 
-/**
-   \brief Basic abstract interface for making solvers available in the Z3.
-
-   \see core_solver
-*/
-class solver : public core_solver {
-public:
-    virtual ~solver() {}
     /**
        \brief Add a new formula \c t to the assertion stack, and "tag" it with \c a.
        The propositional varialbe \c a is used to track the use of \c t in a proof
@@ -128,7 +119,7 @@ public:
     /**
        \brief Return the number of backtracking points.
     */
-    virtual unsigned get_scope_level() const = 0;
+    virtual unsigned get_scope_level() const;
     
     /**
        \brief Return the number of assertions in the assertion stack.
@@ -145,6 +136,5 @@ public:
     */
     virtual void display(std::ostream & out) const;
 };
-
 
 #endif

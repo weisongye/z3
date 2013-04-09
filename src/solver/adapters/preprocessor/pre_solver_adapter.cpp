@@ -25,7 +25,7 @@ Revision History:
 
 struct pre_solver_adapter::imp {
     ast_manager &        m_manager;
-    ref<core_solver>     m_kernel;
+    ref<solver>          m_kernel;
     assertion_stack      m_stack;
     tactic_ref_vector    m_before_tactics;
     tactic_ref_vector    m_after_tactics;
@@ -38,7 +38,7 @@ struct pre_solver_adapter::imp {
     };
     svector<scope>      m_scopes;
     
-    imp(ast_manager & m, core_solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores):
+    imp(ast_manager & m, solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores):
         m_manager(m),
         m_kernel(s),
         m_stack(m, produce_proofs, produce_models, produce_unsat_cores),
@@ -295,7 +295,7 @@ struct pre_solver_adapter::imp {
     }
 };
 
-pre_solver_adapter::pre_solver_adapter(ast_manager & m, core_solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores) {
+pre_solver_adapter::pre_solver_adapter(ast_manager & m, solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores) {
     m_imp = alloc(imp, m, s, p, produce_proofs, produce_models, produce_unsat_cores);
 }
 

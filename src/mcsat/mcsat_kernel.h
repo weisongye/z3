@@ -32,7 +32,7 @@ namespace mcsat {
     /**
        \brief The kernel implements the search engine in mcsat.
     */
-    class kernel : public core_solver {
+    class kernel : public solver {
         struct imp;
         imp * m_imp;
     public:
