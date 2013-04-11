@@ -124,10 +124,12 @@ struct pre_solver_adapter::imp {
     }
     
     void add_tactic_before(tactic * t) {
+        SASSERT(m_stack.scope_lvl() == 0);
         m_before_tactics.push_back(t);
     }
     
     void add_tactic_after(tactic * t) {
+        SASSERT(m_stack.scope_lvl() == 0);
         m_after_tactics.push_back(t);
     }
     
@@ -223,6 +225,12 @@ struct pre_solver_adapter::imp {
             m_extra_assumptions.shrink(m_old_size);
         }
     };
+
+    lbool check_sat_core(unsigned num_assumptions, expr * const * assumptions) {
+        TRACE("pre_solver", m_kernel->display(tout); tout << "\n";);
+        lbool r = m_kernel->check_sat(num_assumptions, assumptions);
+        return r;
+    }
     
     lbool check_sat(unsigned num_assumptions, expr * const * assumptions) {
         commit();
@@ -230,11 +238,11 @@ struct pre_solver_adapter::imp {
             return l_false;
         validate_assumptions(num_assumptions, assumptions);
         if (m_extra_assumptions.empty()) {
-            return m_kernel->check_sat(num_assumptions, assumptions);
+            return check_sat_core(num_assumptions, assumptions);
         }
         else {
             scoped_append append(m_extra_assumptions, num_assumptions, assumptions);
-            return m_kernel->check_sat(m_extra_assumptions.size(), m_extra_assumptions.c_ptr());
+            return check_sat_core(m_extra_assumptions.size(), m_extra_assumptions.c_ptr());
         }
     }
     
@@ -301,6 +309,14 @@ pre_solver_adapter::pre_solver_adapter(ast_manager & m, solver * s, params_ref c
 
 pre_solver_adapter::~pre_solver_adapter() {
     dealloc(m_imp);
+}
+
+void pre_solver_adapter::add_tactic_before(tactic * t) {
+    m_imp->add_tactic_before(t);
+}
+
+void pre_solver_adapter::add_tactic_after(tactic * t) {
+    m_imp->add_tactic_after(t);
 }
 
 void pre_solver_adapter::collect_param_descrs(param_descrs & r) {

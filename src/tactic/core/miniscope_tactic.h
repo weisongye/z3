@@ -21,7 +21,7 @@ Author:
 class ast_manager;
 class tactic;
 
-tactic * mk_miniscope_tactic(ast_manager & m, params_ref const & p);
+tactic * mk_miniscope_tactic(ast_manager & m, params_ref const & p = params_ref());
 
 /*
   ADD_TACTIC("miniscope", "Quantifier miniscoping.", "mk_miniscope_tactic(m, p)")

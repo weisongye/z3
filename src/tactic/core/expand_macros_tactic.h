@@ -23,7 +23,7 @@ Revision History:
 class ast_manager;
 class tactic;
 
-tactic * mk_expand_macros_tactic(ast_manager & m, params_ref const & p);
+tactic * mk_expand_macros_tactic(ast_manager & m, params_ref const & p = params_ref());
 
 /*
   ADD_TACTIC("expand_macros", "Expand macros defined using universal quantifiers.", "mk_expand_macros_tactic(m, p)")

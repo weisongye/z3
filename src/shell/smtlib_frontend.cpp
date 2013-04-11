@@ -89,14 +89,46 @@ unsigned read_smtlib_file(char const * benchmark_file) {
     return solver.get_error_code();
 }
 
+#include"pre_solver_adapter.h"
+#include"smt_solver.h"
+#include"simplify_tactic.h"
+#include"miniscope_tactic.h"
+#include"der_tactic.h"
+#include"propagate_values_tactic.h"
+#include"expand_macros_tactic.h"
+#include"elim_patterns_tactic.h"
+#include"solve_eqs_tactic.h"
+#include"qsolver_adapter.h"
+
+// Temporary hack to test solver infrastructure
+// TODO: implement set-solver command
+struct my_solver_factory : public solver_factory {
+    virtual ~my_solver_factory() {}
+    virtual solver * operator()(ast_manager & m, params_ref const & p, bool proofs_enabled, bool models_enabled, bool unsat_core_enabled, symbol const & logic) {
+        solver * gkernel  = mk_smt_solver(m, p, logic);
+        solver * kernel   = mk_qsolver_adapter(m, gkernel, p, proofs_enabled, models_enabled, unsat_core_enabled);
+        pre_solver_adapter * s = alloc(pre_solver_adapter, m, kernel, p, proofs_enabled, models_enabled, unsat_core_enabled);
+        s->add_tactic_after(mk_elim_patterns_tactic(m));
+        s->add_tactic_after(mk_simplify_tactic(m));
+        s->add_tactic_after(mk_propagate_values_tactic(m));
+        s->add_tactic_after(mk_miniscope_tactic(m));
+        s->add_tactic_after(mk_der_tactic(m));
+        s->add_tactic_after(mk_expand_macros_tactic(m));
+        s->add_tactic_after(mk_solve_eqs_tactic(m));
+        s->add_tactic_after(mk_simplify_tactic(m));
+        return s;
+    }
+};
+
 unsigned read_smtlib2_commands(char const * file_name) {
     g_start_time = clock();
     register_on_timeout_proc(on_timeout);
     signal(SIGINT, on_ctrl_c);
     cmd_context ctx;
 
-    ctx.set_solver_factory(mk_smt_strategic_solver_factory());
-
+    // ctx.set_solver_factory(mk_smt_strategic_solver_factory());
+    ctx.set_solver_factory(alloc(my_solver_factory));
+    
     install_dl_cmds(ctx);
     install_dbg_cmds(ctx);
     install_polynomial_cmds(ctx);

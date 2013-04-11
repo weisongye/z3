@@ -21,6 +21,7 @@ Revision History:
 
 #include"solver.h"
 class tactic_factory;
+class tactic;
 
 class pre_solver_adapter : public solver {
     struct imp;
@@ -29,6 +30,8 @@ class pre_solver_adapter : public solver {
 public:
     pre_solver_adapter(ast_manager & m, solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores);
     virtual ~pre_solver_adapter();
+    void add_tactic_before(tactic * t);
+    void add_tactic_after(tactic * t);
     virtual void collect_param_descrs(param_descrs & r);
     virtual void set_produce_models(bool f);
     virtual void set_progress_callback(progress_callback * callback);

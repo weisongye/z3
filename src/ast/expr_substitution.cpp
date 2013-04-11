@@ -119,6 +119,10 @@ void expr_substitution::erase(expr * c) {
     }
 }
 
+bool expr_substitution::find(expr * c, expr * & def) {
+    return m_subst.find(c, def);
+}
+
 bool expr_substitution::find(expr * c, expr * & def, proof * & def_pr) {
     if (m_subst.find(c, def)) {
         if (proofs_enabled())

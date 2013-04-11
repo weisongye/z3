@@ -21,7 +21,7 @@ Author:
 class ast_manager;
 class tactic;
 
-tactic * mk_elim_patterns_tactic(ast_manager & m, params_ref const & p);
+tactic * mk_elim_patterns_tactic(ast_manager & m, params_ref const & p = params_ref());
 
 /*
   ADD_TACTIC("elim_patterns", "Eliminate pattern annotations.", "mk_elim_patterns_tactic(m, p)")

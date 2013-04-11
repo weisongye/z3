@@ -45,11 +45,17 @@ public:
     bool empty() const { return m_subst.empty(); }
     void insert(expr * s, expr * def, proof * def_pr = 0, expr_dependency * def_dep = 0);
     void erase(expr * s);
+    bool find(expr * s, expr * & def);
     bool find(expr * s, expr * & def, proof * & def_pr);
     bool find(expr * s, expr * & def, proof * & def_pr, expr_dependency * & def_dep);
     bool contains(expr * s) const;
     void reset();
     void cleanup();
+
+    typedef obj_map<expr, expr*>::iterator iterator;
+    
+    iterator begin() { return m_subst.begin(); }
+    iterator end() { return m_subst.end(); }
 };
 
 #endif
