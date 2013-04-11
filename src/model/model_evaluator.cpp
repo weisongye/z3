@@ -153,6 +153,10 @@ struct evaluator_cfg : public default_rewriter_cfg {
             return m_dt_rw.mk_app_core(f, num, args, result);
         if (fid == m_f_rw.get_fid())
             return m_f_rw.mk_app_core(f, num, args, result);
+        if (m().is_label_lit(f)) {
+            result = m().mk_true();
+            return BR_DONE;
+        }
         return BR_FAILED;
     }
 

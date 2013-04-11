@@ -35,7 +35,7 @@ def init_project_def():
     add_lib('aig_tactic', ['tactic'], 'tactic/aig')
     add_lib('solver', ['model', 'tactic'])
     add_lib('pre_solver', ['solver'], 'solver/adapters/preprocessor')
-    add_lib('qsolver', ['solver'], 'solver/adapters/quantifier')
+    add_lib('qsolver', ['solver', 'normal_forms'], 'solver/adapters/quantifier')
     add_lib('cmd_context', ['solver', 'rewriter'])
     add_lib('extra_cmds', ['cmd_context', 'subpaving_tactic', 'arith_tactics'], 'cmd_context/extra_cmds')
     add_lib('smt2parser', ['cmd_context', 'parser_util'], 'parsers/smt2')

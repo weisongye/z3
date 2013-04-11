@@ -19,22 +19,67 @@ Revision History:
 #include"qsolver_adapter.h"
 #include"solver_exception.h"
 #include"model2assignment.h"
+#include"rewriter_def.h"
 #include"ast_pp.h"
 
 class qsolver_adapter : public solver {
-    ast_manager &    m_manager;
-    ref<solver>      m_kernel;
-    expr_ref_vector  m_abs_formulas;
+    ast_manager &              m_manager;
+    ref<solver>                m_kernel;
+    // 
+    quantifier_ref_vector      m_quantifiers;         // quantifiers
+    expr_ref_vector            m_fresh_props;         // m_fresh_props and m_nested_quantifiers have the same size.
+    quantifier_ref_vector      m_nested_quantifiers;
+    obj_map<quantifier, expr*> m_nq2p;                // nested quantifiers -> fresh propositions (domain is m_nested_quantifiers)
+    expr_ref_vector            m_ground_formulas; 
+
+    bool                       m_produce_proofs;
+
     struct scope {
-        unsigned     m_abs_formulas_lim;
+        unsigned     m_quantifiers_lim;
+        unsigned     m_nested_quantifiers_lim;
+        unsigned     m_ground_formulas_lim;
     };
     svector<scope>   m_scopes;
+
+    struct cfg : public default_rewriter_cfg {
+        qsolver_adapter & m;
+        cfg(qsolver_adapter & _m):m(_m) {}
+
+        bool reduce_quantifier(quantifier * old_q, 
+                               expr * new_body, 
+                               expr * const * new_patterns, 
+                               expr * const * new_no_patterns,
+                               expr_ref & result,
+                               proof_ref & result_pr) {
+            // TODO proof generation
+            result_pr = 0;
+            quantifier * new_q = m.m().update_quantifier(old_q, new_body);
+            expr * c;
+            if (m.m_nq2p.find(new_q, c)) {
+                result = c;
+            }
+            else {
+                c = m.m().mk_fresh_const(0, m.m().mk_bool_sort());
+                m.m_fresh_props.push_back(c);
+                m.m_nested_quantifiers.push_back(new_q);
+                m.m_nq2p.insert(new_q, c);
+                result = c;
+            }
+            return true;
+        }
+    };
+
+    typedef rewriter_tpl<cfg> rw;
 
 public:
     qsolver_adapter(ast_manager & m, solver * s, params_ref const & p, bool produce_proofs, bool produce_models, bool produce_unsat_cores):
         m_manager(m),
         m_kernel(s),
-        m_abs_formulas(m) {
+        m_quantifiers(m),
+        m_fresh_props(m),
+        m_nested_quantifiers(m),
+        m_ground_formulas(m),
+        m_produce_proofs(produce_proofs) {
         m_kernel->set_produce_models(true);
     }
 
@@ -67,8 +112,10 @@ public:
 
     virtual void push() {
         m_scopes.push_back(scope());
-        scope & s            = m_scopes.back();
-        s.m_abs_formulas_lim = m_abs_formulas.size();
+        scope & s                  = m_scopes.back();
+        s.m_quantifiers_lim        = m_quantifiers.size();
+        s.m_nested_quantifiers_lim = m_nested_quantifiers.size();
+        s.m_ground_formulas_lim    = m_ground_formulas.size();
         m_kernel->push();
     }
 
@@ -77,20 +124,46 @@ public:
         SASSERT(num_scopes <= m_scopes.size());
         unsigned new_lvl    = m_scopes.size() - num_scopes;
         scope & s           = m_scopes[new_lvl];
-        m_abs_formulas.shrink(s.m_abs_formulas_lim);
+        m_quantifiers.shrink(s.m_quantifiers_lim);
+        unsigned old_nested_sz = s.m_nested_quantifiers_lim;
+        SASSERT(m_nested_quantifiers.size() == m_fresh_props.size());
+        SASSERT(old_nested_sz <= m_nested_quantifiers.size());
+        unsigned nested_sz = m_nested_quantifiers.size();
+        for (unsigned i = old_nested_sz; i < nested_sz; i++) {
+            m_nq2p.erase(m_nested_quantifiers.get(i));
+        }
+        m_nested_quantifiers.shrink(old_nested_sz);
+        m_fresh_props.shrink(old_nested_sz);
+        m_ground_formulas.shrink(s.m_ground_formulas_lim);
         m_scopes.shrink(new_lvl);
     }
 
-    virtual void abstract(expr * t, expr_ref & r) {
-        // TODO
-        r = t;
-        m_abs_formulas.push_back(r);
+    virtual void abstract(expr * t, expr_ref & r, proof_ref & pr) {
+        if (is_ground(t)) {
+            r = t;
+            pr = 0;
+        }
+        else if (is_quantifier(t)) {
+            SASSERT(to_quantifier(t)->is_forall());
+            m_quantifiers.push_back(to_quantifier(t));
+            r = 0;
+            pr = 0;
+        }
+        else {
+            cfg c(*this);
+            rw  proc(m(), m_produce_proofs, c);
+            proc(t, r, pr);
+        }
     }
 
     virtual void assert_expr(expr * t) {
-        expr_ref a(m());
-        abstract(t, a);
-        m_kernel->assert_expr(a);
+        expr_ref  a(m());
+        proof_ref pr(m());
+        abstract(t, a, pr);
+        if (a) {
+            m_ground_formulas.push_back(a);
+            m_kernel->assert_expr_proof(a, pr);
+        }
     }
 
     virtual void assert_expr_assumption(expr * t, expr * a) {
@@ -98,32 +171,52 @@ public:
     }
     
     virtual void assert_expr_proof(expr * t, proof * pr) {
-        expr_ref a(m());
-        abstract(t, a);
-        // TODO create new proof.
-        m_kernel->assert_expr_proof(a, pr);
+        expr_ref  a(m());
+        proof_ref pr2(m());
+        abstract(t, a, pr2);
+        if (a) {
+            m_ground_formulas.push_back(a);
+            m_kernel->assert_expr_proof(a, m().mk_modus_ponens(pr, pr2));
+        }
+    }
+
+    lbool check_quantifiers() {
+        model_ref aM;
+        m_kernel->get_model(aM);
+        if (!aM)
+            return l_undef; // there is no model to check.
+
+        expr_substitution pM(m());
+        model2assignment proc(*(aM.get()), pM);
+        proc(m_ground_formulas.size(), m_ground_formulas.c_ptr());
+        TRACE("qsolver_pm", 
+              tout << "partial model\n";
+              expr_substitution::iterator it  = pM.begin();
+              expr_substitution::iterator end = pM.end();
+              for (; it != end; ++it) {
+                  tout << mk_pp(it->m_key, m()) << "\n---> " << mk_pp(it->m_value, m()) << "\n";
+              });
+        
+        // TODO: model check
+        return l_true;
     }
 
     virtual lbool check_sat(unsigned num_assumptions, expr * const * assumptions) {
         // TEST
-        lbool r = m_kernel->check_sat(num_assumptions, assumptions);
-        if (r == l_false)
-            return r;
-        model_ref aM;
-        m_kernel->get_model(aM);
-        if (aM) {
-            expr_substitution pM(m());
-            model2assignment proc(*(aM.get()), pM);
-            proc(m_abs_formulas.size(), m_abs_formulas.c_ptr());
-            TRACE("qsolver", 
-                  tout << "partial model\n";
-                  expr_substitution::iterator it  = pM.begin();
-                  expr_substitution::iterator end = pM.end();
-                  for (; it != end; ++it) {
-                      tout << mk_pp(it->m_key, m()) << "\n---> " << mk_pp(it->m_value, m()) << "\n";
-                  });
+        TRACE("qsolver_check", 
+              tout << "before check_sat, abstraction:\n";
+              for (unsigned i = 0; i < m_ground_formulas.size(); i++) {
+                  tout << mk_pp(m_ground_formulas.get(i), m()) << "\n";
+              });
+        while (true) {
+            lbool r = m_kernel->check_sat(num_assumptions, assumptions);
+            if (r == l_false)
+                return r;
+            r = check_quantifiers();
+            if (r == l_true || r == l_undef)
+                return r;
+            // TODO: return unknown if maximum number of iteration exceeded
         }
-        return r;
     }
 
     virtual void collect_statistics(statistics & st) const {

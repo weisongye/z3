@@ -1819,6 +1819,8 @@ public:
 
     bool is_label_lit(expr const * n) const { return is_app_of(n, m_label_family_id, OP_LABEL_LIT); }
 
+    bool is_label_lit(func_decl const * f) const { return is_decl_of(f, m_label_family_id, OP_LABEL_LIT); }
+
     family_id get_label_family_id() const { return m_label_family_id; }
 
     app * mk_pattern(unsigned num_exprs, app * const * exprs);

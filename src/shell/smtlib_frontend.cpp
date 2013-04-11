@@ -98,6 +98,9 @@ unsigned read_smtlib_file(char const * benchmark_file) {
 #include"expand_macros_tactic.h"
 #include"elim_patterns_tactic.h"
 #include"solve_eqs_tactic.h"
+#include"nnf_tactic.h"
+#include"elim_array_tactic.h"
+#include"pull_nested_quantifiers_tactic.h"
 #include"qsolver_adapter.h"
 
 // Temporary hack to test solver infrastructure
@@ -108,12 +111,19 @@ struct my_solver_factory : public solver_factory {
         solver * gkernel  = mk_smt_solver(m, p, logic);
         solver * kernel   = mk_qsolver_adapter(m, gkernel, p, proofs_enabled, models_enabled, unsat_core_enabled);
         pre_solver_adapter * s = alloc(pre_solver_adapter, m, kernel, p, proofs_enabled, models_enabled, unsat_core_enabled);
+        params_ref nnf_p;
+        nnf_p.set_bool("ignore_labels", true);
         s->add_tactic_after(mk_elim_patterns_tactic(m));
         s->add_tactic_after(mk_simplify_tactic(m));
         s->add_tactic_after(mk_propagate_values_tactic(m));
         s->add_tactic_after(mk_miniscope_tactic(m));
+        s->add_tactic_after(mk_snf_tactic(m, nnf_p));
+        s->add_tactic_after(mk_elim_array_tactic(m));
         s->add_tactic_after(mk_der_tactic(m));
         s->add_tactic_after(mk_expand_macros_tactic(m));
+        s->add_tactic_after(mk_der_tactic(m));
+        s->add_tactic_after(mk_simplify_tactic(m));
+        s->add_tactic_after(mk_pull_nested_quantifiers_tactic(m));
         s->add_tactic_after(mk_solve_eqs_tactic(m));
         s->add_tactic_after(mk_simplify_tactic(m));
         return s;
