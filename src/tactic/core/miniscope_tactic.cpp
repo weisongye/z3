@@ -25,6 +25,7 @@ Author:
 #include"cooperate.h"
 #include"has_free_vars.h"
 #include"miniscope_params.hpp"
+#include"well_sorted.h"
 
 class miniscope_tactic : public tactic {
 
@@ -188,10 +189,15 @@ class miniscope_tactic : public tactic {
                     ptr_buffer<sort> nv_sorts;
                     v_name = q->get_decl_name(num_vars - v - 1);
                     v_sort = q->get_decl_sort(num_vars - v - 1);
-                    for (unsigned i = 0; i < num_vars; i++) {
+                    SASSERT(num_vars > 0);
+                    for (unsigned i = 0; i < num_vars - 1; i++) {
                         if (i != num_vars - v - 1) {
                             nv_names.push_back(q->get_decl_name(i));
                             nv_sorts.push_back(q->get_decl_sort(i));
+                        }
+                        else {
+                            nv_names.push_back(q->get_decl_name(num_vars - 1));
+                            nv_sorts.push_back(q->get_decl_sort(num_vars - 1));
                         }
                     }
                     // split children
@@ -224,15 +230,18 @@ class miniscope_tactic : public tactic {
                         nv_children.push_back(p0);
                     }
                     SASSERT(nv_children.size() > 1);
-                    new_p = m.mk_app(p->get_decl(), nv_children.size(), nv_children.c_ptr());
+                    app_ref new_new_p(m);
+                    new_new_p = m.mk_app(p->get_decl(), nv_children.size(), nv_children.c_ptr());
                     if (nv_names.empty()) {
-                        result = new_p;
+                        result = new_new_p;
                     }
                     else {
                         quantifier_ref new_q(m);
-                        new_q = m.mk_quantifier(forall, nv_sorts.size(), nv_sorts.c_ptr(), nv_names.c_ptr(), new_p,
+                        SASSERT(is_well_sorted(m, q));
+                        new_q = m.mk_quantifier(forall, nv_sorts.size(), nv_sorts.c_ptr(), nv_names.c_ptr(), new_new_p,
                                                 q->get_weight(), q->get_qid(), q->get_skid());
-                        distribute_apply_iter(forall, new_p, depth+1, new_q, result);
+                        SASSERT(is_well_sorted(m, new_q));
+                        distribute_apply_iter(forall, new_new_p, depth+1, new_q, result);
                     }
                 }
             }

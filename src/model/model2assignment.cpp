@@ -204,8 +204,10 @@ struct model2assignment::imp {
 
     void process(app * f) {
         collect(f);
-        if (get_bool_value(f) != l_true)
+        if (get_bool_value(f) != l_true) {
+            TRACE("model2assignment_failed", tout << mk_pp(f, m()) << "\n";);
             throw exception("Failed to evaluate model.");
+        }
     }
 };
 
