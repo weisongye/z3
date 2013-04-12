@@ -86,7 +86,7 @@ public:
     virtual ~qsolver_adapter() {
     }
 
-    ast_manager & m() { 
+    ast_manager & m() const { 
         return m_manager; 
     }
     
@@ -104,6 +104,21 @@ public:
 
     virtual void display(std::ostream & out) const {
         m_kernel->display(out);
+    }
+
+    void display_core(std::ostream & out) const {
+        out << "=== Quantifiers ===========\n";
+        for (unsigned i = 0; i < m_quantifiers.size(); i++) {
+            out << mk_pp(m_quantifiers.get(i), m()) << "\n";
+        }        
+        out << "=== Nested quantifiers ===\n";
+        for (unsigned i = 0; i < m_nested_quantifiers.size(); i++) {
+            out << mk_pp(m_fresh_props.get(i), m()) << " => " << mk_pp(m_nested_quantifiers.get(i), m()) << "\n";
+        }
+        out << "=== Ground abstraction ===\n";
+        for (unsigned i = 0; i < m_ground_formulas.size(); i++) {
+            out << mk_pp(m_ground_formulas.get(i), m()) << "\n";
+        }        
     }
     
     virtual void set_cancel(bool f) {
@@ -180,21 +195,37 @@ public:
         }
     }
 
+    void get_relevant_nested_quantifiers(expr_substitution const & pM, ptr_buffer<quantifier> & result) {
+        SASSERT(m_fresh_props.size() == m_nested_quantifiers.size());
+        unsigned sz = m_fresh_props.size();
+        for (unsigned i = 0; i < sz; i++) {
+            expr * p = m_fresh_props.get(i);
+            if (pM.contains(p)) {
+                result.push_back(m_nested_quantifiers.get(i));
+            }
+        }
+    }
+
     lbool check_quantifiers() {
         model_ref aM;
         m_kernel->get_model(aM);
         if (!aM)
             return l_undef; // there is no model to check.
-
         expr_substitution pM(m());
         model2assignment proc(*(aM.get()), pM);
         proc(m_ground_formulas.size(), m_ground_formulas.c_ptr());
+        ptr_buffer<quantifier> relevant_nested_quantifiers;
+        get_relevant_nested_quantifiers(pM, relevant_nested_quantifiers);
         TRACE("qsolver_pm", 
-              tout << "partial model\n";
+              tout << "==== Partial Model\n";
               expr_substitution::iterator it  = pM.begin();
               expr_substitution::iterator end = pM.end();
               for (; it != end; ++it) {
                   tout << mk_pp(it->m_key, m()) << "\n---> " << mk_pp(it->m_value, m()) << "\n";
+              }
+              tout << "==== Relevant nested quantifiers\n";
+              for (unsigned i = 0; i < relevant_nested_quantifiers.size(); i++) {
+                  tout << mk_pp(relevant_nested_quantifiers[i], m()) << "\n";
               });
         
         // TODO: model check
@@ -203,11 +234,7 @@ public:
 
     virtual lbool check_sat(unsigned num_assumptions, expr * const * assumptions) {
         // TEST
-        TRACE("qsolver_check", 
-              tout << "before check_sat, abstraction:\n";
-              for (unsigned i = 0; i < m_ground_formulas.size(); i++) {
-                  tout << mk_pp(m_ground_formulas.get(i), m()) << "\n";
-              });
+        TRACE("qsolver_check", tout << "before check_sat, abstraction:\n"; display_core(tout););
         while (true) {
             lbool r = m_kernel->check_sat(num_assumptions, assumptions);
             if (r == l_false)
