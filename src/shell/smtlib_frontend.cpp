@@ -125,7 +125,9 @@ struct my_solver_factory : public solver_factory {
         s->add_tactic_after(mk_simplify_tactic(m));
         s->add_tactic_after(mk_pull_nested_quantifiers_tactic(m));
         s->add_tactic_after(mk_solve_eqs_tactic(m));
-        s->add_tactic_after(mk_simplify_tactic(m));
+        params_ref simp_p;
+        simp_p.set_bool("arith_lhs", true);
+        s->add_tactic_after(mk_simplify_tactic(m, simp_p));
         return s;
     }
 };

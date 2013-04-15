@@ -21,6 +21,12 @@ Revision History:
 #include"model2assignment.h"
 #include"rewriter_def.h"
 #include"ast_pp.h"
+#include"model_construct.h"
+#include"model_check.h"
+
+//#define USE_DATA_MEMBER
+
+using namespace qsolver;
 
 class qsolver_adapter : public solver {
     ast_manager &              m_manager;
@@ -33,6 +39,11 @@ class qsolver_adapter : public solver {
     expr_ref_vector            m_ground_formulas; 
 
     bool                       m_produce_proofs;
+#ifdef USE_DATA_MEMBER
+    //for model checking and construction
+    mc_context m_mc;
+    model_constructor m_mct;
+#endif
 
     struct scope {
         unsigned     m_quantifiers_lim;
@@ -79,7 +90,12 @@ public:
         m_fresh_props(m),
         m_nested_quantifiers(m),
         m_ground_formulas(m),
-        m_produce_proofs(produce_proofs) {
+        m_produce_proofs(produce_proofs)
+#ifdef USE_DATA_MEMBER
+       , m_mc(m),
+        m_mct(m) 
+#endif
+        {
         m_kernel->set_produce_models(true);
     }
 
@@ -171,13 +187,17 @@ public:
         }
     }
 
+    void assert_expr_core(expr * t, proof * pr = 0) {
+        m_ground_formulas.push_back(t);
+        m_kernel->assert_expr_proof(t, pr);
+    }
+
     virtual void assert_expr(expr * t) {
         expr_ref  a(m());
         proof_ref pr(m());
         abstract(t, a, pr);
         if (a) {
-            m_ground_formulas.push_back(a);
-            m_kernel->assert_expr_proof(a, pr);
+            assert_expr_core(a, pr);
         }
     }
 
@@ -190,23 +210,28 @@ public:
         proof_ref pr2(m());
         abstract(t, a, pr2);
         if (a) {
-            m_ground_formulas.push_back(a);
-            m_kernel->assert_expr_proof(a, m().mk_modus_ponens(pr, pr2));
+            assert_expr_core(a, m().mk_modus_ponens(pr, pr2));
         }
     }
 
-    void get_relevant_nested_quantifiers(expr_substitution const & pM, ptr_buffer<quantifier> & result) {
+    void get_relevant_nested_quantifiers(expr_substitution & pM, ptr_buffer<quantifier> & result) {
         SASSERT(m_fresh_props.size() == m_nested_quantifiers.size());
         unsigned sz = m_fresh_props.size();
         for (unsigned i = 0; i < sz; i++) {
             expr * p = m_fresh_props.get(i);
-            if (pM.contains(p)) {
+            expr * v;
+            if (pM.find(p, v) && m().is_true(v)) {
                 result.push_back(m_nested_quantifiers.get(i));
             }
         }
     }
 
     lbool check_quantifiers() {
+#ifndef USE_DATA_MEMBER
+        //FIXME: make these data members
+        mc_context m_mc(m_manager);
+        model_constructor m_mct(m_manager);
+#endif
         model_ref aM;
         m_kernel->get_model(aM);
         if (!aM)
@@ -216,6 +241,21 @@ public:
         proc(m_ground_formulas.size(), m_ground_formulas.c_ptr());
         ptr_buffer<quantifier> relevant_nested_quantifiers;
         get_relevant_nested_quantifiers(pM, relevant_nested_quantifiers);
+        //reset the round
+        m_mc.reset_round();
+        m_mct.reset_round(m_mc);
+
+        ptr_vector<quantifier> quantifiers;
+        quantifiers.append(m_quantifiers.size(), m_quantifiers.c_ptr());
+        quantifiers.append(relevant_nested_quantifiers.size(), relevant_nested_quantifiers.c_ptr());
+        //assert the relevant quantifiers
+        for (unsigned i=0; i<quantifiers.size(); i++) {
+            m_mct.assert_quantifier(m_mc, quantifiers[i]);
+        }
+        //collect relevant terms
+        for (unsigned i=0; i<m_mct.get_num_partial_model_terms(); i++) {
+            proc(m_mct.get_partial_model_term(i), false);
+        }
         TRACE("qsolver_pm", 
               tout << "==== Partial Model\n";
               expr_substitution::iterator it  = pM.begin();
@@ -227,9 +267,39 @@ public:
               for (unsigned i = 0; i < relevant_nested_quantifiers.size(); i++) {
                   tout << mk_pp(relevant_nested_quantifiers[i], m()) << "\n";
               });
-        
-        // TODO: model check
-        return l_true;
+
+        //assert the partial model
+        m_mct.assert_partial_model(m_mc, pM.get_map());
+
+        expr_ref_buffer instantiation_lemmas(m_manager);
+        lbool result = l_true;
+        //check the relevant quantifiers
+        for (unsigned i=0; i<quantifiers.size(); i++) {
+            expr_ref_buffer instantiations(m_manager);
+            lbool c_result = m_mc.check(&m_mct, quantifiers[i], instantiations); 
+            if (c_result!=l_true) {
+                result = result!=l_false ? c_result : result;
+            }
+            //convert and add instantiation lemmas
+            if (m_nq2p.contains(quantifiers[i])) {
+                expr * pv = m_nq2p.find(quantifiers[i]);
+                for (unsigned j=0; j<instantiations.size(); j++) {
+                    expr_ref il(m_manager);
+                    il = m_manager.mk_or(m_manager.mk_not(pv), instantiations[j]);
+                    instantiation_lemmas.push_back(il);
+                }
+            }
+            else {
+                instantiation_lemmas.append(instantiations.size(), instantiations.c_ptr());
+            }
+        }
+        std::cout << "Produced " << instantiation_lemmas.size() << " lemmas." << std::endl;
+        for (unsigned i=0; i<instantiation_lemmas.size(); i++) {
+            TRACE("qsolver_inst", tout << "Produced instantiation : " << mk_pp(instantiation_lemmas[i],m_manager) << "\n";);
+            assert_expr_core(instantiation_lemmas[i]);
+        }
+
+        return result;
     }
 
     virtual lbool check_sat(unsigned num_assumptions, expr * const * assumptions) {

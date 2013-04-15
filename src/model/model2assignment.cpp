@@ -173,9 +173,9 @@ struct model2assignment::imp {
     }
 
     // Collect relevant terms
-    void collect(app * f) {
+    void collect(app * f, bool assertion) {
         m_todo.reset();
-        visit(f, false);
+        visit(f, !assertion);
         while (!m_todo.empty()) {
             checkpoint();
             app * f = m_todo.back();
@@ -202,9 +202,9 @@ struct model2assignment::imp {
         }
     }
 
-    void process(app * f) {
-        collect(f);
-        if (get_bool_value(f) != l_true) {
+    void process(app * f, bool assertion) {
+        collect(f, assertion);
+        if (assertion && get_bool_value(f) != l_true) {
             TRACE("model2assignment_failed", tout << mk_pp(f, m()) << "\n";);
             throw exception("Failed to evaluate model.");
         }
@@ -223,14 +223,14 @@ void model2assignment::set_cancel(bool f) {
     m_imp->set_cancel(f);
 }
 
-void model2assignment::operator()(expr * f) {
+void model2assignment::operator()(expr * f, bool assertion) {
     SASSERT(is_ground(f));
-    m_imp->process(to_app(f));
+    m_imp->process(to_app(f), assertion);
 }
 
-void model2assignment::operator()(unsigned n, expr * const * fs) {
+void model2assignment::operator()(unsigned n, expr * const * fs, bool assertion) {
     for (unsigned i = 0; i < n; i++)
-        operator()(fs[i]);
+        operator()(fs[i], assertion);
 }
 
 expr_substitution & model2assignment::get_result() {

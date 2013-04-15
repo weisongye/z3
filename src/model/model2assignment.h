@@ -38,8 +38,8 @@ public:
        
        \pre f is satisfied by the model provided in the constructor.
     */
-    void operator()(expr * f);
-    void operator()(unsigned n, expr * const * fs);
+    void operator()(expr * f, bool assertion=true);
+    void operator()(unsigned n, expr * const * fs, bool assertion=true);
     /**
        \brief Return a reference to the object provided in the constructor.
     */

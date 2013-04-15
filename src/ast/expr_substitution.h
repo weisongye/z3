@@ -53,6 +53,8 @@ public:
     void cleanup();
 
     typedef obj_map<expr, expr*>::iterator iterator;
+
+    obj_map<expr, expr*> & get_map() { return m_subst; }
     
     iterator begin() { return m_subst.begin(); }
     iterator end() { return m_subst.end(); }

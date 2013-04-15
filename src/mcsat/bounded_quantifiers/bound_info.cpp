@@ -485,25 +485,39 @@ bool bound_info::is_trivial(unsigned idx) {
     }
 }
 
+bool bound_info::get_bound(unsigned index, expr_ref & bnd, bool isLower) {
+    if (is_bound(index)) {
+        sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-index);
+        var * v = m_m.mk_var(index, s);
+        if (m_au.is_int(s)) {
+            bnd = isLower ? m_au.mk_ge(v, m_l[index]) : m_au.mk_le(v, m_u[index]);
+            return true;
+        }
+        else if (m_bvu.is_bv_sort(s)) {
+            if (is_bv_unsigned_bound(index)) {
+                bnd = isLower ? m_bvu.mk_ule(m_l[index],v) : m_bvu.mk_ule(v, m_u[index]);
+            }
+            else {
+                bnd = isLower ? m_bvu.mk_sle(m_sl[index],v) : m_bvu.mk_sle(v, m_su[index]);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 void bound_info::get_body(expr_ref& body, bool inc_bounds){
     expr_ref_buffer lits(m_m);
     if (inc_bounds) {
         for (unsigned i = 0; i < m_var_order.size(); i++) {
-            int index = m_var_order[i];
-            sort * s = m_q->get_decl_sort(m_q->get_num_decls()-1-index);
-            var * v = m_m.mk_var(index, s);
-            if (m_au.is_int(s)) {
-                lits.push_back(m_m.mk_not(m_au.mk_ge(v, m_l[index])));
-                lits.push_back(m_m.mk_not(m_au.mk_le(v, m_u[index])));
-            }
-            else if (m_bvu.is_bv_sort(s)) {
-                if (is_bv_unsigned_bound(index)) {
-                    lits.push_back(m_m.mk_not(m_bvu.mk_ule(m_l[index],v)));
-                    lits.push_back(m_m.mk_not(m_bvu.mk_ule(v, m_u[index])));
-                }
-                else {
-                    lits.push_back(m_m.mk_not(m_bvu.mk_sle(m_sl[index],v)));
-                    lits.push_back(m_m.mk_not(m_bvu.mk_sle(v, m_su[index])));
+            unsigned index = m_var_order[i];
+            if (is_bound(index)) {
+                for (unsigned b = 0; b < 2; b++) {
+                    expr_ref bnd(m_m);
+                    if (get_bound(index, bnd, b==0)) {
+                        bnd = m_m.mk_not(bnd);
+                        lits.push_back(bnd);
+                    }
                 }
             }
         }

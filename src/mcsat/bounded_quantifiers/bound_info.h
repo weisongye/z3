@@ -22,9 +22,8 @@ Author:
 #include"bv_decl_plugin.h"
 #include"th_rewriter.h"
 
-// m_l and m_u are signed bounds (also includes Int)
-// m_ul and m_uu and unsigned bounds
-// m_bd is the new body of the quantifier
+// m_l and m_u are unsigned bounds (also includes Int)
+// m_sl and m_su and signed bounds
 // m_var_order specify the order of variable bounds
 //   variable v_0 has fixed (ground) bounds
 //   variable v_i has fixed bounds if all variables v_j for j<i have fixed bounds
@@ -82,6 +81,8 @@ public:
     bool is_normalized(unsigned idx);
     //is trivial, returns true if bound is entire domain
     bool is_trivial(unsigned idx);
+    //get the literal representing the bound at index
+    bool get_bound(unsigned idx, expr_ref & bnd, bool isLower);
     //get body
     //  this is the original body without literals that were used for bounds,
     //  and possibly additional literals in the case of bit vectors
