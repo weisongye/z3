@@ -54,13 +54,90 @@ bool cond::is_star() {
     return true;
 }
 
-bool def::has_generalization(mc_context & mc, cond * c) {
-    for (int i=(m_conds.size()-1); i>=0; i--) {
-        if(mc.is_generalization(m_conds[i],c)) {
+bool cond_trie::has_generalization(mc_context & mc, cond * c, unsigned index, abs_val * star) {
+    SASSERT(index<c->get_size());
+    abs_val * curr = c->get_value(index);
+    cond_trie * ct;
+    if (m_children.find(curr, ct)) {
+        if (index==(c->get_size()-1)) {
+            return true;
+        }
+        else if (ct->has_generalization(mc, c, index+1, star)) {
             return true;
         }
     }
+    if (star!=curr && m_children.find(star, ct)) {
+        return index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star);
+    }
+    else {
+        return false;
+    }
+}
+
+bool cond_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star) {
+    SASSERT(index<c->get_size());
+    abs_val * curr = c->get_value(index);
+    cond_trie * ct;
+    //first check if it is generalized
+    if (star!=curr && m_children.find(star,ct)) {
+        if (index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star)) {
+            return false;
+        }
+    }
+    if (m_children.find(curr, ct)) {
+        if (index==(c->get_size()-1)) {
+            // it's already there
+            return false;
+        }
+        else {
+            return ct->add(mc, c, index+1, star);
+        }
+    }
+    else {
+        if (index==(c->get_size()-1)) {
+            //add dummy pointer
+            m_children.insert(curr, 0);
+        }
+        else {
+            void * mem = mc.allocate(sizeof(cond_trie));
+            ct = new (mem) cond_trie;
+            m_children.insert(curr, ct);
+            ct->add(mc, c, index+1, star);
+        }
+        return true;
+    }
+}
+
+bool cond_trie::add(mc_context & mc, cond * c) { 
+    if (c->get_size()==0) {
+        if (m_children.empty()) {
+            //add dummy pointer
+            m_children.insert(0,0);
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    else {
+        return add(mc, c, 0, mc.mk_star()); 
+    }
+}
+
+bool def::has_generalization(mc_context & mc, cond * c) {
+    bool has_gen = !m_cond_trie.add(mc, c);
+    // the unoptimized version:
+    /*
+    for (int i=(m_conds.size()-1); i>=0; i--) {
+        if (mc.is_generalization(m_conds[i],c)) {
+            SASSERT(has_gen);
+            return true;
+        }
+    }
+    SASSERT(!has_gen);
     return false;
+    */
+    return has_gen;
 }
 
 bool def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
@@ -69,7 +146,9 @@ bool def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
         m_values.push_back(v);
         return true;
     }
-    return false;
+    else {
+        return false;
+    }
 }
 
 
@@ -346,7 +425,10 @@ bool mc_context::is_eq(const rational & r1, const rational & r2) {
 
 bool mc_context::is_eq(val * v1, val * v2) {
     SASSERT(v1->get_kind()==v2->get_kind());
-    if (v1->is_int()) {
+    if (v1==v2) {
+        return true;
+    }
+    else if (v1->is_int()) {
         return m_zm.eq(to_int(v1)->get_value(), to_int(v2)->get_value());
     }else if (v1->is_bv()) {
         SASSERT(to_bv(v1)->get_size()==to_bv(v2)->get_size());
@@ -1110,7 +1192,9 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
 
     if (!m_m.is_false(e)) {
         ptr_vector<def> empty_subst;
+        //std::cout << "Compute definition..." << std::endl;
         def * d = do_check(mct, q, e, empty_subst);
+        //std::cout << "Done." << std::endl;
         TRACE("model_check",tout << "Interpretation of " << mk_pp(e,m_m) << " is : " << "\n";
                             display(tout, d);
                             tout << "\n";);
@@ -1118,6 +1202,7 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
         expr_ref good(m_m);
         ci.get_model_checkable(good, true);
 #endif
+        //std::cout << "Get the instantiations..." << std::endl;
         //process the entries (add instantiations)
         for (unsigned i=0; i<d->get_num_entries(); i++) {
             //check for false, report exceptions in terms of witnesses
@@ -1160,10 +1245,11 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
                                         tout << "\n";);
                     SASSERT(di->get_num_entries()==1);
                     SASSERT(m_m.is_false(to_expr(di->get_value(0)->get_value(0))->get_value()));
-#endif
                 }
+#endif
             }
         }
+        //std::cout << "Done." << std::endl;
     }
     else {
         TRACE("model_check",tout << "The quantifier does not have a model-checkable portion.\n";);
@@ -1238,6 +1324,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                 SASSERT(is_uninterp(e) || !is_var(ec) || to_var(ec)->get_idx()<subst.size());
                 def * dc = do_check(mct, q, ec, subst);
                 dc->simplify(*this);
+                //std::cout << "Product " << e << " " << i << " " << dc->get_num_entries() << std::endl;
                 d = d ? mk_product(d,dc) : dc;
             }
             TRACE("model_check_debug",if (d) {

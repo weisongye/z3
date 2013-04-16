@@ -217,12 +217,26 @@ public:
     bool is_star();
 };
 
+//trie of values
+class cond_trie 
+{
+private:
+    ptr_addr_map< abs_val, cond_trie * > m_children;
+    bool has_generalization(mc_context & mc, cond * c, unsigned index, abs_val * star);
+    bool add(mc_context & mc, cond * c, unsigned index, abs_val * star);
+public:
+    bool add(mc_context & mc, cond * c);
+};
+
+
 //definition (a list of entries)
 class def {
     friend class mc_context;
 protected:
     ptr_vector<cond> m_conds;
     ptr_vector<value_tuple> m_values;
+    //index for storing condition
+    cond_trie m_cond_trie;
     //is there a generalization of c already in this definition
     bool has_generalization(mc_context & mc, cond * c);
 public:
