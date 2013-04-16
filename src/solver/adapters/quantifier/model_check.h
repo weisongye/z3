@@ -218,10 +218,10 @@ public:
 };
 
 //trie of values
-class cond_trie 
+class cond_generalization_trie 
 {
 private:
-    ptr_addr_map< abs_val, cond_trie * > m_children;
+    ptr_addr_map< abs_val, cond_generalization_trie * > m_children;
     bool has_generalization(mc_context & mc, cond * c, unsigned index, abs_val * star);
     bool add(mc_context & mc, cond * c, unsigned index, abs_val * star);
 public:
@@ -235,8 +235,8 @@ class def {
 protected:
     ptr_vector<cond> m_conds;
     ptr_vector<value_tuple> m_values;
-    //index for storing condition
-    cond_trie m_cond_trie;
+    //index for indexing conditions
+    cond_generalization_trie m_cgt;
     //is there a generalization of c already in this definition
     bool has_generalization(mc_context & mc, cond * c);
 public:
@@ -286,7 +286,7 @@ protected: //cached information
     expr_ref_buffer m_expr_produced_global;
     //expressions created by evaluation
     expr_ref_buffer m_expr_produced;
-    // temp field for mk_compose
+    //new values
     u_map< abs_val * > m_new_vals;
 protected: //helper functions
     //helper for check, the third argument is an optional mapping from variables to the definitions that should be used for them
@@ -385,7 +385,7 @@ public:
     //mk star for quantifier
     cond * mk_star(model_constructor * mct, quantifier * q);
     //mk value at index
-    cond * mk_value_at_index(abs_val * a, unsigned index, unsigned size);
+    //cond * mk_value_at_index(abs_val * a, unsigned index, unsigned size);
     //mk cond
     cond * mk_cond(ptr_buffer<abs_val> & avals);
     // copy the condition

@@ -1055,7 +1055,7 @@ projection * model_constructor::get_projection(mc_context & mc, quantifier * q, 
 void model_constructor::get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr) {
     found_expr = true;
     bool used_only_rel_domain = true;
-    for (unsigned j=0; j<c->get_size(); j++) {
+    for (int j=(c->get_size()-1); j>=0; j--) {
         abs_val * a = c->get_value(j);
         projection * p = get_projection(mc, q, j, false);
         //first, get offset

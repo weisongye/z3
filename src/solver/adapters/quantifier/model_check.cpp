@@ -54,10 +54,10 @@ bool cond::is_star() {
     return true;
 }
 
-bool cond_trie::has_generalization(mc_context & mc, cond * c, unsigned index, abs_val * star) {
+bool cond_generalization_trie::has_generalization(mc_context & mc, cond * c, unsigned index, abs_val * star) {
     SASSERT(index<c->get_size());
     abs_val * curr = c->get_value(index);
-    cond_trie * ct;
+    cond_generalization_trie * ct;
     if (m_children.find(curr, ct)) {
         if (index==(c->get_size()-1)) {
             return true;
@@ -74,10 +74,10 @@ bool cond_trie::has_generalization(mc_context & mc, cond * c, unsigned index, ab
     }
 }
 
-bool cond_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star) {
+bool cond_generalization_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star) {
     SASSERT(index<c->get_size());
     abs_val * curr = c->get_value(index);
-    cond_trie * ct;
+    cond_generalization_trie * ct;
     //first check if it is generalized
     if (star!=curr && m_children.find(star,ct)) {
         if (index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star)) {
@@ -99,8 +99,8 @@ bool cond_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star) {
             m_children.insert(curr, 0);
         }
         else {
-            void * mem = mc.allocate(sizeof(cond_trie));
-            ct = new (mem) cond_trie;
+            void * mem = mc.allocate(sizeof(cond_generalization_trie));
+            ct = new (mem) cond_generalization_trie;
             m_children.insert(curr, ct);
             ct->add(mc, c, index+1, star);
         }
@@ -108,7 +108,7 @@ bool cond_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star) {
     }
 }
 
-bool cond_trie::add(mc_context & mc, cond * c) { 
+bool cond_generalization_trie::add(mc_context & mc, cond * c) { 
     if (c->get_size()==0) {
         if (m_children.empty()) {
             //add dummy pointer
@@ -125,7 +125,7 @@ bool cond_trie::add(mc_context & mc, cond * c) {
 }
 
 bool def::has_generalization(mc_context & mc, cond * c) {
-    bool has_gen = !m_cond_trie.add(mc, c);
+    bool has_gen = !m_cgt.add(mc, c);
     // the unoptimized version:
     /*
     for (int i=(m_conds.size()-1); i>=0; i--) {
@@ -842,12 +842,20 @@ def * mc_context::mk_var_offset(def * d, var * v, bool is_negated) {
 def * mc_context::mk_compose(def * df, def * da) {
     def * d = new_def();
     for (unsigned i=0; i<da->get_num_entries(); i++) {
+        //bool end_early = false;
         for (unsigned j=0; j<df->get_num_entries(); j++) {
             cond * cc = mk_compose(da->get_condition(i), da->get_value(i), df->get_condition(j));
             if( cc!=0 ){
-                d->append_entry(*this, cc, df->get_value(j));
+                if (d->append_entry(*this, cc, df->get_value(j))) {
+                    //SASSERT(!end_early);
+                }
+                if (cc==da->get_condition(i)) {
+                    //end_early = true;
+                    break;
+                }
             }
         }
+        
     }
     return d;
 }
@@ -931,7 +939,7 @@ cond * mc_context::mk_star(model_constructor * mct, quantifier * q) {
     }
     return m_quant_to_cond_star.find(q);
 }
-
+/*
 cond * mc_context::mk_value_at_index(abs_val * a, unsigned index, unsigned size) {
     cond * c = cond::mk(*this, size);
     for (unsigned i=0; i<c->get_size(); i++) {
@@ -939,7 +947,7 @@ cond * mc_context::mk_value_at_index(abs_val * a, unsigned index, unsigned size)
     }
     return c;
 }
-
+*/
 cond * mc_context::mk_cond(ptr_buffer<abs_val> & avals) {
     cond * c = cond::mk(*this,avals.size());
     for (unsigned i=0; i<c->get_size(); i++) {
@@ -1232,6 +1240,7 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
                                 }
                                 tout << "\n";
                                 if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
+                
                 //TODO: communicate instantiation
                 expr_ref inst_lemma(m_m);
                 instantiate(m_m, q, inst.c_ptr(), inst_lemma);
@@ -1241,7 +1250,7 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
                 //for debugging, evaluate again with values of instantiation
                 if (inst_found_expr) {
                     //use a variable substitution (assumes that q does not have nested quantifiers)
-                    var_subst vs(m_m, false);
+                    var_subst vs(m_m);
                     expr_ref inst_good(m_m);
                     vs(good,inst.size(),inst.c_ptr(), inst_good);
                     TRACE("inst_debug", tout << "Redo check on " << mk_pp(inst_good,m_m) << "\n";);
