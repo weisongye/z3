@@ -54,6 +54,7 @@ public:
     
     void reset();
     void cleanup();
+    void display(std::ostream & out);
 };
 
 void get_macro_head_def(ast_manager & m, quantifier * q, func_decl * f, app * & head, expr * & def);

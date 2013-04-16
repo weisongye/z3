@@ -20,6 +20,7 @@ Notes:
 --*/
 #include"macro_substitution.h"
 #include"ref_util.h"
+#include"ast_pp.h"
 
 typedef obj_map<func_decl, proof*>           func_decl2proof;
 typedef obj_map<func_decl, expr_dependency*> func_decl2expr_dependency;
@@ -172,6 +173,15 @@ bool macro_substitution::find(func_decl * f, quantifier * & q, proof * & pr, exp
         return true;
     }
     return false;
+}
+
+void macro_substitution::display(std::ostream & out) {
+    obj_map<func_decl, quantifier *>::iterator it  = m_decl2macro.begin();
+    obj_map<func_decl, quantifier *>::iterator end = m_decl2macro.end();
+    for (; it != end; ++it) {
+        out << it->m_key->get_name() << " -->\n" 
+            << mk_pp(it->m_value, m_manager) << "\n";    
+    }
 }
 
 void get_macro_head_def(ast_manager & m, quantifier * q, func_decl * f, app * & head, expr * & def) {
