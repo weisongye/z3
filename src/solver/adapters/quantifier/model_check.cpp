@@ -126,8 +126,8 @@ bool cond_generalization_trie::add(mc_context & mc, cond * c) {
 
 bool def::has_generalization(mc_context & mc, cond * c) {
     bool has_gen = !m_cgt.add(mc, c);
-    // the unoptimized version:
     /*
+    // the unoptimized version:
     for (int i=(m_conds.size()-1); i>=0; i--) {
         if (mc.is_generalization(m_conds[i],c)) {
             SASSERT(has_gen);
@@ -1364,6 +1364,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                 }
             }
             else {
+                TRACE("evaluate_debug", tout << "evaluate for " << mk_pp(e,m_m) << "\n";);
                 ptr_vector<value_tuple> computed_vals;
                 //interpreted case
                 for( unsigned i=0; i<d->get_num_entries(); i++ ){

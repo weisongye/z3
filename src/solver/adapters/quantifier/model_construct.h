@@ -82,7 +82,7 @@ public:
     //get offset
     expr * get_offset() { return m_offset; }
     //get witness : o is the offset 
-    void get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * o, bool & found_expr);
+    void get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * o, sort * s, bool & found_expr);
     //get relevant domain size
     unsigned get_num_relevant_domain() { return m_rel_domain.size(); }
     //get relevant domain 

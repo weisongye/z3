@@ -50,6 +50,7 @@ public:
     //is negated variable
     bool is_var_negated(expr * e, var * & v);
     //is variable
+    bool is_var_atom(expr * e);
     bool is_var_atom(expr * e, var * & v, bool & is_negated);
     //is variable with offset?
     bool is_var_offset(expr * e, unsigned req = REQ_NONE);

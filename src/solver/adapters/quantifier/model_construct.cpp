@@ -372,7 +372,7 @@ abs_val * projection::get_projected_default(mc_context & mc) {
     }
 }
 
-void projection::get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * o, bool & found_expr) {
+void projection::get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * o, sort * s, bool & found_expr) {
     found_expr = false;
     TRACE("inst_debug",tout << "Getting witness for ";
                        mc.display(tout, a);
@@ -414,10 +414,18 @@ void projection::get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * 
         SASSERT(m_type==projection::PROJ_MONOTONIC);
         v = to_interval(a)->get_upper();
         if (!v) {
-            SASSERT(!m_monotonic_intervals.empty());
-            v = m_rel_domain_val[m_monotonic_intervals.size()-1];
-            //interval should contain the highest value in the relevant domain
-            SASSERT(!mc.is_lt(v, to_interval(a)->get_lower()));
+            if (!m_monotonic_intervals.empty()) {
+                v = m_rel_domain_val[m_monotonic_intervals.size()-1];
+                //interval should contain the highest value in the relevant domain
+                SASSERT(!mc.is_lt(v, to_interval(a)->get_lower()));
+            }
+            else if (to_interval(a)->get_lower()) {
+                v = to_interval(a)->get_lower();
+            }
+            else {
+                //just make some value
+                e = mc.get_some_value(s);
+            }
         }
     } 
     else {
@@ -1062,7 +1070,7 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, cond * c, expr
         expr * o = p->get_offset();
         expr_ref ie(m_m);
         bool c_found_expr;
-        p->get_rep()->get_witness(mc, a, ie, o, c_found_expr);
+        p->get_rep()->get_witness(mc, a, ie, o, q->get_decl_sort((q->get_num_decls()-1)-j), c_found_expr);
         inst.push_back(ie);
         found_expr = found_expr && c_found_expr;
     }
