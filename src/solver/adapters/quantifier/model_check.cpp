@@ -673,7 +673,6 @@ cond * mc_context::mk_compose(cond * c1, value_tuple * v, cond * c2) {
     //we first check if the compose will succeed before copying c1
     //store the values within c1 that change
     m_new_vals.reset();
-    u_map< abs_val * > & new_vals = m_new_vals;
     for( unsigned i=0; i<v->get_size(); i++ ){
         if( c2->m_vec[i]!=0 ){
             abs_val * curr = 0;
@@ -685,13 +684,17 @@ cond * mc_context::mk_compose(cond * c1, value_tuple * v, cond * c2) {
             if (vi->is_expr() && is_var(to_expr(vi)->get_value())) {
                 isVar = true;
                 vid = to_var(to_expr(vi)->get_value())->get_idx();
-                curr = new_vals.contains(vid) ? new_vals.find(vid) : c1->get_value(vid);
+                if (!m_new_vals.find(vid,curr)) {
+                    curr = c1->get_value(vid);
+                }
             }
             else if (vi->is_var_offset()) {
                 //similarly if it is variable offset
                 isVar = true;
                 vid = to_var_offset(vi)->get_variable()->get_idx();
-                curr = new_vals.contains(vid) ? new_vals.find(vid) : c1->get_value(vid);
+                if (!m_new_vals.find(vid,curr)) {
+                    curr = c1->get_value(vid);
+                }
                 //additionally, we must apply inverse of offset to the target
                 val * vo = to_var_offset(vi)->get_offset();
                 if (vo) {
@@ -709,8 +712,8 @@ cond * mc_context::mk_compose(cond * c1, value_tuple * v, cond * c2) {
             //check if it is compatible
             if (is_compatible(curr, curr_tgt)) {
                 if (isVar) {
-                    new_vals.erase(vid);
-                    new_vals.insert(vid, mk_meet(curr, curr_tgt));
+                    m_new_vals.erase(vid);
+                    m_new_vals.insert(vid, mk_meet(curr, curr_tgt));
                 }
             }
             else {
@@ -720,16 +723,18 @@ cond * mc_context::mk_compose(cond * c1, value_tuple * v, cond * c2) {
         }
     }
     //now, copy c1, taking indicies that changed
-    cond * cc = copy( c1 );
-    for (unsigned i=0; i<c1->get_size(); i++) {
-        if (new_vals.contains(i)) {
-            cc->m_vec[i] = new_vals.find(i);
-        }
-        else {
-            cc->m_vec[i] = c1->m_vec[i];
-        }
+    if (m_new_vals.empty()) {
+        return c1;
     }
-    return cc;
+    else {
+        cond * cc = copy( c1 );
+        for (unsigned i=0; i<c1->get_size(); i++) {
+            if (!m_new_vals.find(i,cc->m_vec[i])) {
+                cc->m_vec[i] = c1->m_vec[i];
+            }
+        }
+        return cc;
+    }
 }
 
 
