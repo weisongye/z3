@@ -328,6 +328,10 @@ public:
     mc_context(ast_manager & _m);
     //reset round
     void reset_round();
+    //push user context
+    void push();
+    //pop user context
+    void pop();
     //allocate memory
     void * allocate(size_t size) { return m_reg.allocate(size); }
     //make value from expression

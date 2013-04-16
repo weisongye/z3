@@ -46,6 +46,8 @@ protected:
     //offset
     expr * m_offset;
     bool m_offset_valid;
+
+    expr * m_last_projection_term;
 protected:
     void compute(mc_context & mc);
 public:
@@ -100,6 +102,8 @@ public:
 class model_constructor
 {
 protected:
+    // use monotonic projections?
+    bool m_use_monotonic_projections;
     //function to id map
     obj_map< func_decl, unsigned > m_func_to_id;
     //functions
@@ -142,25 +146,25 @@ protected:
     void add_relevant_domain(projection * p, expr * e);
 public:
     //constructor
-    model_constructor(ast_manager & _m);
-
-    //do things in the following order before calling get_def:
+    model_constructor(ast_manager & _m, bool use_monotonic_projections = false);
+    //do these 5 things in the following order before calling get_def:
     //reset the round
     void reset_round(mc_context & mc);
     //assert quantifier
     void assert_quantifier(mc_context & mc, quantifier * q);
-    //(optional) set projection term: if t if f(t1...tn), then t1...tn used as projection term for f's projection terms
+    //(optional) set projection term: if t if f(t1...tn), then t1...tn used as projection term for f's projection terms (or per argument)
     void set_projection_term(mc_context & mc, expr * t);
-    //(optional) set projection term per function argument
     void set_projection_term(mc_context & mc, func_decl * f, unsigned i, expr * e);
+    //determine the terms that must be in the parial model
+    unsigned get_num_partial_model_terms() { return m_partial_model_terms.size(); }
+    expr * get_partial_model_term(unsigned i) { return m_partial_model_terms[i]; }
     //assert the partial model
     void assert_partial_model(mc_context & mc, obj_map< expr, expr * > & m);
-
 public:
-    //get the number of terms that must be in the partial model
-    unsigned get_num_partial_model_terms() { return m_partial_model_terms.size(); }
-    //get term that must be in the parial model
-    expr * get_partial_model_term(unsigned i) { return m_partial_model_terms[i]; }
+    //push user context
+    void push();
+    //pop user context
+    void pop();
 public:
     //get projection
     projection * get_projection(mc_context & mc, func_decl * f, unsigned i, bool mk_rep = true);

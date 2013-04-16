@@ -24,7 +24,7 @@ Revision History:
 #include"model_construct.h"
 #include"model_check.h"
 
-//#define USE_DATA_MEMBER
+#define USE_DATA_MEMBER
 
 using namespace qsolver;
 
@@ -39,11 +39,10 @@ class qsolver_adapter : public solver {
     expr_ref_vector            m_ground_formulas; 
 
     bool                       m_produce_proofs;
-#ifdef USE_DATA_MEMBER
+
     //for model checking and construction
     mc_context m_mc;
     model_constructor m_mct;
-#endif
 
     struct scope {
         unsigned     m_quantifiers_lim;
@@ -90,12 +89,9 @@ public:
         m_fresh_props(m),
         m_nested_quantifiers(m),
         m_ground_formulas(m),
-        m_produce_proofs(produce_proofs)
-#ifdef USE_DATA_MEMBER
-       , m_mc(m),
-        m_mct(m) 
-#endif
-        {
+        m_produce_proofs(produce_proofs), 
+        m_mc(m),
+        m_mct(m) {
         m_kernel->set_produce_models(true);
     }
 
@@ -148,6 +144,8 @@ public:
         s.m_nested_quantifiers_lim = m_nested_quantifiers.size();
         s.m_ground_formulas_lim    = m_ground_formulas.size();
         m_kernel->push();
+        m_mc.push();
+        m_mct.push();
     }
 
     virtual void pop(unsigned num_scopes) {
@@ -167,6 +165,8 @@ public:
         m_fresh_props.shrink(old_nested_sz);
         m_ground_formulas.shrink(s.m_ground_formulas_lim);
         m_scopes.shrink(new_lvl);
+        m_mc.pop();
+        m_mct.pop();
     }
 
     virtual void abstract(expr * t, expr_ref & r, proof_ref & pr) {
@@ -227,11 +227,6 @@ public:
     }
 
     lbool check_quantifiers() {
-#ifndef USE_DATA_MEMBER
-        //FIXME: make these data members
-        mc_context m_mc(m_manager);
-        model_constructor m_mct(m_manager);
-#endif
         model_ref aM;
         m_kernel->get_model(aM);
         if (!aM)

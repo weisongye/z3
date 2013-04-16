@@ -71,6 +71,8 @@ protected:
     ast_manager & m_m;
     arith_util & m_au;
     bv_util & m_bvu;
+    // use monotonic projections?
+    bool m_use_monotonic_projections;
     //the utility object for querying
     classify_util m_util;
     //the quantifier
@@ -82,9 +84,9 @@ protected:
     //literals that are witnessable
     ptr_vector<expr> m_w_lits;
     //classify literal
-    void classify_term(expr * e, bool hasPolarity, bool polarity, bool & model_checkable, bool & witnessable);
+    void classify_term(expr * e, bool hasPolarity, bool polarity, bool & model_checkable, bool & witnessable, bool & ground_result);
 public:
-    classify_info(ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q);
+    classify_info(ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q, bool m_use_monotonic_projections = false);
     //compute function
     bool compute();
     //get model-checkable

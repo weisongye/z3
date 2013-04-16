@@ -23,7 +23,7 @@ using namespace qsolver;
 
 classify_util::classify_util(ast_manager & m, arith_util & au, bv_util & bvu) :
 m_m(m), m_au(au), m_bvu(bvu) {
-    
+
 }
 
 bool classify_util::is_atomic_value(expr * e) {
@@ -247,19 +247,24 @@ bool classify_util::is_witnessable(expr * e, bool hasPolarity, bool polarity,
                     no_proj_terms.push_back(t);
                     sort * st = get_sort(t);
                     //t-1 and t+1 are in relevant domain
-                    for (unsigned r=0; r<2; r++) {
-                        expr_ref rel_expr(m_m);
-                        if (m_au.is_int(st)) {
-                            rel_expr = m_au.mk_add(t, m_au.mk_numeral(rational(r==0 ? 1 : -1), true));
+                    if (m_au.is_int(st) || m_bvu.is_bv_sort(st)) {
+                        for (unsigned r=0; r<2; r++) {
+                            expr_ref rel_expr(m_m);
+                            if (m_au.is_int(st)) {
+                                rel_expr = m_au.mk_add(t, m_au.mk_numeral(rational(r==0 ? 1 : -1), true));
+                            }
+                            else if (m_bvu.is_bv_sort(st)) {
+                                unsigned sz = m_bvu.get_bv_size(st);
+                                rel_expr = m_bvu.mk_bv_add(t, m_bvu.mk_numeral(rational(r==0 ? 1 : -1), sz));
+                            }
+                            rel_domain.push_back(rel_expr);
                         }
-                        else if (m_bvu.is_bv_sort(st)) {
-                            unsigned sz = m_bvu.get_bv_size(st);
-                            rel_expr = m_bvu.mk_bv_add(t, m_bvu.mk_numeral(rational(r==0 ? 1 : -1), sz));
-                        }
-                        rel_domain.push_back(rel_expr);
+                    }
+                    if (!hasPolarity || polarity) {
+                        rel_domain.push_back(t);
                     }
                 }
-                return !req_exact || (hasPolarity && polarity);
+                return !req_exact || (hasPolarity && !polarity);
             }
             else {
                 //TODO?
@@ -319,13 +324,12 @@ bool classify_util::is_witnessable(expr * e, bool hasPolarity, bool polarity,
     return is_witnessable(e, hasPolarity, polarity, v1, v2, no_proj_terms, rel_domain, proj_type, true, req_exact);
 }
 
-classify_info::classify_info(ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q) :
+classify_info::classify_info(ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q, bool use_monotonic_projections) :
     m_m(m), m_au(au), m_bvu(bvu), m_util(m, au, bvu), m_q(q, m), m_lits(m) {
-    
+    m_use_monotonic_projections = use_monotonic_projections;
 }
 
-void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, bool & model_checkable, bool & witnessable) {
-    TRACE("classify_debug", tout << "Classifying " << mk_pp(e,m_m) << "\n";);
+void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, bool & model_checkable, bool & witnessable, bool & ground_result) {
     if (is_app(e)) {
         bool cHasPolarity = hasPolarity && !m_m.is_iff(e);    //ITE handled below
         bool cPolarity = m_m.is_not(e) ? !polarity : polarity;
@@ -339,36 +343,44 @@ void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, boo
             expr_ref_buffer gtc(m_m);
             bool cmc = true;
             bool cw = true;
-            if (m_util.is_var_atom(ec)) {
-                if (!is_uninterp(e)) {
-                    TRACE("classify_debug", tout << "variable is bad in " << mk_pp(e,m_m) << "\n";);
-                    cmc = false;
-                    cw = false;
-                }
+            bool cgr;
+            bool cHasPolarity2 = cHasPolarity && (!m_m.is_ite(e) || i!=0);
+            classify_term(ec, cHasPolarity2, cPolarity, cmc, cw, cgr);
+            children_model_checkable = children_model_checkable && cmc;
+            children_witnessable = children_witnessable && cw;
+            if (!cgr && !is_uninterp(e)) {
+                TRACE("classify_debug", tout << "Term is bad in " << mk_pp(e,m_m) << "\n";);
+                cmc = false;
+                cw = false;
             }
-            else {
-                bool cHasPolarity2 = cHasPolarity && (!m_m.is_ite(e) || i!=0);
-                classify_term(ec, cHasPolarity2, cPolarity, cmc, cw);
-                children_model_checkable = children_model_checkable && cmc;
-                children_witnessable = children_witnessable && cw;
-                if (!cw && is_uninterp(e)) {
-                    //TODO: check if it is variable offset child of uninterpreted  (this is problematic since CC+offsets for projections can be inconsistent)
-                    //var * v;
-                    //expr_ref offset(m_m);
-                    //bool is_negated;
-                    //if (m_util.is_var_offset(ec, v, offset, is_negated, classify_util::REQ_GROUND)) {
-                    //}
-                }
-            }
+            //if (!cw && is_uninterp(e)) {
+                //TODO: check if it is variable offset child of uninterpreted  (this is problematic since CC+offsets for projections can be inconsistent)
+                //var * v;
+                //expr_ref offset(m_m);
+                //bool is_negated;
+                //if (m_util.is_var_offset(ec, v, offset, is_negated, classify_util::REQ_GROUND)) {
+                //}
+            //}
             model_checkable = model_checkable && cmc;
             witnessable = witnessable && cw;
+            ground_result = ground_result && cgr;
         }
         if (!model_checkable && children_model_checkable) {
-            if (m_util.is_var_offset(e, classify_util::REQ_NON_VARIABLE) || m_util.is_var_relation(e, classify_util::REQ_NON_VARIABLE)) {
+            if (m_util.is_var_offset(e, classify_util::REQ_NON_VARIABLE)) {
                 TRACE("classify_debug", tout << "Term is actually model-checkable : " << mk_pp(e,m_m) << "\n";);
                 model_checkable = true;
             }
+            if ((m_use_monotonic_projections || m_m.is_eq(e)) && m_util.is_var_relation(e, classify_util::REQ_NON_VARIABLE)) {
+                TRACE("classify_debug", tout << "Term is actually model-checkable : " << mk_pp(e,m_m) << "\n";);
+                model_checkable = true;
+                ground_result = true;
+            }
             //TODO: x=y for uninterpreted sorts
+            //if (m_m.is_eq(e) && m_m.is_uninterp(get_sort(to_app(e)->get_arg(0)))) {
+            //    TRACE("classify_debug", tout << "Term is actually model-checkable : " << mk_pp(e,m_m) << "\n";);
+            //    model_checkable = true;
+            //    ground_result = true;
+            //}
         }
         if (!witnessable && children_witnessable) {
             if (m_util.is_witnessable(e, hasPolarity, polarity)) {
@@ -376,14 +388,25 @@ void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, boo
                 witnessable = true;
             }
         }
+        if (is_uninterp(e)) {
+            ground_result = true;
+        }
+        TRACE("classify_debug", tout << "Classified " << mk_pp(e,m_m) << " as : gr=" << ground_result << ", mc=" << model_checkable << ", w=" << witnessable << "\n";);
     }
     else if (m_util.is_atomic_value(e)) {
         model_checkable = true;
         witnessable = true;
+        ground_result = true;
+    }
+    else if (is_var(e)) {
+        model_checkable = true;
+        witnessable = true;
+        ground_result = false;
     }
     else {
         model_checkable = false;
         witnessable = false;
+        ground_result = false;
     }
 }
 
@@ -401,7 +424,8 @@ bool classify_info::compute() {
     for (unsigned i=0; i<m_lits.size(); i++) {
         bool model_checkable;
         bool witnessable;
-        classify_term(m_lits[i], true, true, model_checkable, witnessable);
+        bool ground_result;
+        classify_term(m_lits[i], true, true, model_checkable, witnessable, ground_result);
         if (model_checkable) {
             m_mc_lits.push_back(m_lits[i]);
         }

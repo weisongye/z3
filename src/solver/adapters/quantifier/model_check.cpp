@@ -70,6 +70,7 @@ bool cond_generalization_trie::has_generalization(mc_context & mc, cond * c, uns
         return index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star);
     }
     else {
+
         return false;
     }
 }
@@ -204,10 +205,26 @@ mc_context::mc_context(ast_manager & _m)
 }
 
 void mc_context::reset_round() {
-    //clear some of the caches   
-    //TODO: more?
+
+    //clear the caches
+    m_expr_to_val.reset();
+    m_sort_to_dist_expr.reset();
+    m_val_to_abs_val.reset();
+    m_quant_to_cond_star.reset();
     m_expr_produced.reset();
+    m_expr_produced_global.reset();
 }
+
+//push user context
+void mc_context::push() {
+    
+}
+
+//pop user context
+void mc_context::pop() {
+
+}
+
 
 val * mc_context::get_bound(abs_val * a, bool isLower) {
     if (a->is_value()) {
@@ -939,15 +956,7 @@ cond * mc_context::mk_star(model_constructor * mct, quantifier * q) {
     }
     return m_quant_to_cond_star.find(q);
 }
-/*
-cond * mc_context::mk_value_at_index(abs_val * a, unsigned index, unsigned size) {
-    cond * c = cond::mk(*this, size);
-    for (unsigned i=0; i<c->get_size(); i++) {
-        c->m_vec[i] = (i==index) ? a : mk_star();
-    }
-    return c;
-}
-*/
+
 cond * mc_context::mk_cond(ptr_buffer<abs_val> & avals) {
     cond * c = cond::mk(*this,avals.size());
     for (unsigned i=0; i<c->get_size(); i++) {
@@ -1227,7 +1236,7 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
             SASSERT(v->is_expr());
             expr * ve = to_expr(v)->get_value();
             if (m_m.is_false(ve)) {
-                TRACE("inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
+                TRACE("mc_inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
                 //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
                 cond * cic = mk_canon(d->get_condition(i));
                 //get the corresponding instantiation from the model construction object
@@ -1253,10 +1262,10 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
                     var_subst vs(m_m);
                     expr_ref inst_good(m_m);
                     vs(good,inst.size(),inst.c_ptr(), inst_good);
-                    TRACE("inst_debug", tout << "Redo check on " << mk_pp(inst_good,m_m) << "\n";);
+                    TRACE("mc_inst_debug", tout << "Redo check on " << mk_pp(inst_good,m_m) << "\n";);
                     //should be guarenteed to falsify at least the good part
                     def * di = do_check(mct, q, inst_good, empty_subst);
-                    TRACE("inst_debug", tout << "Redoing check, definition is : \n";
+                    TRACE("mc_inst_debug", tout << "Redoing check, definition is : \n";
                                         display(tout, di);
                                         tout << "\n";);
                     SASSERT(di->get_num_entries()==1);

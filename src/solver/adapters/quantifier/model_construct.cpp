@@ -86,10 +86,13 @@ public:
 
 
 projection::projection()  {
+    m_projection_term = 0;
     reset();
 }
 
 void projection::reset() {
+    m_last_projection_term = m_projection_term;
+
     m_find = 0;
     m_type = PROJ_POINTWISE;
     m_rel_domain_pre.reset();
@@ -294,6 +297,28 @@ void projection::assert_partial_model(mc_context & mc, obj_map< expr, expr * > &
         while (!m_projection_term_val && m_projection_term);
         SASSERT(m_projection_term);
         SASSERT(m_projection_term_val);
+        //optimization : see if last projection term can be used (if the term exists and has a value that is in the relevant domain)
+        if (m_last_projection_term) {
+            if (m_projection_term!=m_last_projection_term) {
+                expr * ept = m_last_projection_term;
+                if (!mc.is_atomic_value(ept)) {
+                    if (!m.contains(ept)) {
+                        ept = 0;
+                    }
+                    else {
+                        ept = m.find(ept);
+                    }
+                }
+                if (ept) {
+                    val * vpt = mc.mk_val(ept);
+                    unsigned lpti;
+                    if (m_rel_domain_val_ind.find(vpt, lpti)) {
+                        m_projection_term = m_rel_domain[lpti];
+                        m_projection_term_val = vpt;
+                    }
+                }
+            }
+        }
     }
     TRACE("model_construct_debug",tout << "Finished preparing projection.\n";);
 }
@@ -528,9 +553,10 @@ void projection::compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_
                             });
 }
 
-model_constructor::model_constructor(ast_manager & _m)
+model_constructor::model_constructor(ast_manager & _m, bool use_monotonic_projections)
     : m_m(_m), m_au(_m), m_bvu(_m), m_partial_model_terms(_m) {
     m_use_projection_definitions = false;
+    m_use_monotonic_projections = use_monotonic_projections;
 }
 
 void model_constructor::reset_round(mc_context & mc) {
@@ -550,6 +576,14 @@ void model_constructor::reset_round(mc_context & mc) {
     m_ground_def.reset();
     m_def.reset();
     m_partial_model_terms.reset();
+
+    //TODO: make this only when pop happens?
+    m_func_to_id.reset();
+    m_funcs.reset();
+    m_func_arg_proj.reset();
+    m_quant_to_id.reset();
+    m_quants.reset();
+    m_quant_var_proj.reset();
 }
 
 void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection> & var_proj, bool hasPolarity, bool polarity) {
@@ -617,7 +651,7 @@ void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection
                     add_relevant_domain(vp, rel_domain[r]);
                 }
                 //set projection to monotonic if necessary
-                if (proj_type==projection::PROJ_MONOTONIC) {
+                if (proj_type==projection::PROJ_MONOTONIC && m_use_monotonic_projections) {
                     TRACE("rel_domain_debug", tout << "Projection of " << mk_pp(v1,m_m) << " should be monotonic.\n";);
                     vp->set_projection_type(proj_type);
                 }
@@ -737,6 +771,16 @@ void model_constructor::assert_partial_model(mc_context & mc, obj_map< expr, exp
             }
         }
     }
+}
+
+//push user context
+void model_constructor::push() {
+    
+}
+
+//pop user context
+void model_constructor::pop() {
+
 }
 
 unsigned model_constructor::get_func_id(mc_context & mc, func_decl * f) {
@@ -993,8 +1037,16 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                                         tout << "\n";);
                 d->append_entry(mc, cstar, def_val);
             }
+        TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
+                                mc.display(tout, d);
+                                tout << "\n";);
+
             //simplify the definition
             d->simplify(mc);
+        TRACE("model_construct_simp",tout << "After simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
+                                mc.display(tout, d);
+                                tout << "\n";);
+
 #ifdef MODEL_CONSTRUCT_DEBUG
             //for debugging: make sure all ground arguments agree on their evaluation
             for (unsigned i=0; i<dg->get_num_entries(); i++) {
