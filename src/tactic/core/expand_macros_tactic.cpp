@@ -221,6 +221,7 @@ class expand_macros_tactic : public tactic {
         macro_substitution ms(m, g.unsat_core_enabled(), g.proofs_enabled());
         find_macros(g, ms, forbidden);
         if (!ms.empty()) {
+            TRACE("expand_macros_detail", tout << "MACROS:\n"; ms.display(tout); tout << "===============\n"; g.display(tout););
             th_rewriter rw(m);
             rw.set_macro_substitution(&ms);
             set_rw s(*this, rw);
@@ -249,7 +250,7 @@ class expand_macros_tactic : public tactic {
     void apply(assertion_stream & g) {
         obj_hashtable<func_decl> forbidden;
         collect_decl_params(g, forbidden);
-        while (apply_core(g, forbidden)) {
+        while (!g.inconsistent() && apply_core(g, forbidden)) {
             // keep removing macros...
             g.elim_redundancies();
         }
