@@ -42,6 +42,12 @@ bool classify_util::is_var_negated(expr * e, var * & v) {
     return false;
 }
 
+bool classify_util::is_var_atom(expr * e) {
+    var * v;
+    bool isn;
+    return is_var_atom(e, v, isn);
+}
+
 bool classify_util::is_var_atom(expr * e, var * & v, bool & is_negated) {
     if (is_var(e)) {
         v = to_var(e);
@@ -235,7 +241,7 @@ bool classify_util::is_witnessable(expr * e, bool hasPolarity, bool polarity,
         //TRACE("rel_domain_debug", tout << "check witnessable : " << mk_pp(e,m_m) << " " << mk_pp(v1,m_m) << " " << mk_pp(t, m_m) << " " << req_exact << std::endl;);
         if (m_m.is_eq(e)) {
             //should have applied DER
-            SASSERT(!hasPolarity || polarity);
+            //SASSERT(!hasPolarity || polarity);
             if (is_ground(t)) {
                 if (mk_rd) {
                     no_proj_terms.push_back(t);
@@ -326,12 +332,14 @@ void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, boo
 
         model_checkable = true;
         witnessable = true;
+        bool children_model_checkable = true;
+        bool children_witnessable = true;
         for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
             expr * ec = to_app(e)->get_arg(i);
             expr_ref_buffer gtc(m_m);
             bool cmc = true;
             bool cw = true;
-            if (is_var(ec)) {
+            if (m_util.is_var_atom(ec)) {
                 if (!is_uninterp(e)) {
                     TRACE("classify_debug", tout << "variable is bad in " << mk_pp(e,m_m) << "\n";);
                     cmc = false;
@@ -341,6 +349,8 @@ void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, boo
             else {
                 bool cHasPolarity2 = cHasPolarity && (!m_m.is_ite(e) || i!=0);
                 classify_term(ec, cHasPolarity2, cPolarity, cmc, cw);
+                children_model_checkable = children_model_checkable && cmc;
+                children_witnessable = children_witnessable && cw;
                 if (!cw && is_uninterp(e)) {
                     //TODO: check if it is variable offset child of uninterpreted  (this is problematic since CC+offsets for projections can be inconsistent)
                     //var * v;
@@ -353,13 +363,14 @@ void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, boo
             model_checkable = model_checkable && cmc;
             witnessable = witnessable && cw;
         }
-        if (!model_checkable) {
+        if (!model_checkable && children_model_checkable) {
             if (m_util.is_var_offset(e, classify_util::REQ_NON_VARIABLE) || m_util.is_var_relation(e, classify_util::REQ_NON_VARIABLE)) {
+                TRACE("classify_debug", tout << "Term is actually model-checkable : " << mk_pp(e,m_m) << "\n";);
                 model_checkable = true;
             }
             //TODO: x=y for uninterpreted sorts
         }
-        if (!witnessable) {
+        if (!witnessable && children_witnessable) {
             if (m_util.is_witnessable(e, hasPolarity, polarity)) {
                 TRACE("classify_debug", tout << "Term is actually witnessable : " << mk_pp(e,m_m) << "\n";);
                 witnessable = true;
