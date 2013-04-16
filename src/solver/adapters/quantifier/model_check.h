@@ -286,6 +286,8 @@ protected: //cached information
     expr_ref_buffer m_expr_produced_global;
     //expressions created by evaluation
     expr_ref_buffer m_expr_produced;
+    // temp field for mk_compose
+    u_map< abs_val * > m_new_vals;
 protected: //helper functions
     //helper for check, the third argument is an optional mapping from variables to the definitions that should be used for them
     def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst);

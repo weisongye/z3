@@ -672,7 +672,8 @@ cond * mc_context::mk_compose(cond * c1, value_tuple * v, cond * c2) {
     SASSERT(v->get_size()==c2->get_size());
     //we first check if the compose will succeed before copying c1
     //store the values within c1 that change
-    u_map< abs_val * > new_vals;
+    m_new_vals.reset();
+    u_map< abs_val * > & new_vals = m_new_vals;
     for( unsigned i=0; i<v->get_size(); i++ ){
         if( c2->m_vec[i]!=0 ){
             abs_val * curr = 0;
@@ -852,12 +853,13 @@ av_star * mc_context::mk_star() {
 
 av_val * mc_context::mk_value(val * v) {
     //FIXME: should we cache like this?
-    if (m_val_to_abs_val.contains(v)) {
-        return m_val_to_abs_val.find(v);
+    av_val * a;
+    if (m_val_to_abs_val.find(v, a)) {
+        return a;
     }
     else {
         void * mem = allocate(sizeof(av_val));
-        av_val * a = new (mem) av_val(v);
+        a = new (mem) av_val(v);
         m_val_to_abs_val.insert(v, a);
         return a;
     }
