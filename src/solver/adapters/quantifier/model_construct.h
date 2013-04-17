@@ -99,11 +99,14 @@ public:
     def * get_definition(mc_context & mc);
 };
 
+
 class model_constructor
 {
 protected:
     // use monotonic projections?
     bool m_use_monotonic_projections;
+    // do simplification?
+    bool m_do_simplification;
     //function to id map
     obj_map< func_decl, unsigned > m_func_to_id;
     //functions

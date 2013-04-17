@@ -162,6 +162,15 @@ value_tuple * def::evaluate(mc_context & mc, cond * c) {
     return 0;
 }
 
+value_tuple * def::evaluate(mc_context & mc, ptr_vector<val> & vals) {
+    for( unsigned i=0; i<m_conds.size(); i++ ){
+        if (mc.is_generalization(m_conds[i], vals)) {
+            return m_values[i];
+        }
+    }
+    return 0;
+}
+
 void def::simplify(mc_context & mc) {
     if (has_simplified) {
         TRACE("def_simplify",  tout << "Already simplified ? " << this << " ";
@@ -212,17 +221,18 @@ mc_context::mc_context(ast_manager & _m)
     : m_m(_m), m_au(_m), m_bvu(_m), m_ar(_m), m_bvr(_m), m_cutil(_m, m_au, m_bvu), m_expr_produced_global(_m), m_expr_produced(_m) {
     m_true = m_m.mk_true();
     m_false = m_m.mk_false();
+    m_do_simplification = false;
+    m_partial_evaluation = true;//false;
 }
 
 void mc_context::reset_round() {
 
     //clear the caches
     m_expr_to_val.reset();
-    m_sort_to_dist_expr.reset();
     m_val_to_abs_val.reset();
     m_quant_to_cond_star.reset();
     m_expr_produced.reset();
-    m_expr_produced_global.reset();
+
 }
 
 //push user context
@@ -232,7 +242,8 @@ void mc_context::push() {
 
 //pop user context
 void mc_context::pop() {
-
+    m_sort_to_dist_expr.reset();
+    m_expr_produced_global.reset();
 }
 
 
@@ -619,6 +630,18 @@ bool mc_context::is_generalization(cond * c1, cond * c2) {
     for (unsigned i=0; i<c1->get_size(); i++) {
         if (!is_generalization(c1->get_value(i), c2->get_value(i))) {
             return false;
+        }
+    }
+    return true;
+}
+
+bool mc_context::is_generalization(cond * c, ptr_vector<val> & vals) {
+    SASSERT(c->get_size()==vals.size());
+    for (unsigned i=0; i<c->get_size(); i++) {
+        if (!c->get_value(i)->is_star()) {
+            if (c->get_value(i)->is_value() && !is_eq(to_value(c->get_value(i))->get_value(),vals[i])) {
+                return false;
+            }
         }
     }
     return true;
@@ -1221,99 +1244,124 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
     ci.compute();
     TRACE("model_check_classify",tout << "During model check, "; ci.display(tout););
 
+    ptr_vector<def> empty_subst;
+
     expr_ref e(m_m);
     ci.get_model_checkable(e);
+    TRACE("mc_operation", tout << "Compute definition...\n";);
+    def * d = do_check(mct, q, e, empty_subst);
+    TRACE("mc_operation", tout << "Done.\n";);
+    TRACE("model_check",tout << "Interpretation of " << mk_pp(e,m_m) << " is : " << "\n";
+                        display(tout, d);
+                        tout << "\n";);
+/*
+    expr_ref eb(m_m);
+    ci.get_non_model_checkable(eb);
+    //std::cout << "Compute definition..." << std::endl;
+    def * db = do_check(mct, q, eb, empty_subst);
+    //std::cout << "Done." << std::endl;
+    TRACE("model_check",tout << "Interpretation of bad part " << mk_pp(eb,m_m) << " is : " << "\n";
+                        display(tout, db);
+                        tout << "\n";);
+*/
 
-    if (!m_m.is_false(e)) {
-        ptr_vector<def> empty_subst;
-        //std::cout << "Compute definition..." << std::endl;
-        def * d = do_check(mct, q, e, empty_subst);
-        //std::cout << "Done." << std::endl;
-        TRACE("model_check",tout << "Interpretation of " << mk_pp(e,m_m) << " is : " << "\n";
-                            display(tout, d);
-                            tout << "\n";);
-#ifdef MODEL_CHECK_DEBUG
-        expr_ref good(m_m);
-        ci.get_model_checkable(good, true);
-#endif
-        sbuffer<unsigned> process_next;
-        for (unsigned r=0; r<2; r++) {
-            //std::cout << "Get the instantiations..." << std::endl;
-            //process the entries (add instantiations)
-            for (unsigned i=0; i<d->get_num_entries(); i++) {
-                //check for false, report exceptions in terms of witnesses
-                bool process  = false;
-                if (r==0) {
-                    value_tuple * vt = d->get_value(i);
-                    SASSERT(vt->get_size()==1);
-                    val * v = vt->get_value(0);
-                    SASSERT(v->is_expr());
-                    expr * ve = to_expr(v)->get_value();
-                    if (m_m.is_false(ve)) {
-                        if (!d->get_condition(i)->is_value()) {
-                            process_next.push_back(i);
-                        }
-                        else {
-                            process = true;
-                        }
-                    }
-                }
-                else {
-                    process = process_next.contains(i);
-                }
-                if (process) {
-                    TRACE("mc_inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
-                    //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
-                    cond * cic = mk_canon(d->get_condition(i));
-                    //get the corresponding instantiation from the model construction object
-                    expr_ref_buffer inst(m_m);
-                    bool inst_found_expr;
-                    mct->get_inst(*this, q, cic, inst, inst_found_expr);
-                    TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
-                                    for (unsigned j=0; j<inst.size(); j++) {
-                                         tout << "   " << mk_pp(inst[j],m_m) << "\n";
-                                    }
-                                    tout << "\n";
-                                    if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
-                
-                    //TODO: communicate instantiation
-                    expr_ref inst_lemma(m_m);
-                    instantiate(m_m, q, inst.c_ptr(), inst_lemma);
-                    //inst_lemma = m_m.mk_or(m_m.mk_not(q), inst_lemma);
-                    if (r==0) {
-                        instantiations.push_back(inst_lemma);
+    //expr_ref good(m_m);
+    //ci.get_model_checkable(good, true);
+
+    TRACE("mc_operation", tout << "Get the instantiations...\n";);
+    sbuffer<unsigned> process_next;
+    for (unsigned r=0; r<2; r++) {
+        //process the entries (add instantiations)
+        for (unsigned i=0; i<d->get_num_entries(); i++) {
+            //check for false, report exceptions in terms of witnesses
+            bool process  = false;
+            if (r==0) {
+                value_tuple * vt = d->get_value(i);
+                SASSERT(vt->get_size()==1);
+                val * v = vt->get_value(0);
+                SASSERT(v->is_expr());
+                expr * ve = to_expr(v)->get_value();
+                if (m_m.is_false(ve)) {
+                    if (!d->get_condition(i)->is_value()) {
+                        process_next.push_back(i);
                     }
                     else {
-                        instantiations_star.push_back(inst_lemma);
+                        process = true;
                     }
-#ifdef MODEL_CHECK_DEBUG
-                    //for debugging, evaluate again with values of instantiation
-                    if (inst_found_expr) {
-                        //use a variable substitution (assumes that q does not have nested quantifiers)
-                        var_subst vs(m_m);
-                        expr_ref inst_good(m_m);
-                        vs(good,inst.size(),inst.c_ptr(), inst_good);
-                        TRACE("mc_inst_debug", tout << "Redo check on " << mk_pp(inst_good,m_m) << "\n";);
-                        //should be guarenteed to falsify at least the good part
-                        def * di = do_check(mct, q, inst_good, empty_subst);
-                        TRACE("mc_inst_debug", tout << "Redoing check, definition is : \n";
-                                            display(tout, di);
-                                            tout << "\n";);
-                        SASSERT(di->get_num_entries()==1);
-                        SASSERT(m_m.is_false(to_expr(di->get_value(0)->get_value(0))->get_value()));
-                    }
-#endif
                 }
-                if (!instantiations.empty() || !mk_inst_star) {
-                    break;
+            }
+            else {
+                process = process_next.contains(i);
+            }
+            if (process) {
+                TRACE("mc_inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
+                //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
+                cond * cic = mk_canon(d->get_condition(i));
+                //get the corresponding instantiation from the model construction object
+                expr_ref_buffer inst(m_m);
+                bool inst_found_expr;
+                mct->get_inst(*this, q, cic, inst, inst_found_expr);
+                TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
+                                for (unsigned j=0; j<inst.size(); j++) {
+                                        tout << "   " << mk_pp(inst[j],m_m) << "\n";
+                                }
+                                tout << "\n";
+                                if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
+                bool addInstantiation = true;
+                //evaluate again with values of instantiation
+                /*  1st unoptimized:
+                //should be guarenteed to falsify at least the good part
+                def * di = do_check(mct, q, inst_body, empty_subst, false);
+                TRACE("mc_inst_debug", tout << "Redoing check, definition is : \n";
+                                    display(tout, di);
+                                    tout << "\n";);
+                SASSERT(di->get_num_entries()==1);
+                //SASSERT(m_m.is_false(to_expr(di->get_value(0)->get_value(0))->get_value()));
+                */
+                /* 2nd unoptimized:
+                //use a variable substitution (assumes that q does not have nested quantifiers)
+                var_subst vs(m_m);
+                expr_ref inst_body(m_m);
+                vs(q->get_expr(),inst.size(),inst.c_ptr(), inst_body);
+                TRACE("mc_inst_debug", tout << "Redo check on " << mk_pp(inst_body,m_m) << "\n";);
+                val * v = evaluate(mct, inst_body, val_subs);
+                */
+                //evaluate arguments, evaluate body directly
+                ptr_vector<val> val_subs;
+                for (unsigned j=0; j<inst.size(); j++) {
+                    if (cic->get_value(j)->is_value()) {
+                        val_subs.push_back(to_value(cic->get_value(j))->get_value());
+                    }
+                    else {
+                        //evaluate to get value of term
+                        //val_subs does not matter (it is ground)
+                        val * ve = evaluate(mct, inst[(inst.size()-1)-j], val_subs);
+                        val_subs.push_back(ve);
+                    }
+                }
+                val * v = evaluate(mct, q->get_expr(), val_subs);
+                SASSERT(v->is_expr());
+                if (!m_m.is_false(to_expr(v)->get_value())) {
+                    addInstantiation = false;
+                }
+                if (addInstantiation) {
+                    expr_ref instance(m_m);
+                    instantiate(m_m, q, inst.c_ptr(), instance);
+                    if (r==0) {
+                        instantiations.push_back(instance);
+                    }
+                    else {
+                        instantiations_star.push_back(instance);
+                    }
                 }
             }
         }
-        //std::cout << "Done." << std::endl;
+        if (!instantiations.empty() || !mk_inst_star) {
+            break;
+        }
     }
-    else {
-        TRACE("model_check",tout << "The quantifier does not have a model-checkable portion.\n";);
-    }
+    TRACE("mc_operation", tout << "Done.\n";);
+
     if (instantiations.empty() && instantiations_star.empty()) {
         return ci.is_model_checkable() ? l_true : l_undef;
     }
@@ -1383,7 +1431,9 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                 expr * ec = to_app(e)->get_arg(i);
                 SASSERT(is_uninterp(e) || !is_var(ec) || to_var(ec)->get_idx()<subst.size());
                 def * dc = do_check(mct, q, ec, subst);
-                dc->simplify(*this);
+                if (m_do_simplification) {
+                    dc->simplify(*this);
+                }
                 //std::cout << "Product " << e << " " << i << " " << dc->get_num_entries() << std::endl;
                 d = d ? mk_product(d,dc) : dc;
             }
@@ -1391,11 +1441,17 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                                         tout << "Arguments of " << mk_pp(e,m_m) << " are : " << "\n";
                                         display(tout,d);
                                         tout << "\n";
-                                      });
+                                        });
             func_decl * f = to_app(e)->get_decl();
             if (is_uninterp(e)) {
                 //uninterpreted case
-                def * df = mct->get_def(*this, f);
+                def * df;
+                if (m_partial_evaluation) {
+                    df = mct->get_ground_def(*this, f);
+                }
+                else {
+                    df = mct->get_def(*this, f);
+                }
                 if (f->get_arity()==0) {
                     //if constant, look up the definition
                     d = new_def();
@@ -1404,7 +1460,29 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                     d->append_entry(*this, star, vt);
                 } else {
                     //interpretation is the composition of f with arguments
-                    d = mk_compose(df,d);
+                    def * d1 = mk_compose( mct->get_def(*this, f),d);
+                    def * d2 = mk_compose( mct->get_ground_def(*this, f),d);
+
+
+                    TRACE("test_ge",
+                        tout << "Function : \n";
+                        display(tout, mct->get_def(*this, f));
+                        tout << "\n";
+                        tout << "Ground function : \n";
+                        display(tout, mct->get_ground_def(*this, f));
+                        tout << "\n";
+                        tout << "Arguments : \n";
+                        display(tout, d);
+                        tout << "\n";
+                        tout << "Compare definintions: \n";
+                        display(tout, d1);
+                        tout << "\n";
+                        tout << "Against ground: \n";
+                        display(tout, d2);
+                        tout << "\n";);
+
+
+                    d = d1;
                 }
             }
             else {
@@ -1431,11 +1509,9 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
     else {
         SASSERT(false);
     }
-    //d->simplify(*this);
     TRACE("model_check_debug",tout << "Interpretation of " << mk_pp(e,m_m) << " is : " << "\n";
-                              display(tout, d);
-                              tout << "\n";);
-    //d->test(*this);
+                                display(tout, d);
+                                tout << "\n";);
     return d;
 }
 
@@ -1631,4 +1707,61 @@ val * mc_context::evaluate(func_decl * f, ptr_vector<val> & vals) {
     }
     SASSERT(false);
     return 0;
+}
+
+
+//evaluate ground term 
+val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_vector<val> & var_subst) {
+    if (is_atomic_value(e)) {
+        return mk_val(e);
+    }
+    else if (is_app(e)) {
+        ptr_vector<val> children;
+        for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
+            children.push_back(evaluate(mct, to_app(e)->get_arg(i), var_subst));
+        }
+        func_decl * f = to_app(e)->get_decl();
+        if (is_uninterp(e)) {
+            def * df  = mct->get_def(*this, f);
+            value_tuple * vt = df->evaluate(*this, children);
+            SASSERT(vt->get_size()==1);
+            return vt->get_value(0);
+        }
+        else {
+            return evaluate(f, children);
+        }
+    }
+    else if (is_var(e)) {
+        unsigned vid = to_var(e)->get_idx();
+        return var_subst[vid];
+    }
+    else {
+        SASSERT(false);
+        return 0;
+    }
+}
+
+//repair model
+bool mc_context::repair_model(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst) {
+    //try to repair the model
+    if (m_m.is_or(e)) {
+        for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
+            if (repair_model(mct, q, to_app(e)->get_arg(i), var_subst)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    else if (m_m.is_eq(e)) {
+        for (unsigned i=0; i<2; i++) {
+            expr * ec = to_app(e)->get_arg(i);
+            if (is_uninterp(ec)) {
+                //evaluate the other side
+                expr * eco = to_app(e)->get_arg(i==0 ? 1 : 0);
+
+            }
+        }
+    }
+
+    return false;
 }

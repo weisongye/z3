@@ -83,6 +83,10 @@ protected:
     ptr_vector<expr> m_mc_lits;
     //literals that are witnessable
     ptr_vector<expr> m_w_lits;
+    //get literals
+    void get_literals(ptr_vector<expr> & lits, bool mc, bool wit);
+    //make disjunction
+    void mk_disjunction(expr_ref & e, ptr_vector<expr> & lits);
     //classify literal
     void classify_term(expr * e, bool hasPolarity, bool polarity, bool & model_checkable, bool & witnessable, bool & ground_result);
 public:
@@ -91,6 +95,8 @@ public:
     bool compute();
     //get model-checkable
     void get_model_checkable(expr_ref & e, bool req_witnessable = false);
+    //get non-model-checkable
+    void get_non_model_checkable(expr_ref & e, bool req_witnessable = false);
     //get witnessable
     void get_witnessable(expr_ref & e, bool req_non_model_checkable = false);
     //is completely model checkable

@@ -436,35 +436,54 @@ bool classify_info::compute() {
     return true;
 }
 
+//get literals
+void classify_info::get_literals(ptr_vector<expr> & lits, bool mc, bool wit) {
+    for (unsigned i=0; i<m_lits.size(); i++) {
+        if (m_mc_lits.contains(m_lits[i])==mc && m_w_lits.contains(m_lits[i])==wit) {
+            lits.push_back(m_lits[i]);
+        }
+    }
+}
+
+//make disjunction
+void classify_info::mk_disjunction(expr_ref & e, ptr_vector<expr> & lits) {
+    e = lits.size()>1 ? m_m.mk_or(lits.size(), lits.c_ptr()) : (lits.size()==1 ? lits[0] : m_m.mk_false());
+}
+
 //get model-checkable
 void classify_info::get_model_checkable(expr_ref & e, bool req_witnessable) {
     if (!req_witnessable) {
-        e = m_mc_lits.size()>1 ? m_m.mk_or(m_mc_lits.size(), m_mc_lits.c_ptr()) : (m_mc_lits.size()==1 ? m_mc_lits[0] : m_m.mk_false());
+        mk_disjunction(e, m_mc_lits);
     }
     else {
         ptr_vector<expr> lits;
-        for (unsigned i=0; i<m_mc_lits.size(); i++) {
-            if (m_w_lits.contains(m_mc_lits[i])) {
-                lits.push_back(m_mc_lits[i]);
-            }
-        }
-        e = lits.size()>1 ? m_m.mk_or(lits.size(), lits.c_ptr()) : (lits.size()==1 ? lits[0] : m_m.mk_false());
+        get_literals(lits, true, true);
+        mk_disjunction(e, lits);
+    }
+}
+
+void classify_info::get_non_model_checkable(expr_ref & e, bool req_witnessable) {
+    if (!req_witnessable) {
+        ptr_vector<expr> lits;
+        get_literals(lits, false, true);
+        mk_disjunction(e, lits);
+    }
+    else {
+        ptr_vector<expr> lits;
+        get_literals(lits, false, false);
+        mk_disjunction(e, lits);
     }
 }
 
 //get witnessable
 void classify_info::get_witnessable(expr_ref & e, bool req_non_model_checkable) {
     if (!req_non_model_checkable) {
-        e = m_w_lits.size()>1 ? m_m.mk_or(m_w_lits.size(), m_w_lits.c_ptr()) : (m_w_lits.size()==1 ? m_w_lits[0] : m_m.mk_false());
+        mk_disjunction(e, m_w_lits);
     }
     else {
         ptr_vector<expr> lits;
-        for (unsigned i=0; i<m_w_lits.size(); i++) {
-            if (!m_mc_lits.contains(m_w_lits[i])) {
-                lits.push_back(m_w_lits[i]);
-            }
-        }
-        e = lits.size()>1 ? m_m.mk_or(lits.size(), lits.c_ptr()) : (lits.size()==1 ? lits[0] : m_m.mk_false());
+        get_literals(lits, false, true);
+        mk_disjunction(e, lits);
     }
 }
 

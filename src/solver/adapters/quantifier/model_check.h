@@ -250,6 +250,7 @@ public:
     bool append_entry(mc_context & mc, cond * c, value_tuple * val);
     //c should be a ground condition
     value_tuple * evaluate(mc_context & mc, cond * c);
+    value_tuple * evaluate(mc_context & mc, ptr_vector<val> & vals);
     //simplify the definition
     void simplify(mc_context & mc);
 };
@@ -259,6 +260,10 @@ class model_constructor;
 class mc_context
 {
 protected:
+    // do simplification?
+    bool m_do_simplification;
+    // do partial evaluation
+    bool m_partial_evaluation;
     //memory manager
     region m_reg;
     //rational manager
@@ -296,6 +301,10 @@ protected: //helper functions
     def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst);
     //helper for exhaustive_instantiate
     bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain);
+    //evaluate
+    val * evaluate(model_constructor * mct, expr * e, ptr_vector<val> & var_subst);
+    //repair model
+    bool repair_model(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst);
     //evaluate function
     val * evaluate(func_decl * f, ptr_vector<val> & vals);
     //get bound
@@ -365,6 +374,8 @@ public:
     bool is_generalization(abs_val * a1, abs_val * a2);
     //does c1 generalize c2
     bool is_generalization(cond * c1, cond * c2);
+    //is condition generalization of vector of values
+    bool is_generalization(cond * c, ptr_vector<val> & vals);
     //do meet
     abs_val * mk_meet(abs_val * a1, abs_val * a2);
     //do meet
@@ -391,8 +402,6 @@ public:
     cond * mk_star(unsigned size);
     //mk star for quantifier
     cond * mk_star(model_constructor * mct, quantifier * q);
-    //mk value at index
-    //cond * mk_value_at_index(abs_val * a, unsigned index, unsigned size);
     //mk cond
     cond * mk_cond(ptr_buffer<abs_val> & avals);
     // copy the condition

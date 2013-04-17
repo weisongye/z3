@@ -565,6 +565,7 @@ model_constructor::model_constructor(ast_manager & _m, bool use_monotonic_projec
     : m_m(_m), m_au(_m), m_bvu(_m), m_partial_model_terms(_m) {
     m_use_projection_definitions = false;
     m_use_monotonic_projections = use_monotonic_projections;
+    m_do_simplification = false;
 }
 
 void model_constructor::reset_round(mc_context & mc) {
@@ -851,7 +852,7 @@ void model_constructor::construct_entries(mc_context & mc, func_decl * f, def * 
                                             mc.display(tout, vt);
                                             tout << "\n";);
             if (!d->append_entry(mc, c, vt)) {
-                std::cout << "WARN #1" << std::endl;
+                //std::cout << "WARN #1" << std::endl;
                 TRACE("model_construct_warn",
                     tout << mk_pp(f,m_m);
                     tout << " Did not append entry! ";
@@ -962,6 +963,9 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
             }
             else {
                 d = mc.new_def();
+                for( unsigned j=0; j<dg->get_num_entries(); j++ ){
+                    d->append_entry(mc, dg->get_condition(j), dg->get_value(j));
+                }
                 //determine the order to process the entries (so that their projected conditions do not get subsumed)
                 sbuffer<unsigned> order_indices;
                 if (!has_monotonic) {
@@ -1045,15 +1049,17 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                                         tout << "\n";);
                 d->append_entry(mc, cstar, def_val);
             }
-        TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
-                                mc.display(tout, d);
-                                tout << "\n";);
 
             //simplify the definition
-            d->simplify(mc);
-        TRACE("model_construct_simp",tout << "After simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
-                                mc.display(tout, d);
-                                tout << "\n";);
+            if (m_do_simplification) {     
+                TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
+                                        mc.display(tout, d);
+                                        tout << "\n";);           
+                d->simplify(mc);
+                TRACE("model_construct_simp",tout << "After simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
+                                        mc.display(tout, d);
+                                        tout << "\n";);
+            }
 
 #ifdef MODEL_CONSTRUCT_DEBUG
             //for debugging: make sure all ground arguments agree on their evaluation
