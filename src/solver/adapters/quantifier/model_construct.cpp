@@ -192,11 +192,19 @@ void projection::add_relevant_domain(expr * e) {
 }
 
 void projection::add_relevant_domain(expr * e, val * v) {
-    if (!m_rel_domain_val.contains(v)) {
+    unsigned i;
+    if (!m_rel_domain_val_ind.find(v, i)) {
         SASSERT(m_rel_domain.size()==m_rel_domain_val.size());
         m_rel_domain.push_back(e);
         m_rel_domain_val_ind.insert(v,m_rel_domain_val.size());
         m_rel_domain_val.push_back(v);
+    }
+    else {
+        //compare depths
+        expr * ecurr = m_rel_domain[i];
+        if (get_depth(e)<get_depth(ecurr)) {
+            m_rel_domain[i] = e;
+        }
     }
 }
 
@@ -216,10 +224,10 @@ void projection::assert_partial_model(mc_context & mc, obj_map< expr, expr * > &
         //must evaluate if it is not atomic
         if (!mc.is_atomic_value(m_rel_domain_pre[i])) {
             if (!m.contains(m_rel_domain_pre[i])) {
-                std::cout << "WARN #3" << std::endl;
                 TRACE("model_construct_warn", tout << "WARNING : this term needs to be in partial model : ";
                                               mc.display(tout, m_rel_domain_pre[i]);
                                               tout << std::endl;);
+                SASSERT(false);
             }
             SASSERT(m.contains(m_rel_domain_pre[i]));
             ecv = m.find(m_rel_domain_pre[i]);

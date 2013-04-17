@@ -163,6 +163,16 @@ value_tuple * def::evaluate(mc_context & mc, cond * c) {
 }
 
 void def::simplify(mc_context & mc) {
+    if (has_simplified) {
+        TRACE("def_simplify",  tout << "Already simplified ? " << this << " ";
+                                mc.display(tout,this);
+                                tout << std::endl;);
+    }
+    else {
+        TRACE("def_simplify", tout << "Simplify " << this << "\n";);
+    }
+    SASSERT(!has_simplified);
+    has_simplified = true;
     TRACE("def_simplify", tout << "Simplifying ";
                           mc.display(tout,this);
                           tout << "..." << "\n";);
@@ -1226,52 +1236,72 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
         expr_ref good(m_m);
         ci.get_model_checkable(good, true);
 #endif
-        //std::cout << "Get the instantiations..." << std::endl;
-        //process the entries (add instantiations)
-        for (unsigned i=0; i<d->get_num_entries(); i++) {
-            //check for false, report exceptions in terms of witnesses
-            value_tuple * vt = d->get_value(i);
-            SASSERT(vt->get_size()==1);
-            val * v = vt->get_value(0);
-            SASSERT(v->is_expr());
-            expr * ve = to_expr(v)->get_value();
-            if (m_m.is_false(ve)) {
-                TRACE("mc_inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
-                //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
-                cond * cic = mk_canon(d->get_condition(i));
-                //get the corresponding instantiation from the model construction object
-                expr_ref_buffer inst(m_m);
-                bool inst_found_expr;
-                mct->get_inst(*this, q, cic, inst, inst_found_expr);
-                TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
-                                for (unsigned j=0; j<inst.size(); j++) {
-                                     tout << "   " << mk_pp(inst[j],m_m) << "\n";
-                                }
-                                tout << "\n";
-                                if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
-                
-                //TODO: communicate instantiation
-                expr_ref inst_lemma(m_m);
-                instantiate(m_m, q, inst.c_ptr(), inst_lemma);
-                //inst_lemma = m_m.mk_or(m_m.mk_not(q), inst_lemma);
-                instantiations.push_back(inst_lemma);
-#ifdef MODEL_CHECK_DEBUG
-                //for debugging, evaluate again with values of instantiation
-                if (inst_found_expr) {
-                    //use a variable substitution (assumes that q does not have nested quantifiers)
-                    var_subst vs(m_m);
-                    expr_ref inst_good(m_m);
-                    vs(good,inst.size(),inst.c_ptr(), inst_good);
-                    TRACE("mc_inst_debug", tout << "Redo check on " << mk_pp(inst_good,m_m) << "\n";);
-                    //should be guarenteed to falsify at least the good part
-                    def * di = do_check(mct, q, inst_good, empty_subst);
-                    TRACE("mc_inst_debug", tout << "Redoing check, definition is : \n";
-                                        display(tout, di);
-                                        tout << "\n";);
-                    SASSERT(di->get_num_entries()==1);
-                    SASSERT(m_m.is_false(to_expr(di->get_value(0)->get_value(0))->get_value()));
+        sbuffer<unsigned> process_next;
+        for (unsigned r=0; r<2; r++) {
+            //std::cout << "Get the instantiations..." << std::endl;
+            //process the entries (add instantiations)
+            for (unsigned i=0; i<d->get_num_entries(); i++) {
+                //check for false, report exceptions in terms of witnesses
+                bool process  = false;
+                if (r==0) {
+                    value_tuple * vt = d->get_value(i);
+                    SASSERT(vt->get_size()==1);
+                    val * v = vt->get_value(0);
+                    SASSERT(v->is_expr());
+                    expr * ve = to_expr(v)->get_value();
+                    if (m_m.is_false(ve)) {
+                        if (!d->get_condition(i)->is_value()) {
+                            process_next.push_back(i);
+                        }
+                        else {
+                            process = true;
+                        }
+                    }
                 }
+                else {
+                    process = process_next.contains(i);
+                }
+                if (process) {
+                    TRACE("mc_inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
+                    //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
+                    cond * cic = mk_canon(d->get_condition(i));
+                    //get the corresponding instantiation from the model construction object
+                    expr_ref_buffer inst(m_m);
+                    bool inst_found_expr;
+                    mct->get_inst(*this, q, cic, inst, inst_found_expr);
+                    TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
+                                    for (unsigned j=0; j<inst.size(); j++) {
+                                         tout << "   " << mk_pp(inst[j],m_m) << "\n";
+                                    }
+                                    tout << "\n";
+                                    if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
+                
+                    //TODO: communicate instantiation
+                    expr_ref inst_lemma(m_m);
+                    instantiate(m_m, q, inst.c_ptr(), inst_lemma);
+                    //inst_lemma = m_m.mk_or(m_m.mk_not(q), inst_lemma);
+                    instantiations.push_back(inst_lemma);
+#ifdef MODEL_CHECK_DEBUG
+                    //for debugging, evaluate again with values of instantiation
+                    if (inst_found_expr) {
+                        //use a variable substitution (assumes that q does not have nested quantifiers)
+                        var_subst vs(m_m);
+                        expr_ref inst_good(m_m);
+                        vs(good,inst.size(),inst.c_ptr(), inst_good);
+                        TRACE("mc_inst_debug", tout << "Redo check on " << mk_pp(inst_good,m_m) << "\n";);
+                        //should be guarenteed to falsify at least the good part
+                        def * di = do_check(mct, q, inst_good, empty_subst);
+                        TRACE("mc_inst_debug", tout << "Redoing check, definition is : \n";
+                                            display(tout, di);
+                                            tout << "\n";);
+                        SASSERT(di->get_num_entries()==1);
+                        SASSERT(m_m.is_false(to_expr(di->get_value(0)->get_value(0))->get_value()));
+                    }
 #endif
+                }
+            }
+            if (!instantiations.empty()) {
+                break;
             }
         }
         //std::cout << "Done." << std::endl;
@@ -1389,6 +1419,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                 }
                 d->m_values.reset();
                 d->m_values.append(computed_vals.size(), computed_vals.c_ptr());
+                d->has_simplified = false;
             }
         }
     }

@@ -239,7 +239,10 @@ protected:
     cond_generalization_trie m_cgt;
     //is there a generalization of c already in this definition
     bool has_generalization(mc_context & mc, cond * c);
+    // 
+    bool has_simplified;
 public:
+    def() : has_simplified(false){}
     unsigned get_num_entries() { return m_conds.size(); }
     cond * get_condition(unsigned i) { return m_conds[i]; }
     value_tuple * get_value(unsigned i) { return m_values[i]; }
