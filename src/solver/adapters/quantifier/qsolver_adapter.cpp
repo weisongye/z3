@@ -265,19 +265,30 @@ public:
 
         //assert the partial model
         m_mct.assert_partial_model(m_mc, pM.get_map());
-
-        bool star_only_if_non_star = true;
+        //std::cout << "Produce lemmas...\n";
+        lbool result = l_true;
         expr_ref_buffer instantiation_lemmas(m_manager);
         expr_ref_buffer instantiation_lemmas_star(m_manager);
-        lbool result = l_true;
+        bool do_exhaustive_instantiate = false;//true;
+        bool star_only_if_non_star = true;
         //check the relevant quantifiers
         for (unsigned i=0; i<quantifiers.size(); i++) {
             expr_ref_buffer instantiations(m_manager);
             expr_ref_buffer instantiations_star(m_manager);
-            lbool c_result = m_mc.check(&m_mct, quantifiers[i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
-            if (c_result!=l_true) {
-                result = result!=l_false ? c_result : result;
+            if (do_exhaustive_instantiate) {
+                m_mc.exhaustive_instantiate(&m_mct, quantifiers[i], true, instantiations);
+                if (!instantiations.empty()) {
+                    result = l_false;
+                }
             }
+            else {
+                //check the relevant quantifiers
+                lbool c_result = m_mc.check(&m_mct, quantifiers[i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
+                if (c_result!=l_true) {
+                    result = result!=l_false ? c_result : result;
+                }
+            }
+            //std::cout << "Quantifier " << mk_pp(quantifiers[i],m_manager) << "\n" << "generated " << instantiations.size() << " " << instantiations_star.size() << std::endl;
             //convert and add instantiation lemmas
             if (m_nq2p.contains(quantifiers[i])) {
                 expr * pv = m_nq2p.find(quantifiers[i]);

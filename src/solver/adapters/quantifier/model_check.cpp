@@ -216,12 +216,33 @@ void def::simplify(mc_context & mc) {
     }
 }
 
+bool inst_trie::add(mc_context & mc, ptr_vector<expr> & inst, unsigned i) {
+    if (i==inst.size()) {
+        if (m_data) {
+            return false;
+        }
+        else {
+            m_data = true;
+            return true;
+        }
+    }
+    else {
+        inst_trie * it;
+        if (!m_inst.find(inst[i],it)) {
+            void * mem = mc.allocate(sizeof(inst_trie));
+            it = new (mem) inst_trie;
+            m_inst.insert(inst[i], it);
+        }
+        return it->add(mc, inst, i+1);
+    }
+}
+
 
 mc_context::mc_context(ast_manager & _m) 
     : m_m(_m), m_au(_m), m_bvu(_m), m_ar(_m), m_bvr(_m), m_cutil(_m, m_au, m_bvu), m_expr_produced_global(_m), m_expr_produced(_m) {
     m_true = m_m.mk_true();
     m_false = m_m.mk_false();
-    m_do_simplification = false;
+    m_simplification = false;
     m_partial_evaluation = true;//false;
 }
 
@@ -973,16 +994,7 @@ cond * mc_context::mk_star(model_constructor * mct, quantifier * q) {
     if (!m_quant_to_cond_star.contains(q)) {
         cond * cstar = cond::mk(*this, q->get_num_decls());
         for (unsigned i=0; i<cstar->get_size(); i++) {
-            projection * p = mct->get_projection(*this, q, i);
-            if (p->get_projection_type()==projection::PROJ_POINTWISE) {
-                cstar->m_vec[i] = mk_star();
-            }
-            else if (p->get_projection_type()==projection::PROJ_MONOTONIC) {
-                cstar->m_vec[i] = mk_interval(0, 0);
-            }
-            else {
-                SASSERT(false);
-            }
+            cstar->m_vec[i] = mct->get_projection(*this, q, i)->get_projected_default(*this);
         }
         m_quant_to_cond_star.insert(q, cstar);
         return cstar;
@@ -1243,124 +1255,187 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
     classify_info ci(m_m, m_au, m_bvu, q);
     ci.compute();
     TRACE("model_check_classify",tout << "During model check, "; ci.display(tout););
+    
+    def * d = 0;
+    def * db = 0;
 
-    ptr_vector<def> empty_subst;
+    if (ci.has_model_checkable()) {
+        expr_ref e(m_m);
+        ci.get_model_checkable(e);
+        TRACE("mc_operation", tout << "Compute definition...\n";);
+        ptr_vector<def> empty_subst;
+        d = do_check(mct, q, e, empty_subst);
+        TRACE("mc_operation", tout << "Done.\n";);
+        TRACE("model_check",tout << "Interpretation of " << mk_pp(e,m_m) << " is : " << "\n";
+                            display(tout, d);
+                            tout << "\n";);
+    }
 
-    expr_ref e(m_m);
-    ci.get_model_checkable(e);
-    TRACE("mc_operation", tout << "Compute definition...\n";);
-    def * d = do_check(mct, q, e, empty_subst);
-    TRACE("mc_operation", tout << "Done.\n";);
-    TRACE("model_check",tout << "Interpretation of " << mk_pp(e,m_m) << " is : " << "\n";
-                        display(tout, d);
-                        tout << "\n";);
-/*
-    expr_ref eb(m_m);
-    ci.get_non_model_checkable(eb);
-    //std::cout << "Compute definition..." << std::endl;
-    def * db = do_check(mct, q, eb, empty_subst);
-    //std::cout << "Done." << std::endl;
-    TRACE("model_check",tout << "Interpretation of bad part " << mk_pp(eb,m_m) << " is : " << "\n";
-                        display(tout, db);
-                        tout << "\n";);
-*/
-
-    //expr_ref good(m_m);
-    //ci.get_model_checkable(good, true);
-
-    TRACE("mc_operation", tout << "Get the instantiations...\n";);
-    sbuffer<unsigned> process_next;
-    for (unsigned r=0; r<2; r++) {
-        //process the entries (add instantiations)
-        for (unsigned i=0; i<d->get_num_entries(); i++) {
-            //check for false, report exceptions in terms of witnesses
-            bool process  = false;
-            if (r==0) {
-                value_tuple * vt = d->get_value(i);
-                SASSERT(vt->get_size()==1);
-                val * v = vt->get_value(0);
-                SASSERT(v->is_expr());
-                expr * ve = to_expr(v)->get_value();
-                if (m_m.is_false(ve)) {
-                    if (!d->get_condition(i)->is_value()) {
-                        process_next.push_back(i);
-                    }
-                    else {
-                        process = true;
-                    }
+    bool full_model_check = true;
+    if (full_model_check && !ci.is_model_checkable()) {
+        expr_ref eb(m_m);
+        ci.get_non_model_checkable(eb);
+        TRACE("mc_operation", tout << "Compute definition for bad...\n";);
+        ptr_vector<def> approx;
+        for (unsigned i=0; i<q->get_num_decls(); i++) {
+            def * dx = new_def();
+            projection * p = mct->get_projection(*this, q, i);
+            value_tuple * def_vt;
+            for (unsigned j=0; j<p->get_num_relevant_domain(); j++) {
+                val * rv = p->get_relevant_domain_val(j);
+                ptr_buffer<abs_val> avals;
+                for (unsigned k=0; k<q->get_num_decls(); k++) {
+                    avals.push_back(k==i ? mk_value(rv) : p->get_projected_default(*this));
+                }
+                cond * c = mk_cond(avals);
+                value_tuple * rvt = mk_value_tuple(rv);
+                dx->append_entry(*this, c, rvt);
+                if (j==0) {
+                    def_vt = rvt;
                 }
             }
-            else {
-                process = process_next.contains(i);
-            }
-            if (process) {
-                TRACE("mc_inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
-                //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
-                cond * cic = mk_canon(d->get_condition(i));
-                //get the corresponding instantiation from the model construction object
-                expr_ref_buffer inst(m_m);
-                bool inst_found_expr;
-                mct->get_inst(*this, q, cic, inst, inst_found_expr);
-                TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
-                                for (unsigned j=0; j<inst.size(); j++) {
-                                        tout << "   " << mk_pp(inst[j],m_m) << "\n";
-                                }
-                                tout << "\n";
-                                if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
-                bool addInstantiation = true;
-                //evaluate again with values of instantiation
-                /*  1st unoptimized:
-                //should be guarenteed to falsify at least the good part
-                def * di = do_check(mct, q, inst_body, empty_subst, false);
-                TRACE("mc_inst_debug", tout << "Redoing check, definition is : \n";
-                                    display(tout, di);
-                                    tout << "\n";);
-                SASSERT(di->get_num_entries()==1);
-                //SASSERT(m_m.is_false(to_expr(di->get_value(0)->get_value(0))->get_value()));
-                */
-                /* 2nd unoptimized:
-                //use a variable substitution (assumes that q does not have nested quantifiers)
-                var_subst vs(m_m);
-                expr_ref inst_body(m_m);
-                vs(q->get_expr(),inst.size(),inst.c_ptr(), inst_body);
-                TRACE("mc_inst_debug", tout << "Redo check on " << mk_pp(inst_body,m_m) << "\n";);
-                val * v = evaluate(mct, inst_body, val_subs);
-                */
-                //evaluate arguments, evaluate body directly
-                ptr_vector<val> val_subs;
-                for (unsigned j=0; j<inst.size(); j++) {
-                    if (cic->get_value(j)->is_value()) {
-                        val_subs.push_back(to_value(cic->get_value(j))->get_value());
-                    }
-                    else {
-                        //evaluate to get value of term
-                        //val_subs does not matter (it is ground)
-                        val * ve = evaluate(mct, inst[(inst.size()-1)-j], val_subs);
-                        val_subs.push_back(ve);
-                    }
-                }
-                val * v = evaluate(mct, q->get_expr(), val_subs);
-                SASSERT(v->is_expr());
-                if (!m_m.is_false(to_expr(v)->get_value())) {
-                    addInstantiation = false;
-                }
-                if (addInstantiation) {
-                    expr_ref instance(m_m);
-                    instantiate(m_m, q, inst.c_ptr(), instance);
-                    if (r==0) {
-                        instantiations.push_back(instance);
-                    }
-                    else {
-                        instantiations_star.push_back(instance);
-                    }
-                }
-            }
+            //if (p->get_num_relevant_domain()==0) {
+            //    def_vt = mk_value_tuple(mk_val(get_some_value(q->get_decl_sort((q->get_num_decls()-1)-i))));
+            //}
+            //dx->append_entry(*this, mk_star(mct, q), def_vt);
+            TRACE("model_check_bad_debug",tout << "Projection for variable #" << i << " : \n";
+                                            display(tout, dx);
+                                            tout << "\n";);
+            approx.push_back(dx);
         }
-        if (!instantiations.empty() || !mk_inst_star) {
-            break;
+
+        db = do_check(mct, q, eb, approx);
+        TRACE("mc_operation", tout << "Done.\n";);
+        TRACE("model_check_bad",tout << "Interpretation of (bad part) " << mk_pp(eb,m_m) << " is : " << "\n";
+                                display(tout, db);
+                                tout << "\n";);
+        //full_model_check = false;
+        if (d) {
+            def * dc = mk_product(d,db);
+            ptr_vector<value_tuple> valts;
+            value_tuple * vttrue = mk_value_tuple(mk_val(m_true));
+            value_tuple * vtfalse = mk_value_tuple(mk_val(m_false));
+            TRACE("model_check_bad",tout << "Combination is : " << "\n";
+                                    display(tout, dc);
+                                    tout << "\n";);
+            
+            for (unsigned i=0; i<dc->get_num_entries(); i++) {
+                bool is_true = false;
+                for (unsigned j=0; j<2; j++) {
+                    if (m_m.is_true(to_expr(dc->get_value(i)->get_value(j))->get_value())) {
+                        is_true = true;
+                        break;
+                    }
+                }
+                valts.push_back(is_true ? vttrue : vtfalse);
+            }
+            dc->m_values.reset();
+            dc->m_values.append(valts.size(), valts.c_ptr());
+            d = dc;
+        }
+        else {
+            d = db;
         }
     }
-    TRACE("mc_operation", tout << "Done.\n";);
+
+    if (d) {
+        TRACE("mc_operation", tout << "Get the instantiations...\n";);
+        sbuffer<unsigned> process_star;
+        for (unsigned r=0; r<2; r++) {
+            //process the entries (add instantiations)
+            for (unsigned i=0; i<d->get_num_entries(); i++) {
+                //check for false, report exceptions in terms of witnesses
+                bool process  = false;
+                if (r==0) {
+                    value_tuple * vt = d->get_value(i);
+                    SASSERT(vt->get_size()==1);
+                    val * v = vt->get_value(0);
+                    SASSERT(v->is_expr());
+                    expr * ve = to_expr(v)->get_value();
+                    if (m_m.is_false(ve)) {
+                        if (!d->get_condition(i)->is_value()) {
+                            process_star.push_back(i);
+                        }
+                        else {
+                            process = true;
+                        }
+                    }
+                }
+                else {
+                    process = process_star.contains(i);
+                }
+                if (process) {
+                    TRACE("mc_inst_debug",tout << "Canonizing condition "; display(tout,d->get_condition(i)); tout << "...\n";);
+                    //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
+                    cond * cic = mk_canon(d->get_condition(i));
+                    //get the corresponding instantiation from the model construction object
+                    expr_ref_buffer inst(m_m);
+                    bool inst_found_expr;
+                    mct->get_inst(*this, q, cic, inst, inst_found_expr);
+                    TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
+                                    for (unsigned j=0; j<inst.size(); j++) {
+                                            tout << "   " << mk_pp(inst[j],m_m) << "\n";
+                                    }
+                                    tout << "\n";
+                                    if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
+                    bool addInstantiation = true;
+                    //evaluate again with values of instantiation
+                    /*  1st unoptimized:
+                    //should be guarenteed to falsify at least the good part
+                    def * di = do_check(mct, q, inst_body, empty_subst, false);
+                    TRACE("mc_inst_debug", tout << "Redoing check, definition is : \n";
+                                        display(tout, di);
+                                        tout << "\n";);
+                    SASSERT(di->get_num_entries()==1);
+                    //SASSERT(m_m.is_false(to_expr(di->get_value(0)->get_value(0))->get_value()));
+                    */
+                    /* 2nd unoptimized:
+                    //use a variable substitution (assumes that q does not have nested quantifiers)
+                    var_subst vs(m_m);
+                    expr_ref inst_body(m_m);
+                    vs(q->get_expr(),inst.size(),inst.c_ptr(), inst_body);
+                    TRACE("mc_inst_debug", tout << "Redo check on " << mk_pp(inst_body,m_m) << "\n";);
+                    val * v = evaluate(mct, inst_body, val_subs);
+                    */
+                    //evaluate arguments, evaluate body directly
+                    if (!full_model_check) {
+                        ptr_vector<val> val_subs;
+                        for (unsigned j=0; j<inst.size(); j++) {
+                            if (cic->get_value(j)->is_value()) {
+                                val_subs.push_back(to_value(cic->get_value(j))->get_value());
+                            }
+                            else {
+                                //evaluate to get value of term
+                                //val_subs does not matter (it is ground)
+                                val * ve = evaluate(mct, inst[(inst.size()-1)-j], val_subs);
+                                val_subs.push_back(ve);
+                            }
+                        }
+                        val * v = evaluate(mct, q->get_expr(), val_subs);
+                        SASSERT(v->is_expr());
+                        if (!m_m.is_false(to_expr(v)->get_value())) {
+                            addInstantiation = false;
+                        }
+                    }
+                    if (addInstantiation) {
+                        expr_ref instance(m_m);
+                        if (get_instantiation(q, inst, instance)) {
+                            if (r==0) {
+                                instantiations.push_back(instance);
+                            }
+                            else {
+                                instantiations_star.push_back(instance);
+                            }
+                        }
+                    }
+                }
+            }
+            if (!instantiations.empty() || !mk_inst_star) {
+                break;
+            }
+        }
+        TRACE("mc_operation", tout << "Done.\n";);
+    }
 
     if (instantiations.empty() && instantiations_star.empty()) {
         return ci.is_model_checkable() ? l_true : l_undef;
@@ -1370,11 +1445,11 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
     }
 }
 
-def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst) {
+def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst, bool parent_uninterp) {
     TRACE("model_check_debug",tout << "Model check " << mk_pp(e, m_m) << "...\n";);
     def * d = 0;
     if (is_var(e) || is_atomic_value(e)) {
-        if (is_var(e)) {
+        if (is_var(e) && !parent_uninterp) {
             //consult an alternate definition, if provided
             unsigned vid = to_var(e)->get_idx();
             if (vid<subst.size()) {
@@ -1395,18 +1470,18 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
             expr_ref t(m_m);
             bool is_flipped;
             //first check if it is an relation with a variable
-            if (m_cutil.is_var_relation(e, v, t, is_flipped, classify_util::REQ_NON_VARIABLE)) {
+            if ((mct->m_monotonic_projections || m_m.is_eq(e)) && m_cutil.is_var_relation(e, v, t, is_flipped)) {
                 unsigned vid = v->get_idx();
-                if (v->get_idx()>=subst.size()) {
+                //if (v->get_idx()>=subst.size()) {
                     TRACE("model_check_debug", tout << "Evaluate as variable relation " << mk_pp(v, m_m) << " ~ " << mk_pp(t, m_m ) << "\n";);
                     //first, model check the term
                     d = do_check(mct, q, t, subst);
                     //then, apply the variable relation on d
                     d = mk_var_relation(d, to_app(e)->get_decl(), v, is_flipped);
-                }
+                //}
             }
-            else if (m_cutil.is_var_offset(e, v, t, is_flipped, classify_util::REQ_NON_VARIABLE)) {
-                if (v->get_idx()>=subst.size()) {
+            else if (m_cutil.is_var_offset(e, v, t, is_flipped, classify_util::REQ_NON_VARIABLE) && parent_uninterp) {
+                //if (v->get_idx()>=subst.size()) {
                     TRACE("model_check_debug", tout << "Evaluate as variable offset " << mk_pp(v, m_m) << " + " << mk_pp(t, m_m ) << "\n";);
                     if (t) {
                         //first model check the offset if it exists
@@ -1422,7 +1497,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                         val * vl = mk_val(v, 0, is_flipped);
                         d->append_entry(*this, cstar, mk_value_tuple(vl));
                     }
-                }
+                //}
             }
         }
         if (!d) {
@@ -1430,11 +1505,10 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
             for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
                 expr * ec = to_app(e)->get_arg(i);
                 SASSERT(is_uninterp(e) || !is_var(ec) || to_var(ec)->get_idx()<subst.size());
-                def * dc = do_check(mct, q, ec, subst);
-                if (m_do_simplification) {
+                def * dc = do_check(mct, q, ec, subst, is_uninterp(e));
+                if (m_simplification) {
                     dc->simplify(*this);
                 }
-                //std::cout << "Product " << e << " " << i << " " << dc->get_num_entries() << std::endl;
                 d = d ? mk_product(d,dc) : dc;
             }
             TRACE("model_check_debug",if (d) {
@@ -1515,12 +1589,12 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
     return d;
 }
 
-bool mc_context::exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain) {
+bool mc_context::exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain, expr_ref_buffer & instantiations) {
     ptr_vector<expr> inst;
-    return do_exhaustive_instantiate(mct, q, inst, use_rel_domain);
+    return do_exhaustive_instantiate(mct, q, inst, use_rel_domain, instantiations);
 }
 
-bool mc_context::do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain) {
+bool mc_context::do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations) {
     int index = inst.size();
     if (index==q->get_num_decls()) {
         TRACE("inst", tout << "Exhaustive instantiate " << mk_pp(q,m_m) << " with \n";
@@ -1528,17 +1602,29 @@ bool mc_context::do_exhaustive_instantiate(model_constructor * mct, quantifier *
                          tout << "   " << mk_pp(inst[j],m_m) << "\n";
                       }
                       tout << "\n";);
+        expr_ref instance(m_m);
+        if (get_instantiation(q, inst, instance)) {
+            instantiations.push_back(instance);
+        }
         return true;
     }
     else {
         if (use_rel_domain) {
             projection * p = mct->get_projection(*this, q, index);
-            for (unsigned i=0; i<p->get_num_relevant_domain(); i++) {
-                inst.push_back(p->get_relevant_domain(i));
-                do_exhaustive_instantiate(mct, q, inst, use_rel_domain);
-                inst.pop_back();
+            if (p->get_num_relevant_domain()==0) {
+                return false;
             }
-            return true;
+            else {
+                for (unsigned i=0; i<p->get_num_relevant_domain(); i++) {
+                    inst.push_back(p->get_relevant_domain(i));
+                    bool ret = do_exhaustive_instantiate(mct, q, inst, use_rel_domain, instantiations);
+                    inst.pop_back();
+                    if (!ret) {
+                        return false;
+                    }
+                }
+                return true;
+            }
         }
         else {
             //get the sort
@@ -1556,7 +1642,7 @@ bool mc_context::do_exhaustive_instantiate(model_constructor * mct, quantifier *
                     expr_ref bvn(m_m);
                     bvn = m_bvu.mk_numeral(rational(i), sz);
                     inst.push_back(bvn);
-                    do_exhaustive_instantiate(mct, q, inst, use_rel_domain);
+                    do_exhaustive_instantiate(mct, q, inst, use_rel_domain, instantiations);
                     inst.pop_back();
                 }
                 return false;
@@ -1564,7 +1650,7 @@ bool mc_context::do_exhaustive_instantiate(model_constructor * mct, quantifier *
             else if (m_m.is_uninterp(s)){
                 for (unsigned i=0; i<mct->get_num_universe(s); i++) {
                     inst.push_back(mct->get_universe(*this, s, i));
-                    do_exhaustive_instantiate(mct, q, inst, use_rel_domain);
+                    do_exhaustive_instantiate(mct, q, inst, use_rel_domain, instantiations);
                     inst.pop_back();
                 }
                 return false;
@@ -1764,4 +1850,38 @@ bool mc_context::repair_model(model_constructor * mct, quantifier * q, expr * e,
     }
 
     return false;
+}
+
+bool mc_context::get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache) {
+    if (checkCache) {
+        inst_trie * it;
+        if (!m_inst_trie.find(q, it)) {
+            void * mem = allocate(sizeof(inst_trie));
+            it = new (mem) inst_trie;
+            m_inst_trie.insert(q,it);
+        }
+        if (it->add(*this, inst)) {
+            instantiate(m_m, q, inst.c_ptr(), e);
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    else {
+        instantiate(m_m, q, inst.c_ptr(), e);
+        return true;
+    }
+}
+
+bool mc_context::get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache) {
+    if (checkCache) {
+        ptr_vector<expr> inst2;
+        inst2.append(inst.size(), inst.c_ptr());
+        return get_instantiation(q, inst2, e, checkCache);
+    }
+    else {
+        instantiate(m_m, q, inst.c_ptr(), e);
+        return true;
+    }
 }

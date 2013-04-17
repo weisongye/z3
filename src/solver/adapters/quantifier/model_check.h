@@ -255,13 +255,26 @@ public:
     void simplify(mc_context & mc);
 };
 
+
+class inst_trie 
+{
+protected:
+    bool m_data;
+    obj_map<expr, inst_trie * > m_inst;
+    bool add(mc_context & mc, ptr_vector<expr> & inst, unsigned i);
+public:
+    inst_trie() : m_data(false){}
+    bool add(mc_context & mc, ptr_vector<expr> & inst) { return add(mc, inst, 0); }
+};
+
+
 class model_constructor;
 
 class mc_context
 {
 protected:
     // do simplification?
-    bool m_do_simplification;
+    bool m_simplification;
     // do partial evaluation
     bool m_partial_evaluation;
     //memory manager
@@ -285,6 +298,8 @@ protected: //cached information
     obj_map< sort, expr * > m_sort_to_dist_expr;
     //values to abstract values
     ptr_addr_map< val, av_val * > m_val_to_abs_val;
+    //values to value tuples
+    ptr_addr_map< val, value_tuple * > m_val_to_value_tuple;
     //quantifiers to star conditions
     ptr_addr_map< quantifier, cond * > m_quant_to_cond_star;
     //true and false
@@ -296,15 +311,20 @@ protected: //cached information
     expr_ref_buffer m_expr_produced;
     //new values
     u_map< abs_val * > m_new_vals;
+    //instantiations produced
+    obj_map< quantifier, inst_trie * > m_inst_trie;
 protected: //helper functions
     //helper for check, the third argument is an optional mapping from variables to the definitions that should be used for them
-    def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst);
+    def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst, bool parent_uninterp = false);
     //helper for exhaustive_instantiate
-    bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain);
+    bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
     //evaluate
     val * evaluate(model_constructor * mct, expr * e, ptr_vector<val> & var_subst);
     //repair model
     bool repair_model(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst);
+    //add instantiation
+    bool get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache = false);
+    bool get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache = false);
     //evaluate function
     val * evaluate(func_decl * f, ptr_vector<val> & vals);
     //get bound
@@ -438,7 +458,7 @@ public:
     //check the quantifier
     lbool check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, expr_ref_buffer & instantiations_star, bool mk_inst_star);
     //exhaustive instantiate
-    bool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain = true);
+    bool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain, expr_ref_buffer & instantiations);
 };
 
 }

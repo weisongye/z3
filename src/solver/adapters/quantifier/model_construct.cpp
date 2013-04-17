@@ -563,9 +563,9 @@ void projection::compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_
 
 model_constructor::model_constructor(ast_manager & _m, bool use_monotonic_projections)
     : m_m(_m), m_au(_m), m_bvu(_m), m_partial_model_terms(_m) {
-    m_use_projection_definitions = false;
-    m_use_monotonic_projections = use_monotonic_projections;
-    m_do_simplification = false;
+    m_projection_definitions = false;
+    m_monotonic_projections = use_monotonic_projections;
+    m_simplification = false;
 }
 
 void model_constructor::reset_round(mc_context & mc) {
@@ -660,7 +660,7 @@ void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection
                     add_relevant_domain(vp, rel_domain[r]);
                 }
                 //set projection to monotonic if necessary
-                if (proj_type==projection::PROJ_MONOTONIC && m_use_monotonic_projections) {
+                if (proj_type==projection::PROJ_MONOTONIC && m_monotonic_projections) {
                     TRACE("rel_domain_debug", tout << "Projection of " << mk_pp(v1,m_m) << " should be monotonic.\n";);
                     vp->set_projection_type(proj_type);
                 }
@@ -949,7 +949,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                 }
             }
             //now, complete the definition
-            if (m_use_projection_definitions) {
+            if (m_projection_definitions) {
                 //get the projection for the function
                 def * dp = get_projection_definition(mc, f);
                 if (dp) {
@@ -1051,7 +1051,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
             }
 
             //simplify the definition
-            if (m_do_simplification) {     
+            if (m_simplification) {     
                 TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
                                         mc.display(tout, d);
                                         tout << "\n";);           

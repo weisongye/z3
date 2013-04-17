@@ -89,6 +89,8 @@ public:
     unsigned get_num_relevant_domain() { return m_rel_domain.size(); }
     //get relevant domain 
     expr * get_relevant_domain(unsigned i) { return m_rel_domain[i]; }
+    //get relevant domain value
+    val * get_relevant_domain_val(unsigned i) { return m_rel_domain_val[i]; }
     //compute intervals helper function
     static void compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_vector<av_interval> & intervals);
 protected: //TEMPORARY? debugging, for explicit projection construction
@@ -102,11 +104,12 @@ public:
 
 class model_constructor
 {
-protected:
+public:
     // use monotonic projections?
-    bool m_use_monotonic_projections;
+    bool m_monotonic_projections;
     // do simplification?
-    bool m_do_simplification;
+    bool m_simplification;
+protected:
     //function to id map
     obj_map< func_decl, unsigned > m_func_to_id;
     //functions
@@ -189,7 +192,7 @@ public:
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
 protected: //TEMPORARY? debugging, for explicit projection construction
     //use projections explicitly
-    bool m_use_projection_definitions;
+    bool m_projection_definitions;
     //map from func id to projection function
     u_map< def * > m_projections;
 public:

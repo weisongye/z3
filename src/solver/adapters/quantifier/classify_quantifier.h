@@ -72,7 +72,7 @@ protected:
     arith_util & m_au;
     bv_util & m_bvu;
     // use monotonic projections?
-    bool m_use_monotonic_projections;
+    bool m_monotonic_projections;
     //the utility object for querying
     classify_util m_util;
     //the quantifier
@@ -90,7 +90,7 @@ protected:
     //classify literal
     void classify_term(expr * e, bool hasPolarity, bool polarity, bool & model_checkable, bool & witnessable, bool & ground_result);
 public:
-    classify_info(ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q, bool m_use_monotonic_projections = false);
+    classify_info(ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q, bool m_monotonic_projections = false);
     //compute function
     bool compute();
     //get model-checkable
@@ -103,6 +103,10 @@ public:
     bool is_model_checkable() { return m_mc_lits.size()==m_lits.size(); }
     //is completely witnessable
     bool is_witnessable() { return m_w_lits.size()==m_lits.size(); }
+    //has model checkable
+    bool has_model_checkable() { return !m_mc_lits.empty(); }
+    //has witnessable
+    bool has_witnessable() { return !m_w_lits.empty(); }
     //display the classify info
     void display(std::ostream & out);
 };

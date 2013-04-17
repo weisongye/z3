@@ -326,7 +326,7 @@ bool classify_util::is_witnessable(expr * e, bool hasPolarity, bool polarity,
 
 classify_info::classify_info(ast_manager & m, arith_util & au, bv_util & bvu, quantifier* q, bool use_monotonic_projections) :
     m_m(m), m_au(au), m_bvu(bvu), m_util(m, au, bvu), m_q(q, m), m_lits(m) {
-    m_use_monotonic_projections = use_monotonic_projections;
+    m_monotonic_projections = use_monotonic_projections;
 }
 
 void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, bool & model_checkable, bool & witnessable, bool & ground_result) {
@@ -370,7 +370,7 @@ void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, boo
                 TRACE("classify_debug", tout << "Term is actually model-checkable : " << mk_pp(e,m_m) << "\n";);
                 model_checkable = true;
             }
-            if ((m_use_monotonic_projections || m_m.is_eq(e)) && m_util.is_var_relation(e, classify_util::REQ_NON_VARIABLE)) {
+            if ((m_monotonic_projections || m_m.is_eq(e)) && m_util.is_var_relation(e, classify_util::REQ_NON_VARIABLE)) {
                 TRACE("classify_debug", tout << "Term is actually model-checkable : " << mk_pp(e,m_m) << "\n";);
                 model_checkable = true;
                 ground_result = true;
@@ -463,16 +463,12 @@ void classify_info::get_model_checkable(expr_ref & e, bool req_witnessable) {
 }
 
 void classify_info::get_non_model_checkable(expr_ref & e, bool req_witnessable) {
+    ptr_vector<expr> lits;
     if (!req_witnessable) {
-        ptr_vector<expr> lits;
-        get_literals(lits, false, true);
-        mk_disjunction(e, lits);
-    }
-    else {
-        ptr_vector<expr> lits;
         get_literals(lits, false, false);
-        mk_disjunction(e, lits);
     }
+    get_literals(lits, false, true);
+    mk_disjunction(e, lits);
 }
 
 //get witnessable
