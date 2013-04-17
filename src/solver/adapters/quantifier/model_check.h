@@ -427,7 +427,7 @@ public: //display functions
     void display(std::ostream & out, def * d );
 public:
     //check the quantifier
-    lbool check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
+    lbool check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, expr_ref_buffer & instantiations_star, bool mk_inst_star);
     //exhaustive instantiate
     bool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain = true);
 };

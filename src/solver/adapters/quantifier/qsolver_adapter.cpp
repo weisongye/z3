@@ -266,12 +266,15 @@ public:
         //assert the partial model
         m_mct.assert_partial_model(m_mc, pM.get_map());
 
+        bool star_only_if_non_star = false;//true;
         expr_ref_buffer instantiation_lemmas(m_manager);
+        expr_ref_buffer instantiation_lemmas_star(m_manager);
         lbool result = l_true;
         //check the relevant quantifiers
         for (unsigned i=0; i<quantifiers.size(); i++) {
             expr_ref_buffer instantiations(m_manager);
-            lbool c_result = m_mc.check(&m_mct, quantifiers[i], instantiations); 
+            expr_ref_buffer instantiations_star(m_manager);
+            lbool c_result = m_mc.check(&m_mct, quantifiers[i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
             if (c_result!=l_true) {
                 result = result!=l_false ? c_result : result;
             }
@@ -283,17 +286,31 @@ public:
                     il = m_manager.mk_or(m_manager.mk_not(pv), instantiations[j]);
                     instantiation_lemmas.push_back(il);
                 }
+                for (unsigned j=0; j<instantiations_star.size(); j++) {
+                    expr_ref il(m_manager);
+                    il = m_manager.mk_or(m_manager.mk_not(pv), instantiations_star[j]);
+                    instantiation_lemmas_star.push_back(il);
+                }
             }
             else {
                 instantiation_lemmas.append(instantiations.size(), instantiations.c_ptr());
+                instantiation_lemmas_star.append(instantiations_star.size(), instantiations_star.c_ptr());
             }
         }
-        std::cout << "Produced " << instantiation_lemmas.size() << " lemmas." << std::endl;
+
+
         for (unsigned i=0; i<instantiation_lemmas.size(); i++) {
             TRACE("qsolver_inst", tout << "Produced instantiation : " << mk_pp(instantiation_lemmas[i],m_manager) << "\n";);
             assert_expr_core(instantiation_lemmas[i]);
         }
-
+        std::cout << "Produced " << instantiation_lemmas.size() << " lemmas \n";
+        if (instantiation_lemmas.empty() || !star_only_if_non_star) {
+            for (unsigned i=0; i<instantiation_lemmas_star.size(); i++) {
+                TRACE("qsolver_inst", tout << "Produced (star) instantiation : " << mk_pp(instantiation_lemmas_star[i],m_manager) << "\n";);
+                assert_expr_core(instantiation_lemmas_star[i]);
+            }
+            std::cout << "Produced " << instantiation_lemmas_star.size() << " star lemmas.\n";
+        }
         return result;
     }
 

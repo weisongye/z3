@@ -218,7 +218,6 @@ void mc_context::reset_round() {
 
     //clear the caches
     m_expr_to_val.reset();
-    m_sort_to_dist_expr.reset();
     m_val_to_abs_val.reset();
     m_quant_to_cond_star.reset();
     m_expr_produced.reset();
@@ -232,7 +231,7 @@ void mc_context::push() {
 
 //pop user context
 void mc_context::pop() {
-
+    m_sort_to_dist_expr.reset();
 }
 
 
@@ -1213,7 +1212,7 @@ void mc_context::display(std::ostream & out, def * d) {
     }
 }
 
-lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations) {
+lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, expr_ref_buffer & instantiations_star, bool mk_inst_star) {
     TRACE("model_check",tout << "Model check " << mk_pp(q,m_m) << "\n";);
 
     //classify the body of the quantifier
@@ -1280,7 +1279,12 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
                     expr_ref inst_lemma(m_m);
                     instantiate(m_m, q, inst.c_ptr(), inst_lemma);
                     //inst_lemma = m_m.mk_or(m_m.mk_not(q), inst_lemma);
-                    instantiations.push_back(inst_lemma);
+                    if (r==0) {
+                        instantiations.push_back(inst_lemma);
+                    }
+                    else {
+                        instantiations_star.push_back(inst_lemma);
+                    }
 #ifdef MODEL_CHECK_DEBUG
                     //for debugging, evaluate again with values of instantiation
                     if (inst_found_expr) {
@@ -1299,9 +1303,9 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
                     }
 #endif
                 }
-            }
-            if (!instantiations.empty()) {
-                break;
+                if (!instantiations.empty() || !mk_inst_star) {
+                    break;
+                }
             }
         }
         //std::cout << "Done." << std::endl;
@@ -1309,7 +1313,7 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
     else {
         TRACE("model_check",tout << "The quantifier does not have a model-checkable portion.\n";);
     }
-    if (instantiations.empty()) {
+    if (instantiations.empty() && instantiations_star.empty()) {
         return ci.is_model_checkable() ? l_true : l_undef;
     }
     else {
