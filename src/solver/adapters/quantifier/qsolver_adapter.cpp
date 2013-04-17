@@ -266,7 +266,7 @@ public:
         //assert the partial model
         m_mct.assert_partial_model(m_mc, pM.get_map());
 
-        bool star_only_if_non_star = false;//true;
+        bool star_only_if_non_star = true;
         expr_ref_buffer instantiation_lemmas(m_manager);
         expr_ref_buffer instantiation_lemmas_star(m_manager);
         lbool result = l_true;

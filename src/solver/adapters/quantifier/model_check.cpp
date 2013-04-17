@@ -218,6 +218,7 @@ void mc_context::reset_round() {
 
     //clear the caches
     m_expr_to_val.reset();
+    m_sort_to_dist_expr.reset();
     m_val_to_abs_val.reset();
     m_quant_to_cond_star.reset();
     m_expr_produced.reset();
@@ -231,7 +232,7 @@ void mc_context::push() {
 
 //pop user context
 void mc_context::pop() {
-    m_sort_to_dist_expr.reset();
+
 }
 
 
