@@ -31,7 +31,10 @@ Revision History:
 #include"model_params.hpp"
 #include"parser_params.hpp"
 
+solver_factory * get_my_solver_factor();
+
 namespace smtlib {
+
 
     solver::solver():
         m_ast_manager(m_params.m_proof ? PGM_FINE : PGM_DISABLED, 
@@ -86,7 +89,7 @@ namespace smtlib {
             benchmark.add_formula(m_ast_manager.mk_true());
         }
         m_ctx = alloc(cmd_context, true, &m_ast_manager, benchmark.get_logic());
-        m_ctx->set_solver_factory(mk_smt_strategic_solver_factory());
+        m_ctx->set_solver_factory(get_my_solver_factor());
         theory::expr_iterator fit  = benchmark.begin_formulas();
         theory::expr_iterator fend = benchmark.end_formulas();
         for (; fit != fend; ++fit)

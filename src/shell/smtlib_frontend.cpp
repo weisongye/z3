@@ -132,6 +132,10 @@ struct my_solver_factory : public solver_factory {
     }
 };
 
+solver_factory * get_my_solver_factor() {
+    return alloc(my_solver_factory);
+}
+
 unsigned read_smtlib2_commands(char const * file_name) {
     g_start_time = clock();
     register_on_timeout_proc(on_timeout);
@@ -139,7 +143,7 @@ unsigned read_smtlib2_commands(char const * file_name) {
     cmd_context ctx;
 
     // ctx.set_solver_factory(mk_smt_strategic_solver_factory());
-    ctx.set_solver_factory(alloc(my_solver_factory));
+    ctx.set_solver_factory(get_my_solver_factor());
     
     install_dl_cmds(ctx);
     install_dbg_cmds(ctx);
