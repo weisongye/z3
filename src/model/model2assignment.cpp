@@ -25,6 +25,7 @@ Revision History:
 #include"ast_pp.h"
 #include"common_msgs.h"
 #include"cooperate.h"
+#include"model_smt2_pp.h"
 
 struct model2assignment::imp {
     model &                          m_model;
@@ -42,7 +43,9 @@ struct model2assignment::imp {
         m_result(r),
         m_eval(m),
         m_formulas(m.get_manager()) {
+        m_eval.set_model_completion(true);
         m_cancel = false;
+        TRACE("model2assignment_bug", tout << "MODEL\n"; model_smt2_pp(tout, m.get_manager(), m, 0););
     }
 
     ast_manager & m() { return m_model.get_manager(); }
