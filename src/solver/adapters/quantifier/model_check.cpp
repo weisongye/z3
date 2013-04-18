@@ -152,6 +152,19 @@ bool def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
     }
 }
 
+void def::prepend_entry(cond * c, value_tuple * val) {
+    //TODO: improve this
+    ptr_vector<cond> conds;
+    ptr_vector<value_tuple> values;
+    conds.push_back(c);
+    values.push_back(val);
+    conds.append(m_conds.size(), m_conds.c_ptr());
+    values.append(m_values.size(), m_values.c_ptr());
+    m_conds.reset();
+    m_values.reset();
+    m_conds.append(conds.size(),conds.c_ptr());
+    m_values.append(values.size(),values.c_ptr());
+}
 
 value_tuple * def::evaluate(mc_context & mc, cond * c) {
     for( unsigned i=0; i<m_conds.size(); i++ ){
@@ -237,6 +250,27 @@ bool inst_trie::add(mc_context & mc, ptr_vector<expr> & inst, unsigned i) {
     }
 }
 
+bool inst_trie::add(mc_context & mc, expr_ref_buffer & inst, unsigned i) {
+    if (i==inst.size()) {
+        if (m_data) {
+            return false;
+        }
+        else {
+            m_data = true;
+            return true;
+        }
+    }
+    else {
+        inst_trie * it;
+        if (!m_inst.find(inst[i],it)) {
+            void * mem = mc.allocate(sizeof(inst_trie));
+            it = new (mem) inst_trie;
+            m_inst.insert(inst[i], it);
+        }
+        return it->add(mc, inst, i+1);
+    }
+}
+
 
 mc_context::mc_context(ast_manager & _m) 
     : m_m(_m), m_au(_m), m_bvu(_m), m_ar(_m), m_bvr(_m), m_cutil(_m, m_au, m_bvu), m_expr_produced_global(_m), m_expr_produced(_m) {
@@ -244,6 +278,7 @@ mc_context::mc_context(ast_manager & _m)
     m_false = m_m.mk_false();
     m_simplification = false;
     m_partial_evaluation = false;
+    m_model_repairing = true;
 }
 
 void mc_context::reset_round() {
@@ -263,6 +298,7 @@ void mc_context::push() {
 
 //pop user context
 void mc_context::pop() {
+    m_inst_trie.reset();
     m_sort_to_dist_expr.reset();
     m_expr_produced_global.reset();
 }
@@ -898,7 +934,7 @@ def * mc_context::mk_var_relation(def * d, func_decl * f, var * v, bool is_flipp
                     for (unsigned k=0; k<c->get_size(); k++) {
                         c->m_vec[k] = k==vid ? avm : d->get_condition(i)->get_value(k);
                     }
-                    TRACE("model_check_var_relation", tout << "Add condition "; display(tout, c); tout << " -> "; display(tout, rets[j]); tout << "\n";);
+                    TRACE("model_check_var_relation", tout << "Add condition "; display(tout, c, rets[j]); tout << "\n";);
                     nd->append_entry(*this, c, mk_value_tuple(rets[j]));
                 }
             }
@@ -1265,12 +1301,22 @@ void mc_context::display(std::ostream & out, cond * c) {
     out << ")";
 }
 
+void mc_context::display(std::ostream & out, cond * c, val * v) {
+    display(out, c);
+    out << " -> ";
+    display(out, v);
+}
+
+void mc_context::display(std::ostream & out, cond * c, value_tuple * vt) {
+    display(out, c);
+    out << " -> ";
+    display(out, vt);
+}
+
 //display the definition
 void mc_context::display(std::ostream & out, def * d) {
     for( unsigned i=0; i<d->get_num_entries(); i++ ){
-        display(out, d->get_condition(i));
-        out << " -> ";
-        display(out, d->get_value(i));
+        display(out, d->get_condition(i), d->get_value(i));
         out << "\n";
     }
 }
@@ -1560,9 +1606,8 @@ bool mc_context::do_exhaustive_instantiate(model_constructor * mct, quantifier *
                       }
                       tout << "\n";);
         expr_ref instance(m_m);
-        if (get_instantiation(q, inst, instance)) {
-            instantiations.push_back(instance);
-        }
+        instantiate(m_m, q, inst.c_ptr(), instance);
+        instantiations.push_back(instance);
         return true;
     }
     else {
@@ -1632,7 +1677,6 @@ val * mc_context::evaluate(func_decl * f, ptr_vector<val> & vals) {
         for (unsigned i=0; i<vals.size(); i++) {
             SASSERT(vals[i]->is_int());
         }
-        //TODO: make sure that all mpz's used come from the same manager?
         switch (f->get_decl_kind()) {
         case OP_LE:
             return mk_val(m_zm.le(to_int(vals[0])->get_value(),to_int(vals[1])->get_value()) ? m_true : m_false);
@@ -1790,42 +1834,107 @@ val * mc_context::evaluate(model_constructor * mct, expr * e) {
 }
 
 //repair model
-bool mc_context::repair_model(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst) {
-    //try to repair the model
-    if (m_m.is_or(e)) {
-        for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
-            if (repair_model(mct, q, to_app(e)->get_arg(i), var_subst)) {
-                return true;
+bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst, bool polarity) {
+    TRACE("repair_model_debug", tout << "Try fixing " << mk_pp(e,m_m) << ", polarity = " << polarity << "\n";);
+    if (is_app(e)) {
+        //try to make the formula with var_subst equal to polarity
+        if ((m_m.is_or(e) && polarity) || (m_m.is_and(e) && !polarity)) {
+            for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
+                if (repair_formula(mct, q, to_app(e)->get_arg(i), var_subst, polarity)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        else if (m_m.is_not(e)) {
+            return repair_formula(mct, q, to_app(e)->get_arg(0), var_subst, !polarity);
+        }
+        else if (m_m.is_eq(e)) {
+            for (unsigned i=0; i<2; i++) {
+                expr * ec = to_app(e)->get_arg(i);
+                if (is_app(ec) && is_uninterp(to_app(ec)->get_decl())) {
+                    //evaluate the other side
+                    expr * eco = to_app(e)->get_arg(i==0 ? 1 : 0);
+                    val * ecov = evaluate(mct, eco, var_subst);
+                    if (repair_term(mct, q, ec, var_subst, ecov)) {
+                        return true;
+                    }
+                }
             }
         }
-        return false;
-    }
-    else if (m_m.is_eq(e)) {
-        for (unsigned i=0; i<2; i++) {
-            expr * ec = to_app(e)->get_arg(i);
-            if (is_uninterp(ec)) {
-                //evaluate the other side
-                expr * eco = to_app(e)->get_arg(i==0 ? 1 : 0);
-
-            }
+        else if (is_uninterp(to_app(e)->get_decl())) {
+            //predicate case
+            return repair_term(mct, q, e, var_subst, mk_val(polarity ? m_true : m_false));
         }
     }
-
     return false;
 }
 
-void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval) {
+bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & var_subst, val * v) {
+    //try to make the term with var_subst equal to v
+    SASSERT(is_uninterp(t));
+    //evaluate the arguments
+    ptr_vector<val> args;
+    for (unsigned i=0; i<to_app(t)->get_num_args(); i++) {
+        args.push_back(evaluate(mct, to_app(t)->get_arg(i), var_subst));
+    }
+    func_decl * f = to_app(t)->get_decl();
+    def * dg = mct->get_ground_def(*this, f);
+    if (!dg->evaluate(*this, args)) {
+        TRACE("repair_model", tout << "Can be fixed by adding (";
+                              for (unsigned i=0; i<args.size(); i++) {
+                                  if (i>0) tout << ", ";
+                                  display(tout, args[i]);
+                              }
+                              tout << ") -> ";
+                              display(tout,v);
+                              tout << " to " << mk_pp(f,m_m) << "\n";);
+        // do the repair
+        def * df = mct->get_def(*this, f);
+        //make the condition from the values
+        ptr_buffer<abs_val> avals;
+        for (unsigned i=0; i<args.size(); i++) {
+            avals.push_back(mk_value(args[i]));
+            /*
+            //make sure value is in the relevant domain
+            projection * p = mct->get_projection(*this,f,i);
+            if (!p->has_relevant_domain_val(args[i])) {
+                TRACE("repair_model_debug",tout << "NARDV " << mk_pp(t,m_m) << " ";
+                                            display(tout,args[i]);
+                                            tout << " arg # " << i << std::endl;);
+            }
+            */
+        }
+        cond * c = mk_cond(avals);
+        value_tuple * vt = mk_value_tuple(v);
+        dg->prepend_entry(c, vt);
+        df->prepend_entry(c, vt);
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
+                                  bool filterEval, bool filterRepair, bool filterCache) {
     //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
     cond * cic = mk_canon(c);
     //get the corresponding instantiation from the model construction object
     expr_ref_buffer inst(m_m);
     bool inst_found_expr;
     mct->get_inst(*this, q, cic, inst, inst_found_expr);
+    for (unsigned j=0; j<inst.size(); j++) {
+        if (!m_expr_produced_global.contains(inst[j])) {
+            m_expr_produced_global.push_back(inst[j]);
+        }
+    }
     TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
                     for (unsigned j=0; j<inst.size(); j++) {
                             tout << "   " << mk_pp(inst[j],m_m) << "\n";
                     }
                     tout << "\n";
+                    //tout << "Filters : " << filterEval << " " << filterRepair << "\n";
                     if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
     bool addInstantiation = true;
     //evaluate again with values of instantiation
@@ -1847,63 +1956,55 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
     val * v = evaluate(mct, inst_body, val_subs);
     */
     //evaluate arguments, evaluate body directly
-    if (filterEval) {
-        ptr_vector<val> val_subs;
-        for (unsigned j=0; j<inst.size(); j++) {
-            if (cic->get_value(j)->is_value()) {
-                val_subs.push_back(to_value(cic->get_value(j))->get_value());
+    if (filterEval || filterRepair) {
+        if (addInstantiation) {
+            ptr_vector<val> val_subs;
+            for (unsigned j=0; j<inst.size(); j++) {
+                if (cic->get_value(j)->is_value()) {
+                    val_subs.push_back(to_value(cic->get_value(j))->get_value());
+                }
+                else {
+                    //evaluate to get value of term
+                    val * ve = evaluate(mct, inst[(inst.size()-1)-j]);
+                    val_subs.push_back(ve);
+                }
             }
-            else {
-                //evaluate to get value of term
-                val * ve = evaluate(mct, inst[(inst.size()-1)-j]);
-                val_subs.push_back(ve);
+            if (filterEval) {
+                val * v = evaluate(mct, q->get_expr(), val_subs);
+                SASSERT(v->is_expr());
+                if (!m_m.is_false(to_expr(v)->get_value())) {
+                    addInstantiation = false;
+                }
             }
-        }
-        val * v = evaluate(mct, q->get_expr(), val_subs);
-        SASSERT(v->is_expr());
-        if (!m_m.is_false(to_expr(v)->get_value())) {
-            addInstantiation = false;
+            if (addInstantiation && filterRepair && m_model_repairing) {
+                if (repair_formula(mct, q, q->get_expr(), val_subs, true)) {
+                    //TODO: set instantiation false
+                    repaired = true;
+                    addInstantiation = false;
+                }
+                else {
+                    TRACE("repair_model", tout << "Could not repair!\n";);
+                }
+            }
         }
     }
     if (addInstantiation) {
-        expr_ref instance(m_m);
-        if (get_instantiation(q, inst, instance)) {
+        if (filterCache) {
+            inst_trie * it;
+            if (!m_inst_trie.find(q, it)) {
+                void * mem = allocate(sizeof(inst_trie));
+                it = new (mem) inst_trie;
+                m_inst_trie.insert(q,it);
+            }
+            if (!it->add(*this, inst)) {
+                addInstantiation = false;
+            }
+        }
+        if (addInstantiation) {
+            expr_ref instance(m_m);
+            instantiate(m_m, q, inst.c_ptr(), instance);
             instantiations.push_back(instance);
         }
-    }
-}
-
-bool mc_context::get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache) {
-    if (checkCache) {
-        inst_trie * it;
-        if (!m_inst_trie.find(q, it)) {
-            void * mem = allocate(sizeof(inst_trie));
-            it = new (mem) inst_trie;
-            m_inst_trie.insert(q,it);
-        }
-        if (it->add(*this, inst)) {
-            instantiate(m_m, q, inst.c_ptr(), e);
-            return true;
-        }
-        else {
-            return false;
-        }
-    }
-    else {
-        instantiate(m_m, q, inst.c_ptr(), e);
-        return true;
-    }
-}
-
-bool mc_context::get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache) {
-    if (checkCache) {
-        ptr_vector<expr> inst2;
-        inst2.append(inst.size(), inst.c_ptr());
-        return get_instantiation(q, inst2, e, checkCache);
-    }
-    else {
-        instantiate(m_m, q, inst.c_ptr(), e);
-        return true;
     }
 }
 
@@ -1926,6 +2027,7 @@ eval_node * mc_context::mk_eval_node( expr * e, ptr_vector<eval_node> & active, 
                 }
                 else if (is_uninterp(e) && m_cutil.is_var_offset(ec, classify_util::REQ_GROUND)) {
                     ene->m_children_eval_count++;
+                    ene->m_vars_to_bind++;
                     ene->m_children.push_back(0);
                 }
                 else {
@@ -1946,12 +2048,14 @@ eval_node * mc_context::mk_eval_node( expr * e, ptr_vector<eval_node> & active, 
     }
 }
 
-lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations) {
+lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired) {
     ptr_vector<eval_node> active;
     ptr_vector<eval_node> vars;
     vars.resize(q->get_num_decls(),0);
     obj_map< expr, eval_node *> evals;
     mk_eval_node(q->get_expr(), active, vars, evals);
+
+    //std::random_shuffle(active.begin(), active.end());
 
     TRACE("eval_check", tout << "Run eval check on " << mk_pp(q,m_m) << "\n";
                         tout << "------------------\n";
@@ -1968,7 +2072,8 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
                         );
     //std::cout << "Eval check " << mk_pp(q,m_m) << "..." << std::endl;
     cond * curr_cond = mk_star(mct,q);
-    do_eval_check(mct, q, active, vars, curr_cond, instantiations, 0);
+    repaired = false;
+    do_eval_check(mct, q, active, vars, curr_cond, instantiations, 0, repaired);
     //std::cout << "Done." << std::endl;
 
     if (instantiations.empty()) {
@@ -1980,7 +2085,7 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
 }
 
 void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
-                               cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count) {
+                               cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
     unsigned prev_size = active.size();
     if (!active.empty()) {
         unsigned best_index = active.size()-1;
@@ -1988,7 +2093,7 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
         for (unsigned i=0; i<active.size(); i++) {
             unsigned ii = (active.size()-1)-i;
             if (active[ii]->can_evaluate()) {
-                unsigned score = 1; //TODO?
+                unsigned score = 1 + active[ii]->m_vars_to_bind; //TODO?
                 //get score
                 if (score>max_score) {
                     best_index = ii;
@@ -2113,18 +2218,19 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                                 if (new_active.empty()) {
                                     if (en->get_expr()!=q->get_expr() || m_m.is_false(to_expr(en->m_value)->get_value())) {
                                         SASSERT(!active.empty() || en->get_expr()==q->get_expr());
-                                        do_eval_check(mct, q, active, vars, cc, instantiations, var_bind_count);
+                                        do_eval_check(mct, q, active, vars, cc, instantiations, var_bind_count, repaired);
                                     }
                                 }
                                 else {
-                                    do_eval_check(mct, q, new_active, vars, cc, instantiations, var_bind_count);
+                                    do_eval_check(mct, q, new_active, vars, cc, instantiations, var_bind_count, repaired);
                                 }
                             }
                             else {
                                 //just do the evaluation now
                                 TRACE("eval_check_debug", tout << "Add instantiation "; display(tout, curr_cond); tout << "\n";);
                                 //we have an instantiation
-                                add_instantiation(mct, q, cc, instantiations, true);
+                                //add_instantiation(mct, q, cc, instantiations, true);
+                                add_instantiation(mct, q, cc, instantiations, repaired, true, true, true);
                             }
                         }
                     }
@@ -2156,7 +2262,7 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
             if (new_active.empty()) {
                 if (en->get_expr()!=q->get_expr() || m_m.is_false(to_expr(en->m_value)->get_value())) {
                     SASSERT(!active.empty() || en->get_expr()==q->get_expr());
-                    do_eval_check(mct, q, active, vars, curr_cond, instantiations, var_bind_count);
+                    do_eval_check(mct, q, active, vars, curr_cond, instantiations, var_bind_count, repaired);
                 }
             }
             else {
@@ -2166,7 +2272,7 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                     }
                     );
                 new_active.append(active.size(), active.c_ptr());
-                do_eval_check(mct, q, new_active, vars, curr_cond, instantiations, var_bind_count);
+                do_eval_check(mct, q, new_active, vars, curr_cond, instantiations, var_bind_count, repaired);
             }
             en->m_value = 0;
             en->unnotify_evaluation();
@@ -2177,12 +2283,11 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
     else {
         TRACE("eval_check_debug", tout << "Add instantiation "; display(tout, curr_cond); tout << "\n";);
         //we have an instantiation (curr_cond)
-        add_instantiation(mct, q, curr_cond, instantiations);
+        //add_instantiation(mct, q, curr_cond, instantiations);
+        add_instantiation(mct, q, curr_cond, instantiations, repaired, false, true);
     }
     SASSERT(active.size()==prev_size);
 }
-
-
 
 
 
@@ -2194,7 +2299,6 @@ void eval_node::notify_evaluation(ptr_vector<eval_node> & active) {
             SASSERT(!active.contains(m_parents[i]));
             active.push_back(m_parents[i]);
         }
-        //special case of OR, AND
     }
 }
 void eval_node::unnotify_evaluation() {

@@ -847,18 +847,14 @@ void model_constructor::construct_entries(mc_context & mc, func_decl * f, def * 
             cond * c = mc.mk_cond(avals);
             value_tuple * vt = dg->get_value(order_indices[process_entries[i]]);
             TRACE("model_construct_debug", tout << "Add entry ";
-                                            mc.display(tout, c);
-                                            tout << " -> ";
-                                            mc.display(tout, vt);
+                                            mc.display(tout, c, vt);
                                             tout << "\n";);
             if (!d->append_entry(mc, c, vt)) {
                 //std::cout << "WARN #1" << std::endl;
                 TRACE("model_construct_warn",
                     tout << mk_pp(f,m_m);
                     tout << " Did not append entry! ";
-                    mc.display(tout, c);
-                    tout << " -> ";
-                    mc.display(tout, vt);
+                    mc.display(tout, c, vt);
                     tout << std::endl;);
             }
         }
@@ -925,10 +921,10 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
         def * dg = get_ground_def(mc, f);
         //d is the complete definition we will construct
         def * d;
-        TRACE("model_construct",tout << "Constructing definition for " << mk_pp(f,m_m) << "... " << "\n";
-                                tout << "Ground definition is: \n";
-                                mc.display(tout, dg);
-                                tout << "\n";);
+        TRACE("model_construct",tout << "Constructing definition for " << mk_pp(f,m_m) << "... " << "\n";);
+        TRACE("model_construct_ground", tout << "Ground definition for " << mk_pp(f,m_m) << " is: \n";
+                                        mc.display(tout, dg);
+                                        tout << "\n";);
         if (dg->get_num_entries()==0) {
             //need to make at least one entry
             d = mc.new_def();
@@ -999,9 +995,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                     TRACE("model_construct_debug", tout << "Sorted with respect to pointwise entries: \n";
                                                     for (unsigned i=0; i<order_indices.size(); i++) {
                                                         tout << "   ";
-                                                        mc.display(tout, dg->get_condition(order_indices[i]));
-                                                        tout << " -> ";
-                                                        mc.display(tout, dg->get_value(order_indices[i]));
+                                                        mc.display(tout, dg->get_condition(order_indices[i]), dg->get_value(order_indices[i]));
                                                         tout << "\n";
                                                     });
                 }
@@ -1043,9 +1037,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                 cond * cstar = mc.mk_cond(avals);
                 value_tuple * def_val = dg->get_value(0);
                 TRACE("model_construct",tout << "Complete the definition with ";
-                                        mc.display(tout,cstar);
-                                        tout << " -> ";
-                                        mc.display(tout,def_val);
+                                        mc.display(tout,cstar,def_val);
                                         tout << "\n";);
                 d->append_entry(mc, cstar, def_val);
             }
@@ -1070,9 +1062,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                     TRACE("model_construct_warn",tout << "WARNING: the following ground constraint is not satisfied by model construction: \n";
                                                  tout << "  Function : " << mk_pp(f,m_m) << "\n";
                                                  tout << "  Constraint : ";
-                                                 mc.display(tout, dg->get_condition(i));
-                                                 tout << " -> ";
-                                                 mc.display(tout, dg->get_value(i));
+                                                 mc.display(tout, dg->get_condition(i), dg->get_value(i));
                                                  tout << "\n";
                                                  tout << "  Got result : ";
                                                  mc.display(tout, vt);

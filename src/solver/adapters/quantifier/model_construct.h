@@ -91,6 +91,8 @@ public:
     expr * get_relevant_domain(unsigned i) { return m_rel_domain[i]; }
     //get relevant domain value
     val * get_relevant_domain_val(unsigned i) { return m_rel_domain_val[i]; }
+    //has relevant domain value
+    bool has_relevant_domain_val(val * v) { return m_rel_domain_val.contains(v); }
     //compute intervals helper function
     static void compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_vector<av_interval> & intervals);
 protected: //TEMPORARY? debugging, for explicit projection construction

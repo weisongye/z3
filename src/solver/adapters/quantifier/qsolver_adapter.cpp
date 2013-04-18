@@ -269,51 +269,65 @@ public:
         lbool result = l_true;
         expr_ref_buffer instantiation_lemmas(m_manager);
         expr_ref_buffer instantiation_lemmas_star(m_manager);
-        bool do_exhaustive_instantiate = false;//true;
-        bool star_only_if_non_star = true;
+        //options
+        bool do_exhaustive_instantiate = false;
         bool do_eval_check = true;
-        //check the relevant quantifiers
-        for (unsigned i=0; i<quantifiers.size(); i++) {
-            expr_ref_buffer instantiations(m_manager);
-            expr_ref_buffer instantiations_star(m_manager);
-            lbool c_result;
-            if (do_exhaustive_instantiate) {
-                m_mc.exhaustive_instantiate(&m_mct, quantifiers[i], true, instantiations);
-                c_result = l_true;
-            }
-            else if (do_eval_check) {
-                c_result = m_mc.eval_check(&m_mct,quantifiers[i],instantiations);
-            }
-            else {
-                //check the relevant quantifiers
-                c_result = m_mc.check(&m_mct, quantifiers[i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
-            }
-            if (!instantiations.empty()) {
-                result = l_false;
-            }
-            else if (c_result!=l_true) {
-                result = result!=l_false ? c_result : result;
-            }
-            //std::cout << "Quantifier " << mk_pp(quantifiers[i],m_manager) << "\n" << "generated " << instantiations.size() << " " << instantiations_star.size() << std::endl;
-            //convert and add instantiation lemmas
-            if (m_nq2p.contains(quantifiers[i])) {
-                expr * pv = m_nq2p.find(quantifiers[i]);
-                for (unsigned j=0; j<instantiations.size(); j++) {
-                    expr_ref il(m_manager);
-                    il = m_manager.mk_or(m_manager.mk_not(pv), instantiations[j]);
-                    instantiation_lemmas.push_back(il);
+        bool star_only_if_non_star = true;
+
+        bool changed_model;
+        do 
+        {
+            changed_model = false;
+            //check the relevant quantifiers
+            for (unsigned i=0; i<quantifiers.size(); i++) {
+                expr_ref_buffer instantiations(m_manager);
+                expr_ref_buffer instantiations_star(m_manager);
+                lbool c_result;
+                if (do_exhaustive_instantiate) {
+                    m_mc.exhaustive_instantiate(&m_mct, quantifiers[i], true, instantiations);
+                    c_result = l_true;
                 }
-                for (unsigned j=0; j<instantiations_star.size(); j++) {
-                    expr_ref il(m_manager);
-                    il = m_manager.mk_or(m_manager.mk_not(pv), instantiations_star[j]);
-                    instantiation_lemmas_star.push_back(il);
+                else if (do_eval_check) {
+                    bool repaired;
+                    c_result = m_mc.eval_check(&m_mct,quantifiers[i], instantiations, repaired);
+                    changed_model = changed_model || repaired;
+                }
+                else {
+                    //check the relevant quantifiers
+                    c_result = m_mc.check(&m_mct, quantifiers[i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
+                }
+                //std::cout << "current result " << (c_result==l_true ? "true" : (c_result==l_false ? "false" : "undef")) << std::endl;
+                if (!instantiations.empty()) {
+                    result = l_false;
+                }
+                else if (c_result!=l_true) {
+                    result = result!=l_false ? c_result : result;
+                }
+                //std::cout << "Quantifier " << mk_pp(quantifiers[i],m_manager) << "\n" << "generated " << instantiations.size() << " " << instantiations_star.size() << std::endl;
+                //convert and add instantiation lemmas
+                if (m_nq2p.contains(quantifiers[i])) {
+                    expr * pv = m_nq2p.find(quantifiers[i]);
+                    for (unsigned j=0; j<instantiations.size(); j++) {
+                        expr_ref il(m_manager);
+                        il = m_manager.mk_or(m_manager.mk_not(pv), instantiations[j]);
+                        instantiation_lemmas.push_back(il);
+                    }
+                    for (unsigned j=0; j<instantiations_star.size(); j++) {
+                        expr_ref il(m_manager);
+                        il = m_manager.mk_or(m_manager.mk_not(pv), instantiations_star[j]);
+                        instantiation_lemmas_star.push_back(il);
+                    }
+                }
+                else {
+                    instantiation_lemmas.append(instantiations.size(), instantiations.c_ptr());
+                    instantiation_lemmas_star.append(instantiations_star.size(), instantiations_star.c_ptr());
                 }
             }
-            else {
-                instantiation_lemmas.append(instantiations.size(), instantiations.c_ptr());
-                instantiation_lemmas_star.append(instantiations_star.size(), instantiations_star.c_ptr());
+            if (instantiation_lemmas.empty() && changed_model) {
+                std::cout << "Iterate, currently " << instantiation_lemmas.size() << " lemmas." << std::endl;
             }
         }
+        while (instantiation_lemmas.empty() && changed_model);
 
 
         for (unsigned i=0; i<instantiation_lemmas.size(); i++) {

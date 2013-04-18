@@ -239,8 +239,10 @@ protected:
     cond_generalization_trie m_cgt;
     //is there a generalization of c already in this definition
     bool has_generalization(mc_context & mc, cond * c);
-    // 
+    // for debugging
     bool has_simplified;
+    //prepend entry to the definition
+    void prepend_entry(cond * c, value_tuple * val);
 public:
     def() : has_simplified(false){}
     unsigned get_num_entries() { return m_conds.size(); }
@@ -262,9 +264,11 @@ protected:
     bool m_data;
     obj_map<expr, inst_trie * > m_inst;
     bool add(mc_context & mc, ptr_vector<expr> & inst, unsigned i);
+    bool add(mc_context & mc, expr_ref_buffer & inst, unsigned i);
 public:
     inst_trie() : m_data(false){}
     bool add(mc_context & mc, ptr_vector<expr> & inst) { return add(mc, inst, 0); }
+    bool add(mc_context & mc, expr_ref_buffer & inst) { return add(mc, inst, 0); }
 };
 
 
@@ -278,8 +282,9 @@ private:
     ptr_vector<eval_node> m_parents;
     ptr_vector<eval_node> m_children;
     unsigned m_children_eval_count;
+    unsigned m_vars_to_bind;
 public:
-    eval_node(expr * e) : m_e(e), m_value(0), m_children_eval_count(0) {}
+    eval_node(expr * e) : m_e(e), m_value(0), m_children_eval_count(0), m_vars_to_bind(0) {}
 
     expr * get_expr() { return m_e; }
     void add_parent(eval_node * p) { 
@@ -305,6 +310,8 @@ protected:
     bool m_simplification;
     // do partial evaluation
     bool m_partial_evaluation;
+    // do repair
+    bool m_model_repairing;
     //memory manager
     region m_reg;
     //rational manager
@@ -350,11 +357,17 @@ protected: //helper functions
     val * evaluate(model_constructor * mct, expr * e, ptr_vector<val> & var_subst);
     val * evaluate(model_constructor * mct, expr * e);
     //repair model
-    bool repair_model(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst);
+    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst, bool polarity);
+    bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & var_subst, val * v);
     //add instantiation
-    void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false);
-    bool get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache = false);
-    bool get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache = false);
+    void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
+                           bool filterEval = false, bool filterRepair = false, bool filterCache = false);
+    void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false) {
+        bool repaired;
+        add_instantiation(mct,q,c,instantiations,repaired, filterEval, false);
+    }
+    //bool get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache = false);
+    //bool get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache = false);
     //evaluate function
     val * evaluate(func_decl * f, ptr_vector<val> & vals);
     //get bound
@@ -486,6 +499,9 @@ public: //display functions
     void display(std::ostream & out, value_tuple * vt);
     //display the condition (tuple of abstract values)
     void display(std::ostream & out, cond * c);
+    //display the entry
+    void display(std::ostream & out, cond * c, val * v);
+    void display(std::ostream & out, cond * c, value_tuple * vt);
     //display the definition
     void display(std::ostream & out, def * d );
 public:
@@ -499,10 +515,10 @@ protected:
     eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
 
     void do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
-                       cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count);
+                       cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
 public:
     //eval check
-    lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
+    lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);
 };
 
 }
