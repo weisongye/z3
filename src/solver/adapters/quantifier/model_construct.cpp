@@ -267,6 +267,8 @@ void projection::assert_partial_model(mc_context & mc, obj_map< expr, expr * > &
         do {
             bool success = false;
             if (m_projection_term) {
+                TRACE("model_construct_proj_term", tout << "Test "; mc.display(tout, m_projection_term); tout << " as projection term...\n";);
+                                                   
                 success = true;
                 expr * ecpt = m_projection_term;
                 if (!mc.is_atomic_value(ecpt)) {
@@ -284,27 +286,35 @@ void projection::assert_partial_model(mc_context & mc, obj_map< expr, expr * > &
                 for (unsigned i=0; i<no_vals.size(); i++) {
                     if (mc.is_eq(m_projection_term_val, no_vals[i])) {
                         success = false;
+                        TRACE("model_construct_proj_term", tout << "Failed : it is equal to no projection term "; mc.display(tout, m_no_projection_terms[i]); tout << ".\n";);
                         break;
                     }
                 }
             }
             if (!success) {
+                expr * ppt = m_projection_term;
                 //try the next term in the relevant domain as projection term
-                m_projection_term_val = 0;
                 if (next_index<m_rel_domain.size()) {
                     m_projection_term = m_rel_domain[next_index];
                     next_index++;
                 }
                 else {
                     //if we still don't have a projection term, then make any (this will be the case if none is provided and the relevant domain is empty)
-                    m_projection_term = tried_mk_dist_const ? 0 : mc.mk_distinguished_constant_expr(s);
-                    tried_mk_dist_const = true;
+                    if (!tried_mk_dist_const) {
+                        m_projection_term = mc.mk_distinguished_constant_expr(s);
+                        tried_mk_dist_const = true;
+                    }
+                    else {
+                        TRACE("model_construct_warn", tout << "WARNING : choosing an ineligible projection term : "; mc.display(tout, m_projection_term); tout << "\n";);
+                    }
                 }
+                if (m_projection_term!=ppt) m_projection_term_val = 0;
             }
         }
-        while (!m_projection_term_val && m_projection_term);
+        while (!m_projection_term_val);
+
         SASSERT(m_projection_term);
-        SASSERT(m_projection_term_val);
+
         //optimization : see if last projection term can be used (if the term exists and has a value that is in the relevant domain)
         if (m_last_projection_term) {
             if (m_projection_term!=m_last_projection_term) {

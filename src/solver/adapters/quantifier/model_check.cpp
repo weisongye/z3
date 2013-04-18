@@ -2097,7 +2097,7 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
     }
 }
 
-void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
+bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
                                cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
     unsigned prev_size = active.size();
     if (!active.empty()) {
@@ -2231,11 +2231,15 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                                 if (new_active.empty()) {
                                     if (en->get_expr()!=q->get_expr() || m_m.is_false(to_expr(en->m_value)->get_value())) {
                                         SASSERT(!active.empty() || en->get_expr()==q->get_expr());
-                                        do_eval_check(mct, q, active, vars, cc, instantiations, var_bind_count, repaired);
+                                        if (!do_eval_check(mct, q, active, vars, cc, instantiations, var_bind_count, repaired)) {
+                                            return false;
+                                        }
                                     }
                                 }
                                 else {
-                                    do_eval_check(mct, q, new_active, vars, cc, instantiations, var_bind_count, repaired);
+                                    if (!do_eval_check(mct, q, new_active, vars, cc, instantiations, var_bind_count, repaired)) {
+                                        return false;
+                                    }
                                 }
                             }
                             else {
@@ -2258,6 +2262,7 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                 }
                 else {
                     //just evaluate
+                    //TRACE("eval_check_debug", tout << "Definition is "; display(tout,df); tout << "\n";);
                     result = df->evaluate(*this, children)->get_value(0);
                 }
             }
@@ -2274,8 +2279,15 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
             en->m_value = result;
             if (new_active.empty()) {
                 if (en->get_expr()!=q->get_expr() || m_m.is_false(to_expr(en->m_value)->get_value())) {
-                    SASSERT(!active.empty() || en->get_expr()==q->get_expr());
-                    do_eval_check(mct, q, active, vars, curr_cond, instantiations, var_bind_count, repaired);
+                    if (active.empty() && en->get_expr()!=q->get_expr()) {
+                        SASSERT(var_bind_count<q->get_num_decls());
+                        return false;
+                    }
+                    else {
+                        if (!do_eval_check(mct, q, active, vars, curr_cond, instantiations, var_bind_count, repaired)) {
+                            return false;
+                        }
+                    }
                 }
             }
             else {
@@ -2285,7 +2297,9 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                     }
                     );
                 new_active.append(active.size(), active.c_ptr());
-                do_eval_check(mct, q, new_active, vars, curr_cond, instantiations, var_bind_count, repaired);
+                if (!do_eval_check(mct, q, new_active, vars, curr_cond, instantiations, var_bind_count, repaired)) {
+                    return false;
+                }
             }
             en->m_value = 0;
             en->unnotify_evaluation();
@@ -2294,12 +2308,14 @@ void mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
         active.push_back(en);
     }
     else {
-        TRACE("eval_check_debug", tout << "Add instantiation "; display(tout, curr_cond); tout << "\n";);
+        SASSERT(false);
+        //TRACE("eval_check_debug", tout << "Add instantiation "; display(tout, curr_cond); tout << "\n";);
         //we have an instantiation (curr_cond)
         //add_instantiation(mct, q, curr_cond, instantiations);
-        add_instantiation(mct, q, curr_cond, instantiations, repaired, false, true);
+        //add_instantiation(mct, q, curr_cond, instantiations, repaired, false, true);
     }
     SASSERT(active.size()==prev_size);
+    return true;
 }
 
 

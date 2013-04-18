@@ -514,7 +514,7 @@ public:
 protected:
     eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
 
-    void do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
+    bool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
                        cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
 public:
     //eval check
