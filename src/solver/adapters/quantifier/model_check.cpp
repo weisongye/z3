@@ -1798,14 +1798,14 @@ val * mc_context::evaluate(func_decl * f, ptr_vector<val> & vals) {
 
 
 //evaluate ground term 
-val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_vector<val> & var_subst) {
+val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_vector<val> & vsub) {
     if (is_atomic_value(e)) {
         return mk_val(e);
     }
     else if (is_app(e)) {
         ptr_vector<val> children;
         for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
-            children.push_back(evaluate(mct, to_app(e)->get_arg(i), var_subst));
+            children.push_back(evaluate(mct, to_app(e)->get_arg(i), vsub));
         }
         func_decl * f = to_app(e)->get_decl();
         if (is_uninterp(e)) {
@@ -1820,7 +1820,7 @@ val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_vector<val> & 
     }
     else if (is_var(e)) {
         unsigned vid = to_var(e)->get_idx();
-        return var_subst[vid];
+        return vsub[vid];
     }
     else {
         SASSERT(false);
@@ -1829,25 +1829,25 @@ val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_vector<val> & 
 }
 
 val * mc_context::evaluate(model_constructor * mct, expr * e) {
-    ptr_vector<val> var_subst;
-    return evaluate(mct, e, var_subst);
+    ptr_vector<val> vsub;
+    return evaluate(mct, e, vsub);
 }
 
 //repair model
-bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst, bool polarity) {
+bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & vsub, expr_ref_buffer & tsub, bool polarity) {
     TRACE("repair_model_debug", tout << "Try fixing " << mk_pp(e,m_m) << ", polarity = " << polarity << "\n";);
     if (is_app(e)) {
         //try to make the formula with var_subst equal to polarity
         if ((m_m.is_or(e) && polarity) || (m_m.is_and(e) && !polarity)) {
             for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
-                if (repair_formula(mct, q, to_app(e)->get_arg(i), var_subst, polarity)) {
+                if (repair_formula(mct, q, to_app(e)->get_arg(i), vsub, tsub, polarity)) {
                     return true;
                 }
             }
             return false;
         }
         else if (m_m.is_not(e)) {
-            return repair_formula(mct, q, to_app(e)->get_arg(0), var_subst, !polarity);
+            return repair_formula(mct, q, to_app(e)->get_arg(0), vsub, tsub, !polarity);
         }
         else if (m_m.is_eq(e)) {
             for (unsigned i=0; i<2; i++) {
@@ -1855,8 +1855,8 @@ bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * 
                 if (is_app(ec) && is_uninterp(to_app(ec)->get_decl())) {
                     //evaluate the other side
                     expr * eco = to_app(e)->get_arg(i==0 ? 1 : 0);
-                    val * ecov = evaluate(mct, eco, var_subst);
-                    if (repair_term(mct, q, ec, var_subst, ecov)) {
+                    val * ecov = evaluate(mct, eco, vsub);
+                    if (repair_term(mct, q, ec, vsub, tsub, ecov)) {
                         return true;
                     }
                 }
@@ -1864,19 +1864,19 @@ bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * 
         }
         else if (is_uninterp(to_app(e)->get_decl())) {
             //predicate case
-            return repair_term(mct, q, e, var_subst, mk_val(polarity ? m_true : m_false));
+            return repair_term(mct, q, e, vsub, tsub, mk_val(polarity ? m_true : m_false));
         }
     }
     return false;
 }
 
-bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & var_subst, val * v) {
+bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & vsub, expr_ref_buffer & tsub, val * v) {
     //try to make the term with var_subst equal to v
     SASSERT(is_uninterp(t));
     //evaluate the arguments
     ptr_vector<val> args;
     for (unsigned i=0; i<to_app(t)->get_num_args(); i++) {
-        args.push_back(evaluate(mct, to_app(t)->get_arg(i), var_subst));
+        args.push_back(evaluate(mct, to_app(t)->get_arg(i), vsub));
     }
     func_decl * f = to_app(t)->get_decl();
     def * dg = mct->get_ground_def(*this, f);
@@ -1894,16 +1894,25 @@ bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, 
         //make the condition from the values
         ptr_buffer<abs_val> avals;
         for (unsigned i=0; i<args.size(); i++) {
-            avals.push_back(mk_value(args[i]));
-            /*
+            val * vi = mk_canon(args[i]);
+            avals.push_back(mk_value(vi));
+
             //make sure value is in the relevant domain
             projection * p = mct->get_projection(*this,f,i);
-            if (!p->has_relevant_domain_val(args[i])) {
-                TRACE("repair_model_debug",tout << "NARDV " << mk_pp(t,m_m) << " ";
-                                            display(tout,args[i]);
-                                            tout << " arg # " << i << std::endl;);
+            if (!p->has_relevant_domain_val(vi)) {
+                //do this by substituting for current expression
+                var_subst vs(m_m);
+                expr_ref tis(m_m);
+                vs(to_app(t)->get_arg(i),tsub.size(),tsub.c_ptr(), tis);
+                if (!m_expr_produced.contains(tis)) {
+                    m_expr_produced.push_back(tis);
+                }
+                SASSERT(is_eq(evaluate(mct, tis, vsub),vi));
+                TRACE("repair_model_debug", tout << "Need to add to relevant domain " << mk_pp(tis,m_m) << " -> ";
+                                            display(tout, vi); tout << "\n";);
+                p->add_relevant_domain(tis, vi);
             }
-            */
+
         }
         cond * c = mk_cond(avals);
         value_tuple * vt = mk_value_tuple(v);
@@ -1934,8 +1943,9 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
                             tout << "   " << mk_pp(inst[j],m_m) << "\n";
                     }
                     tout << "\n";
-                    //tout << "Filters : " << filterEval << " " << filterRepair << "\n";
+                    //tout << "Filters : " << filterEval << " " << filterRepair << " " << filterCache << "\n";
                     if (!inst_found_expr) tout << "    *** did not find expressions in relevant domain.\n";);
+    //if (!inst_found_expr) std::cout << "    *** did not find expressions in relevant domain.\n";
     bool addInstantiation = true;
     //evaluate again with values of instantiation
     /*  1st unoptimized:
@@ -1973,14 +1983,16 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
                 val * v = evaluate(mct, q->get_expr(), val_subs);
                 SASSERT(v->is_expr());
                 if (!m_m.is_false(to_expr(v)->get_value())) {
+                    TRACE("inst",tout << "...instantiation evaluated to true in model.\n";);
                     addInstantiation = false;
                 }
             }
             if (addInstantiation && filterRepair && m_model_repairing) {
-                if (repair_formula(mct, q, q->get_expr(), val_subs, true)) {
+                if (repair_formula(mct, q, q->get_expr(), val_subs, inst, true)) {
                     //TODO: set instantiation false
                     repaired = true;
                     addInstantiation = false;
+                    TRACE("inst",tout << "...instantiation was repaired.\n";);
                 }
                 else {
                     TRACE("repair_model", tout << "Could not repair!\n";);
@@ -1998,6 +2010,7 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
             }
             if (!it->add(*this, inst)) {
                 addInstantiation = false;
+                TRACE("inst",tout << "...instantiation was already added to cache.\n";);
             }
         }
         if (addInstantiation) {

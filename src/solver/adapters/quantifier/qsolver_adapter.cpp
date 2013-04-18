@@ -266,7 +266,7 @@ public:
         //assert the partial model
         m_mct.assert_partial_model(m_mc, pM.get_map());
         //std::cout << "Produce lemmas...\n";
-        lbool result = l_true;
+        lbool result;
         expr_ref_buffer instantiation_lemmas(m_manager);
         expr_ref_buffer instantiation_lemmas_star(m_manager);
         //options
@@ -275,8 +275,11 @@ public:
         bool star_only_if_non_star = true;
 
         bool changed_model;
+        bool do_continue;
         do 
         {
+            result = l_true;
+            do_continue = false;
             changed_model = false;
             //check the relevant quantifiers
             for (unsigned i=0; i<quantifiers.size(); i++) {
@@ -323,11 +326,19 @@ public:
                     instantiation_lemmas_star.append(instantiations_star.size(), instantiations_star.c_ptr());
                 }
             }
-            if (instantiation_lemmas.empty() && changed_model) {
-                std::cout << "Iterate, currently " << instantiation_lemmas.size() << " lemmas." << std::endl;
+
+            if (do_eval_check && instantiation_lemmas.empty()) {
+                do_continue = true;
+                if (!changed_model) {
+                    std::cout << "Try full model-checking...\n";
+                    do_eval_check = false;
+                }
+                else {
+                    std::cout << "Iterate eval check, currently " << instantiation_lemmas.size() << " lemmas.\n";
+                }
             }
         }
-        while (instantiation_lemmas.empty() && changed_model);
+        while (do_continue);
 
 
         for (unsigned i=0; i<instantiation_lemmas.size(); i++) {

@@ -354,11 +354,11 @@ protected: //helper functions
     //helper for exhaustive_instantiate
     bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
     //evaluate
-    val * evaluate(model_constructor * mct, expr * e, ptr_vector<val> & var_subst);
+    val * evaluate(model_constructor * mct, expr * e, ptr_vector<val> & vsub);
     val * evaluate(model_constructor * mct, expr * e);
     //repair model
-    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst, bool polarity);
-    bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & var_subst, val * v);
+    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & vsub, expr_ref_buffer & tsub, bool polarity);
+    bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & vsub, expr_ref_buffer & tsub, val * v);
     //add instantiation
     void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
