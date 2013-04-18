@@ -268,6 +268,34 @@ public:
 };
 
 
+class eval_node
+{
+    friend class mc_context;    //temporary
+private:
+    expr * m_e;
+    //def * m_value;
+    val * m_value;
+    ptr_vector<eval_node> m_parents;
+    ptr_vector<eval_node> m_children;
+    unsigned m_children_eval_count;
+public:
+    eval_node(expr * e) : m_e(e), m_value(0), m_children_eval_count(0) {}
+
+    expr * get_expr() { return m_e; }
+    void add_parent(eval_node * p) { 
+        m_parents.push_back(p); 
+        p->m_children.push_back(this);
+    }
+    unsigned get_num_children() { return m_children.size(); }
+    eval_node * get_child(unsigned i) { return m_children[i]; }
+    void notify_evaluation(ptr_vector<eval_node> & active);
+    void unnotify_evaluation();
+    val * get_evaluation() { return m_value; }
+    bool can_evaluate() { return is_app(m_e) && m_children_eval_count==to_app(m_e)->get_num_args(); }
+};
+
+
+
 class model_constructor;
 
 class mc_context
@@ -315,14 +343,16 @@ protected: //cached information
     obj_map< quantifier, inst_trie * > m_inst_trie;
 protected: //helper functions
     //helper for check, the third argument is an optional mapping from variables to the definitions that should be used for them
-    def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst, bool parent_uninterp = false);
+    def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst);
     //helper for exhaustive_instantiate
     bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
     //evaluate
     val * evaluate(model_constructor * mct, expr * e, ptr_vector<val> & var_subst);
+    val * evaluate(model_constructor * mct, expr * e);
     //repair model
     bool repair_model(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & var_subst);
     //add instantiation
+    void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false);
     bool get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache = false);
     bool get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache = false);
     //evaluate function
@@ -372,6 +402,8 @@ public:
     val * mk_offset(val * v1, val * v2);
     //make value tuple from value
     value_tuple * mk_value_tuple(val * v);
+    //make value tuple from set of values
+    value_tuple * mk_value_tuple(ptr_vector<val> & vals);
     //is zero
     bool is_zero(val * v);
     //is v1 less than v2, isLower means null is interpreted as -INF, otherwise it is +INF
@@ -406,6 +438,8 @@ public:
     def * mk_product(def * d1, def * d2);
     //make compose
     def * mk_compose(def * df, def * d);
+    //do the interpreted compose (modifies d)
+    void do_compose(func_decl * f, def * d);
     //make D_(x~t) from D_t
     def * mk_var_relation(def * d, func_decl * f, var * v, bool is_flipped);
     //make D_(x+t) from D_t
@@ -458,7 +492,17 @@ public:
     //check the quantifier
     lbool check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, expr_ref_buffer & instantiations_star, bool mk_inst_star);
     //exhaustive instantiate
-    bool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain, expr_ref_buffer & instantiations);
+    lbool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain, expr_ref_buffer & instantiations);
+
+
+protected:
+    eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
+
+    void do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
+                       cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count);
+public:
+    //eval check
+    lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
 };
 
 }
