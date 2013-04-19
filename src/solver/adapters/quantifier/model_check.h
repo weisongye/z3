@@ -252,7 +252,7 @@ public:
     bool append_entry(mc_context & mc, cond * c, value_tuple * val);
     //c should be a ground condition
     value_tuple * evaluate(mc_context & mc, cond * c);
-    value_tuple * evaluate(mc_context & mc, ptr_vector<val> & vals);
+    value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals);
     //simplify the definition
     void simplify(mc_context & mc);
 };
@@ -354,11 +354,11 @@ protected: //helper functions
     //helper for exhaustive_instantiate
     bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
     //evaluate
-    val * evaluate(model_constructor * mct, expr * e, ptr_vector<val> & vsub);
-    val * evaluate(model_constructor * mct, expr * e);
+    val * evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & vsub, bool add_entries_ensuring_non_star = false);
+    val * evaluate(model_constructor * mct, expr * e, bool add_entries_ensuring_non_star = false);
     //repair model
-    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & vsub, expr_ref_buffer & tsub, bool polarity);
-    bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & vsub, expr_ref_buffer & tsub, val * v);
+    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, bool polarity);
+    bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, val * v);
     //add instantiation
     void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
@@ -369,7 +369,7 @@ protected: //helper functions
     //bool get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache = false);
     //bool get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache = false);
     //evaluate function
-    val * evaluate(func_decl * f, ptr_vector<val> & vals);
+    val * evaluate_interp(func_decl * f, ptr_buffer<val> & vals);
     //get bound
     val * get_bound(abs_val * a, bool isLower);
     //make value from rational
@@ -416,7 +416,7 @@ public:
     //make value tuple from value
     value_tuple * mk_value_tuple(val * v);
     //make value tuple from set of values
-    value_tuple * mk_value_tuple(ptr_vector<val> & vals);
+    value_tuple * mk_value_tuple(ptr_buffer<val> & vals);
     //is zero
     bool is_zero(val * v);
     //is v1 less than v2, isLower means null is interpreted as -INF, otherwise it is +INF
@@ -440,7 +440,7 @@ public:
     //does c1 generalize c2
     bool is_generalization(cond * c1, cond * c2);
     //is condition generalization of vector of values
-    bool is_generalization(cond * c, ptr_vector<val> & vals);
+    bool is_generalization(cond * c, ptr_buffer<val> & vals);
     //do meet
     abs_val * mk_meet(abs_val * a1, abs_val * a2);
     //do meet
@@ -471,6 +471,8 @@ public:
     cond * mk_star(model_constructor * mct, quantifier * q);
     //mk cond
     cond * mk_cond(ptr_buffer<abs_val> & avals);
+    //mk cond
+    cond * mk_cond(ptr_buffer<val> & vals);
     // copy the condition
     cond * copy(cond * c);
     //make new def
@@ -512,9 +514,9 @@ public:
 
 
 protected:
-    eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
+    eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
 
-    bool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
+    bool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
                        cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
 public:
     //eval check

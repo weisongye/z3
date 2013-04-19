@@ -175,7 +175,7 @@ value_tuple * def::evaluate(mc_context & mc, cond * c) {
     return 0;
 }
 
-value_tuple * def::evaluate(mc_context & mc, ptr_vector<val> & vals) {
+value_tuple * def::evaluate(mc_context & mc, ptr_buffer<val> & vals) {
     for( unsigned i=0; i<m_conds.size(); i++ ){
         if (mc.is_generalization(m_conds[i], vals)) {
             return m_values[i];
@@ -480,7 +480,7 @@ value_tuple * mc_context::mk_value_tuple(val * v) {
     return vt;
 }
 
-value_tuple * mc_context::mk_value_tuple(ptr_vector<val> & vals) {
+value_tuple * mc_context::mk_value_tuple(ptr_buffer<val> & vals) {
     value_tuple * vt = value_tuple::mk(*this, vals.size());
     for (unsigned i=0; i<vt->get_size(); i++) {
         vt->m_vec[i] = vals[i];
@@ -700,7 +700,7 @@ bool mc_context::is_generalization(cond * c1, cond * c2) {
     return true;
 }
 
-bool mc_context::is_generalization(cond * c, ptr_vector<val> & vals) {
+bool mc_context::is_generalization(cond * c, ptr_buffer<val> & vals) {
     SASSERT(c->get_size()==vals.size());
     for (unsigned i=0; i<c->get_size(); i++) {
         if (!c->get_value(i)->is_star()) {
@@ -976,16 +976,17 @@ def * mc_context::mk_compose(def * df, def * da) {
 }
 
 void mc_context::do_compose(func_decl * f, def * d) {
-    ptr_vector<value_tuple> computed_vals;
+    SASSERT(!is_uninterp(f));
+    ptr_buffer<value_tuple> computed_vals;
     //interpreted case
     for( unsigned i=0; i<d->get_num_entries(); i++ ){
         value_tuple * v = d->get_value(i);
-        ptr_vector<val> vals;
+        ptr_buffer<val> vals;
         for (unsigned j=0; j<v->get_size(); j++) {
             vals.push_back(v->get_value(j));
         }
         //evaluate to create the new value
-        val * ve = evaluate(f, vals);
+        val * ve = evaluate_interp(f, vals);
         SASSERT(ve);
         computed_vals.push_back(mk_value_tuple(ve));
     }
@@ -1071,6 +1072,14 @@ cond * mc_context::mk_cond(ptr_buffer<abs_val> & avals) {
         c->m_vec[i] = avals[i];
     }
     return c;
+}
+
+cond * mc_context::mk_cond(ptr_buffer<val> & vals) {
+    ptr_buffer<abs_val> avals;
+    for (unsigned k=0; k<vals.size(); k++) {
+        avals.push_back(mk_value(vals[k]));
+    }
+    return mk_cond(avals);
 }
 
 cond * mc_context::copy(cond * c) {
@@ -1667,7 +1676,8 @@ bool mc_context::do_exhaustive_instantiate(model_constructor * mct, quantifier *
 }
 
 
-val * mc_context::evaluate(func_decl * f, ptr_vector<val> & vals) {
+val * mc_context::evaluate_interp(func_decl * f, ptr_buffer<val> & vals) {
+    SASSERT(!is_uninterp(f));
     TRACE("evaluate_debug", tout << "evaluate " << mk_pp(f,m_m) << " with arguments: \n";
                             for (unsigned i=0; i<vals.size(); i++) {
                                 display(tout, vals[i]);
@@ -1792,35 +1802,47 @@ val * mc_context::evaluate(func_decl * f, ptr_vector<val> & vals) {
             break;
         }
     }
+    TRACE("evaluate_warn", tout << "Don't know how to evaluate " << mk_pp(f,m_m) << "\n";);
     SASSERT(false);
     return 0;
 }
 
 
 //evaluate ground term 
-val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_vector<val> & vsub) {
+val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & vsub, bool add_entries_ensuring_non_star) {
     if (is_atomic_value(e)) {
         return mk_val(e);
     }
     else if (is_app(e)) {
-        ptr_vector<val> children;
+        ptr_buffer<val> children;
         for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
             children.push_back(evaluate(mct, to_app(e)->get_arg(i), vsub));
         }
         func_decl * f = to_app(e)->get_decl();
         if (is_uninterp(e)) {
-            def * df  = mct->get_def(*this, f);
-            value_tuple * vt = df->evaluate(*this, children);
+            def * dg = mct->get_ground_def(*this, f);
+            value_tuple * vt = dg->evaluate(*this, children);
+            if (!vt) {
+                def * df  = mct->get_def(*this, f);
+                vt = df->evaluate(*this, children);
+                if (add_entries_ensuring_non_star) {
+                    cond * c = mk_cond(children);
+                    dg->prepend_entry(c,vt);
+                    df->prepend_entry(c,vt);
+                    TRACE("repair_model_debug", tout << "Prepend entry to ensure non-star evaluation : "; display(tout, c, vt); tout << " of " << mk_pp(e,m_m) << "\n";);
+                }
+            }
             SASSERT(vt->get_size()==1);
+            TRACE("eval_term_debug", tout << "Evaluated " << mk_pp(e,m_m) << " to "; display(tout, vt->get_value(0)); tout << "\n";);
             return vt->get_value(0);
         }
         else {
-            return evaluate(f, children);
+                TRACE("eval_term_debug", tout << "Evaluate interpreted " << mk_pp(e,m_m) << "\n";);
+            return evaluate_interp(f, children);
         }
     }
     else if (is_var(e)) {
-        unsigned vid = to_var(e)->get_idx();
-        return vsub[vid];
+        return vsub[to_var(e)->get_idx()];
     }
     else {
         SASSERT(false);
@@ -1828,13 +1850,13 @@ val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_vector<val> & 
     }
 }
 
-val * mc_context::evaluate(model_constructor * mct, expr * e) {
-    ptr_vector<val> vsub;
-    return evaluate(mct, e, vsub);
+val * mc_context::evaluate(model_constructor * mct, expr * e, bool add_entries_ensuring_non_star) {
+    ptr_buffer<val> vsub;
+    return evaluate(mct, e, vsub, add_entries_ensuring_non_star);
 }
 
 //repair model
-bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_vector<val> & vsub, expr_ref_buffer & tsub, bool polarity) {
+bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, bool polarity) {
     TRACE("repair_model_debug", tout << "Try fixing " << mk_pp(e,m_m) << ", polarity = " << polarity << "\n";);
     if (is_app(e)) {
         //try to make the formula with var_subst equal to polarity
@@ -1870,11 +1892,11 @@ bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * 
     return false;
 }
 
-bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_vector<val> & vsub, expr_ref_buffer & tsub, val * v) {
+bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, val * v) {
     //try to make the term with var_subst equal to v
     SASSERT(is_uninterp(t));
     //evaluate the arguments
-    ptr_vector<val> args;
+    ptr_buffer<val> args;
     for (unsigned i=0; i<to_app(t)->get_num_args(); i++) {
         args.push_back(evaluate(mct, to_app(t)->get_arg(i), vsub));
     }
@@ -1901,13 +1923,29 @@ bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, 
             projection * p = mct->get_projection(*this,f,i);
             if (!p->has_relevant_domain_val(vi)) {
                 //do this by substituting for current expression
-                var_subst vs(m_m);
                 expr_ref tis(m_m);
-                vs(to_app(t)->get_arg(i),tsub.size(),tsub.c_ptr(), tis);
-                if (!m_expr_produced.contains(tis)) {
-                    m_expr_produced.push_back(tis);
+                if (is_var(to_app(t)->get_arg(i))) {
+                    tis = tsub[to_var(to_app(t)->get_arg(i))->get_idx()];
+                    SASSERT(is_eq(vsub[to_var(to_app(t)->get_arg(i))->get_idx()],vi));
                 }
-                SASSERT(is_eq(evaluate(mct, tis, vsub),vi));
+                else {
+                    var_subst vs(m_m);
+                    vs(to_app(t)->get_arg(i),tsub.size(),tsub.c_ptr(), tis);
+                    if (!m_expr_produced.contains(tis)) {
+                        m_expr_produced.push_back(tis);
+                    }
+                    TRACE("repair_model_debug", tout << "Must evaluate " << mk_pp(tis,m_m) << " to ensure ground definition is set...\n";);
+                    val * ve = evaluate(mct, tis, vsub, true);
+                    if (!is_eq(ve,vi)) {
+                        TRACE("repair_model_warn", tout << mk_pp(tis,m_m) << " evaluated is not equal to the expectation.\n";
+                                                    display(tout,ve);
+                                                    tout << " != ";
+                                                    display(tout,vi);
+                                                    tout << std::endl;);
+                        SASSERT(false);
+                    }
+                }
+                
                 TRACE("repair_model_debug", tout << "Need to add to relevant domain " << mk_pp(tis,m_m) << " -> ";
                                             display(tout, vi); tout << "\n";);
                 p->add_relevant_domain(tis, vi);
@@ -1968,7 +2006,7 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
     //evaluate arguments, evaluate body directly
     if (filterEval || filterRepair) {
         if (addInstantiation) {
-            ptr_vector<val> val_subs;
+            ptr_buffer<val> val_subs;
             for (unsigned j=0; j<inst.size(); j++) {
                 if (cic->get_value(j)->is_value()) {
                     val_subs.push_back(to_value(cic->get_value(j))->get_value());
@@ -2022,7 +2060,7 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
 }
 
 
-eval_node * mc_context::mk_eval_node( expr * e, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
+eval_node * mc_context::mk_eval_node( expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
                                       obj_map< expr, eval_node *> & evals, expr * parent) {
     eval_node * ene;
     if (evals.find(e, ene)) {
@@ -2063,7 +2101,7 @@ eval_node * mc_context::mk_eval_node( expr * e, ptr_vector<eval_node> & active, 
 
 lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired) {
     ptr_vector<eval_node> active;
-    ptr_vector<eval_node> vars;
+    ptr_buffer<eval_node> vars;
     vars.resize(q->get_num_decls(),0);
     obj_map< expr, eval_node *> evals;
     mk_eval_node(q->get_expr(), active, vars, evals);
@@ -2086,7 +2124,9 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
     //std::cout << "Eval check " << mk_pp(q,m_m) << "..." << std::endl;
     cond * curr_cond = mk_star(mct,q);
     repaired = false;
-    do_eval_check(mct, q, active, vars, curr_cond, instantiations, 0, repaired);
+    if (!do_eval_check(mct, q, active, vars, curr_cond, instantiations, 0, repaired)) {
+        TRACE("eval_check", tout << "Eval check failed on quantifier " << mk_pp(q,m_m) << "\n";);
+    }
     //std::cout << "Done." << std::endl;
 
     if (instantiations.empty()) {
@@ -2097,7 +2137,7 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
     }
 }
 
-bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_vector<eval_node> & vars, 
+bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
                                cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
     unsigned prev_size = active.size();
     if (!active.empty()) {
@@ -2127,7 +2167,7 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
         }
         else {
             //evaluate the expression
-            ptr_vector<val> children;
+            ptr_buffer<val> children;
             sbuffer<unsigned> var_to_bind;
             for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
                 if (en->get_child(i)) {
@@ -2180,7 +2220,7 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
             }
             func_decl * f = to_app(e)->get_decl();
             //compute the definition
-            if (is_uninterp(e)) {
+            if (is_uninterp(f)) {
                 def * df = mct->get_def(*this,f);
                 if (!var_to_bind.empty()) {
                     var_bind_count += var_to_bind.size();
@@ -2264,11 +2304,27 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                     //just evaluate
                     //TRACE("eval_check_debug", tout << "Definition is "; display(tout,df); tout << "\n";);
                     result = df->evaluate(*this, children)->get_value(0);
+
+                    //--------------------test
+                    /*
+                    ptr_buffer<val> vsub;
+                    for (unsigned i=0; i<curr_cond->get_size(); i++) {
+                        if (curr_cond->get_value(i)->is_value()) {
+                            vsub.push_back(to_value(curr_cond->get_value(i))->get_value());
+                        }
+                        else {
+                            vsub.push_back(0);
+                        }
+                    }
+                    result = evaluate(mct, e, vsub, true);
+                    */
+                    //---------------------end test
                 }
             }
             else {
+                TRACE("eval_term_debug", tout << "evaluate for " << mk_pp(e, m_m) << "\n";);
                 //just evaluate
-                result = evaluate(f, children);
+                result = evaluate_interp(f, children);
             }
         }
         // if processing a simple result, just recurse
