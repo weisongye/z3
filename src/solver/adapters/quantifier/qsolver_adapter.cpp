@@ -44,6 +44,11 @@ class qsolver_adapter : public solver {
     mc_context m_mc;
     model_constructor m_mct;
 
+    //statistics for quantifiers
+    obj_map<quantifier, unsigned> m_q_inst_round;
+    obj_map<quantifier, unsigned> m_q_inst;
+    unsigned m_q_next_index;
+
     struct scope {
         unsigned     m_quantifiers_lim;
         unsigned     m_nested_quantifiers_lim;
@@ -93,6 +98,7 @@ public:
         m_mc(m),
         m_mct(m) {
         m_kernel->set_produce_models(true);
+        m_q_next_index = 0;
     }
 
     virtual ~qsolver_adapter() {
@@ -274,6 +280,11 @@ public:
         bool do_eval_check = true;
         bool star_only_if_non_star = true;
 
+        ptr_buffer<quantifier> inst_made_this_round;
+        if (m_q_next_index>=quantifiers.size()) {
+            m_q_next_index = 0;
+        }
+
         bool changed_model;
         bool do_continue;
         do 
@@ -281,23 +292,27 @@ public:
             result = l_true;
             do_continue = false;
             changed_model = false;
+            unsigned q_start = m_q_next_index;
             //check the relevant quantifiers
             for (unsigned i=0; i<quantifiers.size(); i++) {
+                unsigned pr_i = i;
+                //for round robin (currently disabled)
+                //unsigned pr_i = (q_start+i)%quantifiers.size();
                 expr_ref_buffer instantiations(m_manager);
                 expr_ref_buffer instantiations_star(m_manager);
                 lbool c_result;
                 if (do_exhaustive_instantiate) {
-                    m_mc.exhaustive_instantiate(&m_mct, quantifiers[i], true, instantiations);
+                    m_mc.exhaustive_instantiate(&m_mct, quantifiers[pr_i], true, instantiations);
                     c_result = l_true;
                 }
                 else if (do_eval_check) {
                     bool repaired;
-                    c_result = m_mc.eval_check(&m_mct,quantifiers[i], instantiations, repaired);
+                    c_result = m_mc.eval_check(&m_mct,quantifiers[pr_i], instantiations, repaired);
                     changed_model = changed_model || repaired;
                 }
                 else {
                     //check the relevant quantifiers
-                    c_result = m_mc.check(&m_mct, quantifiers[i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
+                    c_result = m_mc.check(&m_mct, quantifiers[pr_i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
                 }
                 //std::cout << "current result " << (c_result==l_true ? "true" : (c_result==l_false ? "false" : "undef")) << std::endl;
                 if (!instantiations.empty()) {
@@ -306,10 +321,27 @@ public:
                 else if (c_result!=l_true) {
                     result = result!=l_false ? c_result : result;
                 }
+                if (!instantiations.empty() || !instantiations_star.empty()) {
+                    if (!inst_made_this_round.contains(quantifiers[pr_i])) {
+                        inst_made_this_round.push_back(quantifiers[pr_i]);
+                    }
+                    if (instantiations.size()>=1000) {
+                        std::cout << mk_pp(quantifiers[pr_i],m_manager) << " produced " << instantiations.size() << " instantiations.\n";
+                    }
+                    unsigned n;
+                    if (m_q_inst.find(quantifiers[pr_i], n)) {
+                        m_q_inst.erase(quantifiers[pr_i]);
+                        m_q_inst.insert(quantifiers[pr_i], n + instantiations.size() + instantiations_star.size());
+                    }
+                    else {
+                        m_q_inst.insert(quantifiers[pr_i],0);
+                    }
+
+                }
                 //std::cout << "Quantifier " << mk_pp(quantifiers[i],m_manager) << "\n" << "generated " << instantiations.size() << " " << instantiations_star.size() << std::endl;
                 //convert and add instantiation lemmas
-                if (m_nq2p.contains(quantifiers[i])) {
-                    expr * pv = m_nq2p.find(quantifiers[i]);
+                if (m_nq2p.contains(quantifiers[pr_i])) {
+                    expr * pv = m_nq2p.find(quantifiers[pr_i]);
                     for (unsigned j=0; j<instantiations.size(); j++) {
                         expr_ref il(m_manager);
                         il = m_manager.mk_or(m_manager.mk_not(pv), instantiations[j]);
@@ -325,6 +357,13 @@ public:
                     instantiation_lemmas.append(instantiations.size(), instantiations.c_ptr());
                     instantiation_lemmas_star.append(instantiations_star.size(), instantiations_star.c_ptr());
                 }
+                /*
+                //for round robin
+                if (!instantiation_lemmas.empty()) {
+                    m_q_next_index = i+1;
+                    break;
+                }
+                */
             }
 
             if (do_eval_check && instantiation_lemmas.empty()) {
@@ -340,6 +379,19 @@ public:
         }
         while (do_continue);
 
+        for (unsigned i=0; i<inst_made_this_round.size(); i++) {
+            unsigned n;
+            if (m_q_inst_round.find(inst_made_this_round[i], n)) {
+                if (n>0 && n%5==0) {
+                    std::cout << mk_pp(inst_made_this_round[i], m_manager) << " has produced instances on " << n << " rounds.\n";
+                }
+                m_q_inst_round.erase(inst_made_this_round[i]);
+                m_q_inst_round.insert(inst_made_this_round[i],n+1);
+            }
+            else {
+                m_q_inst_round.insert(inst_made_this_round[i],0);  
+            }
+        }
 
         for (unsigned i=0; i<instantiation_lemmas.size(); i++) {
             TRACE("qsolver_inst", tout << "Produced instantiation : " << mk_pp(instantiation_lemmas[i],m_manager) << "\n";);

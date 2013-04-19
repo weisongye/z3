@@ -75,45 +75,10 @@ bool cond_generalization_trie::has_generalization(mc_context & mc, cond * c, uns
     }
 }
 
-bool cond_generalization_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star) {
-    SASSERT(index<c->get_size());
-    abs_val * curr = c->get_value(index);
-    cond_generalization_trie * ct;
-    //first check if it is generalized
-    if (star!=curr && m_children.find(star,ct)) {
-        if (index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star)) {
-            return false;
-        }
-    }
-    if (m_children.find(curr, ct)) {
-        if (index==(c->get_size()-1)) {
-            // it's already there
-            return false;
-        }
-        else {
-            return ct->add(mc, c, index+1, star);
-        }
-    }
-    else {
-        if (index==(c->get_size()-1)) {
-            //add dummy pointer
-            m_children.insert(curr, 0);
-        }
-        else {
-            void * mem = mc.allocate(sizeof(cond_generalization_trie));
-            ct = new (mem) cond_generalization_trie;
-            m_children.insert(curr, ct);
-            ct->add(mc, c, index+1, star);
-        }
-        return true;
-    }
-}
-
-bool cond_generalization_trie::add(mc_context & mc, cond * c) { 
-    if (c->get_size()==0) {
-        if (m_children.empty()) {
-            //add dummy pointer
-            m_children.insert(0,0);
+bool cond_generalization_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star, unsigned data_val) {
+    if (index==c->get_size()) {
+        if (m_data==0) {
+            m_data = data_val+1;
             return true;
         }
         else {
@@ -121,14 +86,99 @@ bool cond_generalization_trie::add(mc_context & mc, cond * c) {
         }
     }
     else {
-        return add(mc, c, 0, mc.mk_star()); 
+        abs_val * curr = c->get_value(index);
+        cond_generalization_trie * ct;
+        //first check if it is generalized
+        if (star!=curr && m_children.find(star,ct)) {
+            if (index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star)) {
+                return false;
+            }
+        }
+        if (m_children.find(curr, ct)) {
+            return ct->add(mc, c, index+1, star, data_val);
+        }
+        else {
+            void * mem = mc.allocate(sizeof(cond_generalization_trie));
+            ct = new (mem) cond_generalization_trie;
+            m_children.insert(curr, ct);
+            return ct->add(mc, c, index+1, star, data_val);
+        }
     }
 }
 
+bool cond_generalization_trie::add(mc_context & mc, cond * c, unsigned data_val) { 
+    return add(mc, c, 0, mc.mk_star(), data_val); 
+}
+
+bool cond_generalization_trie::evaluate(mc_context & mc, cond * c, unsigned index, unsigned & data_val) {
+    if (index==c->get_size()) {
+        if (m_data==0) {
+            return false;
+        }
+        else {
+            data_val = m_data-1;
+            return true;
+        }
+    }
+    else {
+        cond_generalization_trie * ct;
+        if (m_children.find(c->get_value(index), ct)) {
+            return ct->evaluate(mc, c, index+1, data_val);
+        }
+        else {
+            return false;
+        }
+    }
+}
+
+bool cond_generalization_trie::evaluate(mc_context & mc, ptr_buffer<abs_val> & vals, unsigned index, unsigned & data_val) {
+    if (index==vals.size()) {
+        if (m_data==0) {
+            return false;
+        }
+        else {
+            data_val = m_data-1;
+            return true;
+        }
+    }
+    else {
+        cond_generalization_trie * ct;
+        if (m_children.find(vals[index], ct)) {
+            return ct->evaluate(mc, vals, index+1, data_val);
+        }
+        else {
+            return false;
+        }
+    }
+}
+
+bool cond_generalization_trie::evaluate(mc_context & mc, ptr_buffer<val> & vals, unsigned index, unsigned & data_val) {
+    if (index==vals.size()) {
+        if (m_data==0) {
+            return false;
+        }
+        else {
+            data_val = m_data-1;
+            return true;
+        }
+    }
+    else {
+        cond_generalization_trie * ct;
+        if (m_children.find(mc.mk_value(vals[index]), ct)) {
+            return ct->evaluate(mc, vals, index+1, data_val);
+        }
+        else {
+            return false;
+        }
+    }
+}
+
+
 bool def::has_generalization(mc_context & mc, cond * c) {
-    bool has_gen = !m_cgt.add(mc, c);
-    /*
+    bool has_gen = !m_cgt.add(mc, c, m_conds.size());
+
     // the unoptimized version:
+    /*
     for (int i=(m_conds.size()-1); i>=0; i--) {
         if (mc.is_generalization(m_conds[i],c)) {
             SASSERT(has_gen);
@@ -164,11 +214,23 @@ void def::prepend_entry(cond * c, value_tuple * val) {
     m_values.reset();
     m_conds.append(conds.size(),conds.c_ptr());
     m_values.append(values.size(),values.c_ptr());
+    m_num_prepend++;
 }
 
 value_tuple * def::evaluate(mc_context & mc, cond * c) {
+    //value_tuple * vte = 0;
+    unsigned index;
+    if (m_cgt.evaluate(mc, c, index)) {
+        index = index + m_num_prepend;
+        //vte = m_values[index];
+        return m_values[index];
+    }
+    //unoptimized (or for non-ground)
     for( unsigned i=0; i<m_conds.size(); i++ ){
         if (mc.is_compatible(m_conds[i], c)) {
+            //if (vte) {
+            //    SASSERT(index==i);
+            //}
             return m_values[i];
         }
     }
@@ -176,13 +238,25 @@ value_tuple * def::evaluate(mc_context & mc, cond * c) {
 }
 
 value_tuple * def::evaluate(mc_context & mc, ptr_buffer<val> & vals) {
+    //value_tuple * vte = 0;
+    unsigned index;
+    if (m_cgt.evaluate(mc, vals, index)) {
+        index = index + m_num_prepend;
+        //vte = m_values[index];
+        return m_values[index];
+    }
+    //unoptimized (or for non-ground)
     for( unsigned i=0; i<m_conds.size(); i++ ){
         if (mc.is_generalization(m_conds[i], vals)) {
+            //if (vte) {
+            //    SASSERT(index==i);
+            //}
             return m_values[i];
         }
     }
     return 0;
 }
+
 
 void def::simplify(mc_context & mc) {
     if (has_simplified) {
@@ -1829,6 +1903,7 @@ val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & 
                     cond * c = mk_cond(children);
                     dg->prepend_entry(c,vt);
                     df->prepend_entry(c,vt);
+                    //dg->append_entry(*this, c,vt);
                     TRACE("repair_model_debug", tout << "Prepend entry to ensure non-star evaluation : "; display(tout, c, vt); tout << " of " << mk_pp(e,m_m) << "\n";);
                 }
             }
@@ -1954,6 +2029,7 @@ bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, 
         }
         cond * c = mk_cond(avals);
         value_tuple * vt = mk_value_tuple(v);
+        //dg->append_entry(*this, c, vt);
         dg->prepend_entry(c, vt);
         df->prepend_entry(c, vt);
         return true;
@@ -2214,6 +2290,7 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                         else {
                             //don't know how to evaluate (start trying relevant domain?)
                             SASSERT(false);
+                            return false;
                         }
                     }
                 }
@@ -2337,6 +2414,7 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                 if (en->get_expr()!=q->get_expr() || m_m.is_false(to_expr(en->m_value)->get_value())) {
                     if (active.empty() && en->get_expr()!=q->get_expr()) {
                         SASSERT(var_bind_count<q->get_num_decls());
+                        TRACE("eval_check_warn", tout << "WARNING: Evaluation finished and not all variables are bound.\n";);
                         return false;
                     }
                     else {
@@ -2364,11 +2442,14 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
         active.push_back(en);
     }
     else {
-        SASSERT(false);
+        SASSERT(var_bind_count<q->get_num_decls());
+        TRACE("eval_check_warn", tout << "WARNING: no terms to evaluate.\n";);
+        //SASSERT(false);
         //TRACE("eval_check_debug", tout << "Add instantiation "; display(tout, curr_cond); tout << "\n";);
         //we have an instantiation (curr_cond)
         //add_instantiation(mct, q, curr_cond, instantiations);
         //add_instantiation(mct, q, curr_cond, instantiations, repaired, false, true);
+        return false;
     }
     SASSERT(active.size()==prev_size);
     return true;

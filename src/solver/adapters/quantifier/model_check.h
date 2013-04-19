@@ -221,11 +221,19 @@ public:
 class cond_generalization_trie 
 {
 private:
+    unsigned m_data;
     ptr_addr_map< abs_val, cond_generalization_trie * > m_children;
     bool has_generalization(mc_context & mc, cond * c, unsigned index, abs_val * star);
-    bool add(mc_context & mc, cond * c, unsigned index, abs_val * star);
+    bool add(mc_context & mc, cond * c, unsigned index, abs_val * star, unsigned data_val);
+    bool evaluate(mc_context & mc, cond * c, unsigned index, unsigned & data_val);
+    bool evaluate(mc_context & mc, ptr_buffer<abs_val> & vals, unsigned index, unsigned & data_val);
+    bool evaluate(mc_context & mc, ptr_buffer<val> & vals, unsigned index, unsigned & data_val);
 public:
-    bool add(mc_context & mc, cond * c);
+    cond_generalization_trie() : m_data(0) {}
+    bool add(mc_context & mc, cond * c, unsigned data_val);
+    bool evaluate(mc_context & mc, cond * c, unsigned & data_val) { return evaluate(mc, c, 0, data_val); }
+    bool evaluate(mc_context & mc, ptr_buffer<abs_val> & vals, unsigned & data_val) { return evaluate(mc, vals, 0, data_val); }
+    bool evaluate(mc_context & mc, ptr_buffer<val> & vals, unsigned & data_val) { return evaluate(mc, vals, 0, data_val); }
 };
 
 
@@ -233,6 +241,7 @@ public:
 class def {
     friend class mc_context;
 protected:
+    unsigned m_num_prepend;
     ptr_vector<cond> m_conds;
     ptr_vector<value_tuple> m_values;
     //index for indexing conditions
@@ -244,7 +253,7 @@ protected:
     //prepend entry to the definition
     void prepend_entry(cond * c, value_tuple * val);
 public:
-    def() : has_simplified(false){}
+    def() : has_simplified(false), m_num_prepend(0){}
     unsigned get_num_entries() { return m_conds.size(); }
     cond * get_condition(unsigned i) { return m_conds[i]; }
     value_tuple * get_value(unsigned i) { return m_values[i]; }
@@ -253,6 +262,7 @@ public:
     //c should be a ground condition
     value_tuple * evaluate(mc_context & mc, cond * c);
     value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals);
+    //value_tuple * evaluate(mc_context & mc, ptr_buffer<abs_val> & vals);
     //simplify the definition
     void simplify(mc_context & mc);
 };
