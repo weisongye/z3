@@ -56,6 +56,8 @@ class qsolver_adapter : public solver {
     };
     svector<scope>   m_scopes;
 
+    volatile bool    m_cancel;
+
     struct cfg : public default_rewriter_cfg {
         qsolver_adapter & m;
         cfg(qsolver_adapter & _m):m(_m) {}
@@ -99,6 +101,7 @@ public:
         m_mct(m) {
         m_kernel->set_produce_models(true);
         m_q_next_index = 0;
+        m_cancel = false;
     }
 
     virtual ~qsolver_adapter() {
@@ -140,6 +143,7 @@ public:
     }
     
     virtual void set_cancel(bool f) {
+        m_cancel = true;
         m_kernel->set_cancel(f);
     }
 
@@ -418,6 +422,8 @@ public:
         // TEST
         TRACE("qsolver_check", tout << "before check_sat, abstraction:\n"; display_core(tout););
         while (true) {
+            if (m_cancel)
+                return l_undef;
             lbool r = m_kernel->check_sat(num_assumptions, assumptions);
             if (r == l_false)
                 return r;
