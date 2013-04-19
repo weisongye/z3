@@ -376,8 +376,6 @@ protected: //helper functions
         bool repaired;
         add_instantiation(mct,q,c,instantiations,repaired, filterEval, false);
     }
-    //bool get_instantiation(quantifier * q, ptr_vector<expr> & inst, expr_ref & e, bool checkCache = false);
-    //bool get_instantiation(quantifier * q, expr_ref_buffer & inst, expr_ref & e, bool checkCache = false);
     //evaluate function
     val * evaluate_interp(func_decl * f, ptr_buffer<val> & vals);
     //get bound
@@ -462,7 +460,7 @@ public:
     //make compose
     def * mk_compose(def * df, def * d);
     //do the interpreted compose (modifies d)
-    void do_compose(func_decl * f, def * d);
+    bool do_compose(func_decl * f, def * d);
     //make D_(x~t) from D_t
     def * mk_var_relation(def * d, func_decl * f, var * v, bool is_flipped);
     //make D_(x+t) from D_t

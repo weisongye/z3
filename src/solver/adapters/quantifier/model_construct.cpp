@@ -636,7 +636,7 @@ void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection
                             offset = 0;
                         }
                         vp->merge_with_offset(fp, offset);
-                        if (!m_partial_model_terms.contains(offset)) {
+                        if (offset && !m_partial_model_terms.contains(offset)) {
                             m_partial_model_terms.push_back(offset);
                         }
                     }
