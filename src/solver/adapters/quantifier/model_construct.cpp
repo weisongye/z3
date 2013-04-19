@@ -581,19 +581,19 @@ model_constructor::model_constructor(ast_manager & _m, bool use_monotonic_projec
 }
 
 void model_constructor::reset_round(mc_context & mc) {
-    for (unsigned i=0; i<m_funcs.size(); i++) {
-        ptr_vector<projection> & proj = m_func_arg_proj.find(i);
-        for (unsigned j=0; j<proj.size(); j++) {
-            proj[j]->reset();
-        }
-    }
+    // for (unsigned i=0; i<m_funcs.size(); i++) {
+    //     ptr_vector<projection> & proj = m_func_arg_proj.find(i);
+    //     for (unsigned j=0; j<proj.size(); j++) {
+    //         proj[j]->reset();
+    //     }
+    // }
 
-    for (unsigned i=0; i<m_quants.size(); i++) {
-        ptr_vector<projection> & proj = m_quant_var_proj.find(i);
-        for (unsigned j=0; j<proj.size(); j++) {
-            proj[j]->reset();
-        }
-    }
+    // for (unsigned i=0; i<m_quants.size(); i++) {
+    //     ptr_vector<projection> & proj = m_quant_var_proj.find(i);
+    //     for (unsigned j=0; j<proj.size(); j++) {
+    //         proj[j]->reset();
+    //     }
+    // }
     m_ground_def.reset();
     m_def.reset();
     m_partial_model_terms.reset();

@@ -366,6 +366,7 @@ mc_context::mc_context(ast_manager & _m)
 }
 
 void mc_context::reset_round() {
+    m_inst_trie.reset();
 
     //clear the caches
     m_expr_to_val.reset();
@@ -373,9 +374,9 @@ void mc_context::reset_round() {
     m_quant_to_cond_star.reset();
     m_expr_produced.reset();
 
-    std::cout << "reset region...\n";
+    // std::cout << "reset region...\n";
     m_reg.reset();
-    std::cout << "done.\n";
+    // std::cout << "done.\n";
 }
 
 //push user context
@@ -385,7 +386,6 @@ void mc_context::push() {
 
 //pop user context
 void mc_context::pop() {
-    m_inst_trie.reset();
     m_sort_to_dist_expr.reset();
     m_expr_produced_global.reset();
 }
