@@ -2136,8 +2136,8 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
                 if (filterEval) {
                     TRACE("inst_debug",tout << "Filter based on evaluation...\n";);
                     val * v = evaluate(mct, q->get_expr(), val_subs);
-                    SASSERT(v->is_expr());
-                    if (!m_m.is_false(to_expr(v)->get_value())) {
+                    SASSERT(!v || v->is_expr());
+                    if (v && !m_m.is_false(to_expr(v)->get_value())) {
                         TRACE("inst",tout << "...instantiation evaluated to true in model.\n";);
                         addInstantiation = false;
                     }

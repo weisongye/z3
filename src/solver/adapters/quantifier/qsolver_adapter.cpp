@@ -285,6 +285,7 @@ public:
             m_q_next_index = 0;
         }
 
+        bool round_robin = true;
         bool changed_model;
         bool do_continue;
         do 
@@ -295,9 +296,8 @@ public:
             unsigned q_start = m_q_next_index;
             //check the relevant quantifiers
             for (unsigned i=0; i<quantifiers.size(); i++) {
-                unsigned pr_i = i;
-                //for round robin (currently disabled)
-                //unsigned pr_i = (q_start+i)%quantifiers.size();
+                //get the index to process
+                unsigned pr_i = round_robin ? (q_start+i)%quantifiers.size() : i;
                 expr_ref_buffer instantiations(m_manager);
                 expr_ref_buffer instantiations_star(m_manager);
                 lbool c_result;
@@ -357,13 +357,11 @@ public:
                     instantiation_lemmas.append(instantiations.size(), instantiations.c_ptr());
                     instantiation_lemmas_star.append(instantiations_star.size(), instantiations_star.c_ptr());
                 }
-                /*
-                //for round robin
-                if (!instantiation_lemmas.empty()) {
+                //quit if youve produced instances
+                if (round_robin && !instantiation_lemmas.empty()) {
                     m_q_next_index = i+1;
                     break;
                 }
-                */
             }
 
             if (do_eval_check && instantiation_lemmas.empty()) {
