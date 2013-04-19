@@ -495,10 +495,10 @@ void projection::get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * 
     TRACE("inst_debug",tout << "returning "; mc.display(tout,e); tout << "\n";);
 }
 
-
+/*
 def * projection::get_definition(mc_context & mc) {
     if (!m_proj_def) {
-        m_proj_def = mc.new_def();
+        m_proj_def = mc.new_complete_def();
         if (m_type==projection::PROJ_POINTWISE) {
             //it is all values in relevant domain v->v, followed by *->eval(e)
             for (unsigned i=0; i<m_rel_domain_val.size(); i++) {
@@ -526,6 +526,7 @@ def * projection::get_definition(mc_context & mc) {
     }
     return m_proj_def;
 }
+*/
 
 void projection::compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_vector<av_interval> & intervals) {
     sort_val_indices svi(mc);
@@ -576,6 +577,7 @@ model_constructor::model_constructor(ast_manager & _m, bool use_monotonic_projec
     m_projection_definitions = false;
     m_monotonic_projections = use_monotonic_projections;
     m_simplification = false;
+    m_simple_definitions = false;
 }
 
 void model_constructor::reset_round(mc_context & mc) {
@@ -840,7 +842,7 @@ unsigned model_constructor::get_quantifier_id(mc_context & mc, quantifier * q) {
 def * model_constructor::get_ground_def(mc_context & mc, func_decl * f) {
     unsigned id = get_func_id(mc, f);
     if (!m_ground_def.contains(id)) {
-        def * d = mc.new_def();
+        def * d = mc.new_simple_def();
         m_ground_def.insert(id, d);
         return d;
     }
@@ -932,16 +934,23 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
         //d is the complete definition we will construct
         def * d;
         TRACE("model_construct",tout << "Constructing definition for " << mk_pp(f,m_m) << "... " << "\n";);
-        TRACE("model_construct_ground", tout << "Ground definition for " << mk_pp(f,m_m) << " is: \n";
+        TRACE("model_construct", tout << "Ground definition for " << mk_pp(f,m_m) << " is: \n";
                                         mc.display(tout, dg);
                                         tout << "\n";);
         if (dg->get_num_entries()==0) {
-            //need to make at least one entry
-            d = mc.new_def();
-            cond * cstar = mc.mk_star(f->get_arity());
             val * v = mc.mk_val(mc.get_some_value(f->get_range()));
             value_tuple * vt = mc.mk_value_tuple(v);
-            d->append_entry(mc, cstar, vt);
+            cond * cstar = mc.mk_star(f->get_arity());
+            if (m_simple_definitions) {
+                simple_def * sd = mc.new_simple_def();
+                sd->set_else(cstar, vt);
+                d = sd;
+            }
+            else {
+                //need to make at least one entry
+                d = mc.new_complete_def();
+                d->append_entry(mc, cstar, vt);
+            }
         }
         else {
             //get projections
@@ -955,7 +964,9 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                 }
             }
             //now, complete the definition
-            if (m_projection_definitions) {
+            //if (m_projection_definitions) {
+                //SASSERT(false);
+                /*
                 //get the projection for the function
                 def * dp = get_projection_definition(mc, f);
                 if (dp) {
@@ -966,9 +977,20 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                     d = dg;
                     SASSERT(f->get_arity()==0);
                 }
+                */
+            //}
+            //else 
+            if (m_simple_definitions) {
+                simple_def * sd = mc.new_simple_def();
+                for( unsigned j=0; j<dg->get_num_entries(); j++ ){
+                    sd->append_entry(mc, dg->get_condition(j), dg->get_value(j));
+                }
+                cond * cstar = mc.mk_star(f->get_arity());
+                sd->set_else(cstar, dg->get_value(0));
+                d = sd;
             }
             else {
-                d = mc.new_def();
+                d = mc.new_complete_def();
                 for( unsigned j=0; j<dg->get_num_entries(); j++ ){
                     d->append_entry(mc, dg->get_condition(j), dg->get_value(j));
                 }
@@ -1142,6 +1164,7 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, cond * c, expr
     }
 }
 
+/*
 def * model_constructor::get_projection_definition(mc_context & mc, func_decl * f) {
     def * dp = 0;
     for (unsigned i=0; i<f->get_arity(); i++) {
@@ -1155,3 +1178,4 @@ def * model_constructor::get_projection_definition(mc_context & mc, func_decl * 
                                    tout << "\n";);
     return dp;
 }
+*/

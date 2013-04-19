@@ -120,7 +120,7 @@ struct my_solver_factory : public solver_factory {
         s->add_tactic_after(mk_snf_tactic(m, nnf_p));
         s->add_tactic_after(mk_elim_array_tactic(m));
         s->add_tactic_after(mk_der_tactic(m));
-        s->add_tactic_after(mk_expand_macros_tactic(m));
+       // s->add_tactic_after(mk_expand_macros_tactic(m));
         s->add_tactic_after(mk_der_tactic(m));
         s->add_tactic_after(mk_simplify_tactic(m));
         s->add_tactic_after(mk_pull_nested_quantifiers_tactic(m));

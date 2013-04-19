@@ -100,7 +100,7 @@ protected: //TEMPORARY? debugging, for explicit projection construction
     def * m_proj_def;
 public:
     //get the projection for the ith argument of f
-    def * get_definition(mc_context & mc);
+    //def * get_definition(mc_context & mc);
 };
 
 
@@ -111,6 +111,8 @@ public:
     bool m_monotonic_projections;
     // do simplification?
     bool m_simplification;
+    // simple definitions
+    bool m_simple_definitions;
 protected:
     //function to id map
     obj_map< func_decl, unsigned > m_func_to_id;
@@ -199,7 +201,7 @@ protected: //TEMPORARY? debugging, for explicit projection construction
     u_map< def * > m_projections;
 public:
     //get the projection definition for f
-    def * get_projection_definition(mc_context & mc, func_decl * f);
+    //def * get_projection_definition(mc_context & mc, func_decl * f);
 };
 
 

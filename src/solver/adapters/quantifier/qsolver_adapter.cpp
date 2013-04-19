@@ -242,52 +242,60 @@ public:
         proc(m_ground_formulas.size(), m_ground_formulas.c_ptr());
         ptr_buffer<quantifier> relevant_nested_quantifiers;
         get_relevant_nested_quantifiers(pM, relevant_nested_quantifiers);
-        //reset the round
-        m_mc.reset_round();
-        m_mct.reset_round(m_mc);
-
         ptr_vector<quantifier> quantifiers;
         quantifiers.append(m_quantifiers.size(), m_quantifiers.c_ptr());
         quantifiers.append(relevant_nested_quantifiers.size(), relevant_nested_quantifiers.c_ptr());
-        //assert the relevant quantifiers
-        for (unsigned i=0; i<quantifiers.size(); i++) {
-            m_mct.assert_quantifier(m_mc, quantifiers[i]);
-        }
-        //collect relevant terms
-        for (unsigned i=0; i<m_mct.get_num_partial_model_terms(); i++) {
-            proc(m_mct.get_partial_model_term(i), false);
-        }
-        TRACE("qsolver_pm", 
-              tout << "==== Partial Model\n";
-              expr_substitution::iterator it  = pM.begin();
-              expr_substitution::iterator end = pM.end();
-              for (; it != end; ++it) {
-                  tout << mk_pp(it->m_key, m()) << "\n---> " << mk_pp(it->m_value, m()) << "\n";
-              }
-              tout << "==== Relevant nested quantifiers\n";
-              for (unsigned i = 0; i < relevant_nested_quantifiers.size(); i++) {
-                  tout << mk_pp(relevant_nested_quantifiers[i], m()) << "\n";
-              });
-
-        //assert the partial model
-        m_mct.assert_partial_model(m_mc, pM.get_map());
-        //std::cout << "Produce lemmas...\n";
         lbool result;
         expr_ref_buffer instantiation_lemmas(m_manager);
         expr_ref_buffer instantiation_lemmas_star(m_manager);
+        ptr_buffer<quantifier> inst_made_this_round;
+        if (m_q_next_index>=quantifiers.size()) {
+            m_q_next_index = 0;
+        }
         //options
         bool do_exhaustive_instantiate = false;
         bool do_eval_check = true;
         bool star_only_if_non_star = true;
 
-        ptr_buffer<quantifier> inst_made_this_round;
-        if (m_q_next_index>=quantifiers.size()) {
-            m_q_next_index = 0;
-        }
 
+        bool needs_make_model = true;
         bool round_robin = true;
         bool changed_model;
         bool do_continue;
+
+        if (needs_make_model) {
+            //reset the round
+            m_mc.reset_round();
+            m_mct.m_simple_definitions = do_eval_check;
+            m_mct.reset_round(m_mc);
+
+            //assert the relevant quantifiers
+            for (unsigned i=0; i<quantifiers.size(); i++) {
+                m_mct.assert_quantifier(m_mc, quantifiers[i]);
+            }
+            //collect relevant terms
+            for (unsigned i=0; i<m_mct.get_num_partial_model_terms(); i++) {
+                proc(m_mct.get_partial_model_term(i), false);
+            }
+            TRACE("qsolver_pm", 
+                  tout << "==== Partial Model\n";
+                  expr_substitution::iterator it  = pM.begin();
+                  expr_substitution::iterator end = pM.end();
+                  for (; it != end; ++it) {
+                      tout << mk_pp(it->m_key, m()) << "\n---> " << mk_pp(it->m_value, m()) << "\n";
+                  }
+                  tout << "==== Relevant nested quantifiers\n";
+                  for (unsigned i = 0; i < relevant_nested_quantifiers.size(); i++) {
+                      tout << mk_pp(relevant_nested_quantifiers[i], m()) << "\n";
+                  });
+
+            //assert the partial model
+            m_mct.assert_partial_model(m_mc, pM.get_map());
+            //std::cout << "Produce lemmas...\n";
+
+            needs_make_model = false;
+        }
+
         do 
         {
             result = l_true;

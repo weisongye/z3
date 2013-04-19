@@ -173,8 +173,7 @@ bool cond_generalization_trie::evaluate(mc_context & mc, ptr_buffer<val> & vals,
     }
 }
 
-
-bool def::has_generalization(mc_context & mc, cond * c) {
+bool complete_def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
     bool has_gen = !m_cgt.add(mc, c, m_conds.size());
 
     // the unoptimized version:
@@ -188,11 +187,7 @@ bool def::has_generalization(mc_context & mc, cond * c) {
     SASSERT(!has_gen);
     return false;
     */
-    return has_gen;
-}
-
-bool def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
-    if (!has_generalization(mc, c)) {
+    if (!has_gen) {
         m_conds.push_back(c);
         m_values.push_back(v);
         return true;
@@ -202,26 +197,10 @@ bool def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
     }
 }
 
-void def::prepend_entry(cond * c, value_tuple * val) {
-    //TODO: improve this
-    ptr_vector<cond> conds;
-    ptr_vector<value_tuple> values;
-    conds.push_back(c);
-    values.push_back(val);
-    conds.append(m_conds.size(), m_conds.c_ptr());
-    values.append(m_values.size(), m_values.c_ptr());
-    m_conds.reset();
-    m_values.reset();
-    m_conds.append(conds.size(),conds.c_ptr());
-    m_values.append(values.size(),values.c_ptr());
-    m_num_prepend++;
-}
-
-value_tuple * def::evaluate(mc_context & mc, cond * c) {
+value_tuple * complete_def::evaluate(mc_context & mc, cond * c) {
     //value_tuple * vte = 0;
     unsigned index;
     if (m_cgt.evaluate(mc, c, index)) {
-        index = index + m_num_prepend;
         //vte = m_values[index];
         return m_values[index];
     }
@@ -237,11 +216,10 @@ value_tuple * def::evaluate(mc_context & mc, cond * c) {
     return 0;
 }
 
-value_tuple * def::evaluate(mc_context & mc, ptr_buffer<val> & vals) {
+value_tuple * complete_def::evaluate(mc_context & mc, ptr_buffer<val> & vals) {
     //value_tuple * vte = 0;
     unsigned index;
     if (m_cgt.evaluate(mc, vals, index)) {
-        index = index + m_num_prepend;
         //vte = m_values[index];
         return m_values[index];
     }
@@ -257,8 +235,39 @@ value_tuple * def::evaluate(mc_context & mc, ptr_buffer<val> & vals) {
     return 0;
 }
 
+bool simple_def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
+    if (m_cgt.add(mc, c, m_conds.size())) {
+        SASSERT(c->is_value());
+        m_conds.push_back(c);
+        m_values.push_back(v);
+        return true;
+    }
+    else {
+        return false;
+    }
+}
 
-void def::simplify(mc_context & mc) {
+value_tuple * simple_def::evaluate(mc_context & mc, cond * c) {
+    unsigned index;
+    if (m_cgt.evaluate(mc, c, index)) {
+        //vte = m_values[index];
+        return m_values[index];
+    }
+    return m_else;
+}
+
+value_tuple * simple_def::evaluate(mc_context & mc, ptr_buffer<val> & vals) {
+    unsigned index;
+    if (m_cgt.evaluate(mc, vals, index)) {
+        //vte = m_values[index];
+        return m_values[index];
+    }
+    return m_else;
+}
+
+
+
+void complete_def::simplify(mc_context & mc) {
     if (has_simplified) {
         TRACE("def_simplify",  tout << "Already simplified ? " << this << " ";
                                 mc.display(tout,this);
@@ -363,6 +372,7 @@ void mc_context::reset_round() {
     m_quant_to_cond_star.reset();
     m_expr_produced.reset();
 
+    //m_reg.reset();
 }
 
 //push user context
@@ -838,7 +848,7 @@ cond * mc_context::mk_meet(cond * c1, cond * c2) {
 }
 
 def * mc_context::mk_product(def * d1, def * d2) {
-    def * d = new_def();
+    def * d = new_complete_def();
     for( unsigned i=0; i<d1->get_num_entries(); i++ ){
         for( unsigned j=0; j<d2->get_num_entries(); j++ ){
             if (is_compatible(d1->get_condition(i), d2->get_condition(j))) {
@@ -932,7 +942,7 @@ cond * mc_context::mk_compose(cond * c1, value_tuple * v, cond * c2) {
 
 def * mc_context::mk_var_relation(def * d, func_decl * f, var * v, bool is_flipped) {
     unsigned vid = v->get_idx();
-    def * nd = new_def();
+    def * nd = new_complete_def();
     for (unsigned i=0; i<d->get_num_entries(); i++) {
         //check the type of the abstract value
         abs_val * a = d->get_condition(i)->get_value(vid);
@@ -1022,7 +1032,7 @@ def * mc_context::mk_var_relation(def * d, func_decl * f, var * v, bool is_flipp
 
 def * mc_context::mk_var_offset(def * d, var * v, bool is_negated) {
     unsigned vid = v->get_idx();
-    def * nd = new_def();
+    def * nd = new_complete_def();
     for (unsigned i=0; i<d->get_num_entries(); i++) {
         val * vl = d->get_value(i)->get_value(0);
         val * vovl = mk_val(v, vl, is_negated);
@@ -1032,7 +1042,7 @@ def * mc_context::mk_var_offset(def * d, var * v, bool is_negated) {
 }
 
 def * mc_context::mk_compose(def * df, def * da) {
-    def * d = new_def();
+    def * d = new_complete_def();
     for (unsigned i=0; i<da->get_num_entries(); i++) {
         //bool end_early = false;
         for (unsigned j=0; j<df->get_num_entries(); j++) {
@@ -1069,7 +1079,7 @@ bool mc_context::do_compose(func_decl * f, def * d) {
     }
     d->m_values.reset();
     d->m_values.append(computed_vals.size(), computed_vals.c_ptr());
-    d->has_simplified = false;
+    //d->has_simplified = false;
     return true;
 }
 
@@ -1168,11 +1178,14 @@ cond * mc_context::copy(cond * c) {
     return cc;
 }
 
-def * mc_context::new_def() {
-    void * mem = allocate(sizeof(def));
-    return new (mem) def;
+complete_def * mc_context::new_complete_def() {
+    void * mem = allocate(sizeof(complete_def));
+    return new (mem) complete_def;
 }
-
+simple_def * mc_context::new_simple_def() {
+    void * mem = allocate(sizeof(simple_def));
+    return new (mem) simple_def;
+}
 
 val * mc_context::mk_canon(val * v) {
     TRACE("mk_canon_debug", tout << "Canonizing "; display(tout,v); tout << "\n";);
@@ -1443,7 +1456,7 @@ lbool mc_context::check(model_constructor * mct, quantifier * q, expr_ref_buffer
         TRACE("mc_operation", tout << "Compute definition for bad...\n";);
         ptr_vector<def> approx;
         for (unsigned i=0; i<q->get_num_decls(); i++) {
-            def * dx = new_def();
+            def * dx = new_complete_def();
             projection * p = mct->get_projection(*this, q, i);
             value_tuple * def_vt;
             for (unsigned j=0; j<p->get_num_relevant_domain(); j++) {
@@ -1566,7 +1579,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
             }
         }
         //trivial case
-        d = new_def();
+        d = new_complete_def();
         cond * star = mk_star(mct, q);
         val * v = mk_val(e);
         value_tuple * vt = mk_value_tuple(v);
@@ -1601,7 +1614,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                     else { //make it directly
                         //it should be negated (since e is not the variable itself)
                         SASSERT(is_flipped);
-                        d = new_def();
+                        d = new_complete_def();
                         cond * cstar = mk_star(mct, q);
                         val * vl = mk_val(v, 0, is_flipped);
                         d->append_entry(*this, cstar, mk_value_tuple(vl));
@@ -1637,7 +1650,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                 }
                 if (f->get_arity()==0) {
                     //if constant, look up the definition
-                    d = new_def();
+                    d = new_complete_def();
                     cond * star = mk_star(mct, q);
                     value_tuple * vt = df->get_value(0);
                     d->append_entry(*this, star, vt);
@@ -1916,26 +1929,30 @@ val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & 
         return mk_val(e);
     }
     else if (is_app(e)) {
-        TRACE("eval_tmp", tout << "e " << mk_pp(e,m_m) << "\n";);
+        TRACE("eval_term_debug", tout << "e " << mk_pp(e,m_m) << " " << add_entries_ensuring_non_star << "\n";);
         ptr_buffer<val> children;
         for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
             val * vc = evaluate(mct, to_app(e)->get_arg(i), vsub);
             if (!vc) return 0;
             children.push_back(vc);
         }
+        TRACE("eval_term_debug", tout << "Evaluated children.\n";);
         func_decl * f = to_app(e)->get_decl();
         if (is_uninterp(e)) {
+            def * df  = mct->get_def(*this, f);
             def * dg = mct->get_ground_def(*this, f);
-            value_tuple * vt = dg->evaluate(*this, children);
+            TRACE("eval_term_debug", tout << "Evaluate uf.\n";);
+            value_tuple * vt = !df->is_simple() ? dg->evaluate(*this, children) : 0;
             if (!vt) {
-                def * df  = mct->get_def(*this, f);
+                TRACE("eval_term_debug", tout << "Evaluate full uf.\n";);
                 vt = df->evaluate(*this, children);
                 if (add_entries_ensuring_non_star) {
                     cond * c = mk_cond(children);
-                    dg->prepend_entry(c,vt);
-                    df->prepend_entry(c,vt);
-                    //dg->append_entry(*this, c,vt);
-                    TRACE("repair_model_debug", tout << "Prepend entry to ensure non-star evaluation : "; display(tout, c, vt); tout << " of " << mk_pp(e,m_m) << "\n";);
+                    SASSERT(df->is_simple());
+                    SASSERT(dg->is_simple());
+                    dg->append_entry(*this, c,vt);
+                    df->append_entry(*this, c,vt);
+                    TRACE("repair_model_debug", tout << "Append entry to ensure non-star evaluation : "; display(tout, c, vt); tout << " of " << mk_pp(e,m_m) << "\n";);
                 }
             }
             SASSERT(vt->get_size()==1);
@@ -2065,8 +2082,10 @@ bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, 
         cond * c = mk_cond(avals);
         value_tuple * vt = mk_value_tuple(v);
         //dg->append_entry(*this, c, vt);
-        dg->prepend_entry(c, vt);
-        df->prepend_entry(c, vt);
+        SASSERT(dg->is_simple());
+        SASSERT(df->is_simple());
+        dg->append_entry(*this, c, vt);
+        df->append_entry(*this, c, vt);
         return true;
     }
     else {
@@ -2349,7 +2368,7 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                 if (!var_to_bind.empty()) {
                     var_bind_count += var_to_bind.size();
                     //need to compute a compose
-                    def * da = new_def();
+                    def * da = new_complete_def();
                     da->append_entry(*this, curr_cond, mk_value_tuple(children));
                     //now, do compose
                     def * dc = mk_compose(df,da);

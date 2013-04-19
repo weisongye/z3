@@ -237,23 +237,45 @@ public:
 };
 
 
-//definition (a list of entries)
-class def {
+class def
+{
     friend class mc_context;
 protected:
-    unsigned m_num_prepend;
+    unsigned m_kind;
     ptr_vector<cond> m_conds;
     ptr_vector<value_tuple> m_values;
     //index for indexing conditions
     cond_generalization_trie m_cgt;
-    //is there a generalization of c already in this definition
-    bool has_generalization(mc_context & mc, cond * c);
+    def(unsigned k) : m_kind(k){}
+public:
+    enum {
+        KIND_COMPLETE,
+        KIND_SIMPLE
+    };
+    //get kind
+    unsigned get_kind() { return m_kind; }
+    bool is_complete() { return m_kind==KIND_COMPLETE; }
+    bool is_simple() { return m_kind==KIND_SIMPLE; }
+public:
+    virtual unsigned get_num_entries() = 0;
+    virtual cond * get_condition(unsigned i) = 0;
+    virtual value_tuple * get_value(unsigned i) = 0;
+    //add entry to the definition
+    virtual bool append_entry(mc_context & mc, cond * c, value_tuple * val) = 0;
+    //c should be a ground condition
+    virtual value_tuple * evaluate(mc_context & mc, cond * c) = 0;
+    virtual value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals) = 0;
+    virtual void simplify(mc_context & mc) = 0;
+};
+
+//definition (a list of entries)
+class complete_def : public def {
+    friend class mc_context;
+protected:
     // for debugging
     bool has_simplified;
-    //prepend entry to the definition
-    void prepend_entry(cond * c, value_tuple * val);
 public:
-    def() : has_simplified(false), m_num_prepend(0){}
+    complete_def() : def(KIND_COMPLETE), has_simplified(false){}
     unsigned get_num_entries() { return m_conds.size(); }
     cond * get_condition(unsigned i) { return m_conds[i]; }
     value_tuple * get_value(unsigned i) { return m_values[i]; }
@@ -266,6 +288,38 @@ public:
     //simplify the definition
     void simplify(mc_context & mc);
 };
+
+class simple_def : public def
+{
+protected:
+    cond * m_cond_else;
+    value_tuple * m_else;
+public:
+    simple_def() : def(KIND_SIMPLE), m_else(0) {}
+    unsigned get_num_entries() { return m_conds.size()+(m_else ? 1 : 0); }
+    cond * get_condition(unsigned i) { return i==m_conds.size() ? m_cond_else : m_conds[i]; }
+    value_tuple * get_value(unsigned i) { return i==m_values.size() ? m_else : m_values[i]; }
+    void set_else(cond * ce, value_tuple * ve) { m_cond_else = ce; m_else = ve; }
+    value_tuple * get_else() { return m_else; }
+    //add entry to the definition
+    bool append_entry(mc_context & mc, cond * c, value_tuple * v);
+    //c should be a ground condition
+    value_tuple * evaluate(mc_context & mc, cond * c);
+    value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals);
+    //simplify the definition
+    void simplify(mc_context & mc) {}
+};
+
+
+inline complete_def * to_complete(def * d) {
+    SASSERT(d->get_kind()==def::KIND_COMPLETE);
+    return static_cast<complete_def *>(d);
+}
+
+inline simple_def * to_simple(def * d) {
+    SASSERT(d->get_kind()==def::KIND_SIMPLE);
+    return static_cast<simple_def *>(d);
+}
 
 
 class inst_trie 
@@ -484,7 +538,9 @@ public:
     // copy the condition
     cond * copy(cond * c);
     //make new def
-    def * new_def();
+    complete_def * new_complete_def();
+    //make new def
+    simple_def * new_simple_def();
 public: //other helper functions
     //get classifier 
     classify_util * get_classify_util() { return &m_cutil; }
