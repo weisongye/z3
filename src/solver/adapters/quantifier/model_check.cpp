@@ -362,6 +362,7 @@ mc_context::mc_context(ast_manager & _m)
     m_simplification = false;
     m_partial_evaluation = false;
     m_model_repairing = true;
+    m_eval_check_inst_limited = true;    
 }
 
 void mc_context::reset_round() {
@@ -372,7 +373,9 @@ void mc_context::reset_round() {
     m_quant_to_cond_star.reset();
     m_expr_produced.reset();
 
-    //m_reg.reset();
+    std::cout << "reset region...\n";
+    m_reg.reset();
+    std::cout << "done.\n";
 }
 
 //push user context
@@ -2093,7 +2096,7 @@ bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, 
     }
 }
 
-void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
+bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
                                   bool filterEval, bool filterRepair, bool filterCache) {
     //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
     cond * cic = mk_canon(c);
@@ -2194,8 +2197,10 @@ void mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
             expr_ref instance(m_m);
             instantiate(m_m, q, inst.c_ptr(), instance);
             instantiations.push_back(instance);
+            return true;
         }
     }
+    return false;
 }
 
 
@@ -2263,7 +2268,7 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
     //std::cout << "Eval check " << mk_pp(q,m_m) << "..." << std::endl;
     cond * curr_cond = mk_star(mct,q);
     repaired = false;
-    if (!do_eval_check(mct, q, active, vars, curr_cond, instantiations, 0, repaired)) {
+    if (do_eval_check(mct, q, active, vars, curr_cond, instantiations, 0, repaired)==l_false) {
         TRACE("eval_check", tout << "Eval check failed on quantifier " << mk_pp(q,m_m) << "\n";);
     }
     else {
@@ -2279,8 +2284,9 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
     }
 }
 
-bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                               cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
+lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
+                                cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
+    lbool eresult = l_undef;
     unsigned prev_size = active.size();
     if (!active.empty()) {
         unsigned best_index = active.size()-1;
@@ -2356,7 +2362,7 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                         else {
                             //don't know how to evaluate (start trying relevant domain?)
                             SASSERT(false);
-                            return false;
+                            return l_false;
                         }
                     }
                 }
@@ -2417,14 +2423,16 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                                 if (new_active.empty()) {
                                     if (en->get_expr()!=q->get_expr() || m_m.is_false(to_expr(en->m_value)->get_value())) {
                                         //SASSERT(!active.empty() || en->get_expr()==q->get_expr());
-                                        if (!do_eval_check(mct, q, active, vars, cc, instantiations, var_bind_count, repaired)) {
-                                            return false;
+                                        eresult = do_eval_check(mct, q, active, vars, cc, instantiations, var_bind_count, repaired);
+                                        if (eresult==l_false) {
+                                            return l_false;
                                         }
                                     }
                                 }
                                 else {
-                                    if (!do_eval_check(mct, q, new_active, vars, cc, instantiations, var_bind_count, repaired)) {
-                                        return false;
+                                    eresult = do_eval_check(mct, q, new_active, vars, cc, instantiations, var_bind_count, repaired);
+                                    if (eresult==l_false) {
+                                        return l_false;
                                     }
                                 }
                             }
@@ -2435,8 +2443,9 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                                     SASSERT(cc->get_value(k)->is_value());
                                 }
                                 //we have an instantiation
-                                //add_instantiation(mct, q, cc, instantiations, true);
-                                add_instantiation(mct, q, cc, instantiations, repaired, true, true, true);
+                                if (!add_instantiation(mct, q, cc, instantiations, repaired, true, true, true)) {
+                                    eresult = l_true;
+                                }
                                 TRACE("eval_check_debug", tout << "Finished instantiation.\n";);
                             }
                         }
@@ -2488,12 +2497,10 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                     if (active.empty() && en->get_expr()!=q->get_expr()) {
                         SASSERT(var_bind_count<q->get_num_decls());
                         TRACE("eval_check_warn", tout << "WARNING: Evaluation finished and not all variables are bound.\n";);
-                        return false;
+                        return l_false;
                     }
                     else {
-                        if (!do_eval_check(mct, q, active, vars, curr_cond, instantiations, var_bind_count, repaired)) {
-                            return false;
-                        }
+                        eresult = do_eval_check(mct, q, active, vars, curr_cond, instantiations, var_bind_count, repaired);
                     }
                 }
             }
@@ -2504,9 +2511,7 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
                     }
                     );
                 new_active.append(active.size(), active.c_ptr());
-                if (!do_eval_check(mct, q, new_active, vars, curr_cond, instantiations, var_bind_count, repaired)) {
-                    return false;
-                }
+                eresult = do_eval_check(mct, q, new_active, vars, curr_cond, instantiations, var_bind_count, repaired);
             }
             en->m_value = 0;
             en->unnotify_evaluation();
@@ -2523,10 +2528,10 @@ bool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vect
         //we have an instantiation (curr_cond)
         //add_instantiation(mct, q, curr_cond, instantiations);
         //add_instantiation(mct, q, curr_cond, instantiations, repaired, false, true);
-        return false;
+        return l_false;
     }
     SASSERT(active.size()==prev_size);
-    return true;
+    return eresult;
 }
 
 

@@ -376,6 +376,8 @@ protected:
     bool m_partial_evaluation;
     // do repair
     bool m_model_repairing;
+    // do instantiation limiting
+    bool m_eval_check_inst_limited;
     //memory manager
     region m_reg;
     //rational manager
@@ -424,11 +426,11 @@ protected: //helper functions
     bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, bool polarity);
     bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, val * v);
     //add instantiation
-    void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
+    bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
-    void add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false) {
+    bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false) {
         bool repaired;
-        add_instantiation(mct,q,c,instantiations,repaired, filterEval, false);
+        return add_instantiation(mct,q,c,instantiations,repaired, filterEval, false);
     }
     //evaluate function
     val * evaluate_interp(func_decl * f, ptr_buffer<val> & vals);
@@ -580,8 +582,8 @@ public:
 protected:
     eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
 
-    bool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                       cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
+    lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
+                        cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
 public:
     //eval check
     lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);
