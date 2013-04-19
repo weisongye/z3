@@ -372,6 +372,7 @@ void mc_context::reset_round() {
     m_expr_to_val.reset();
     m_val_to_abs_val.reset();
     m_quant_to_cond_star.reset();
+    m_val_to_value_tuple.reset();
     m_expr_produced.reset();
 
     // std::cout << "reset region...\n";
@@ -565,8 +566,13 @@ abs_val * mc_context::mk_negate(abs_val * a) {
 
 
 value_tuple * mc_context::mk_value_tuple(val * v) {
-    value_tuple * vt = value_tuple::mk(*this, 1);
-    vt->m_vec[0] = v;
+    value_tuple * vt;
+    if (!m_val_to_value_tuple.find(v,vt)) {
+        vt = value_tuple::mk(*this, 1);
+        vt->m_vec[0] = v;
+        m_val_to_value_tuple.insert(v,vt);
+        return vt;
+    }
     return vt;
 }
 
@@ -1659,27 +1665,7 @@ def * mc_context::do_check(model_constructor * mct, quantifier * q, expr * e, pt
                     d->append_entry(*this, star, vt);
                 } else {
                     //interpretation is the composition of f with arguments
-                    def * d1 = mk_compose( df,d);
-                    //def * d2 = mk_compose( mct->get_ground_def(*this, f),d);
-                    /*
-                    TRACE("test_ge",
-                        tout << "Function : \n";
-                        display(tout, mct->get_def(*this, f));
-                        tout << "\n";
-                        tout << "Ground function : \n";
-                        display(tout, mct->get_ground_def(*this, f));
-                        tout << "\n";
-                        tout << "Arguments : \n";
-                        display(tout, d);
-                        tout << "\n";
-                        tout << "Compare definintions: \n";
-                        display(tout, d1);
-                        tout << "\n";
-                        tout << "Against ground: \n";
-                        display(tout, d2);
-                        tout << "\n";);
-                    */
-                    d = d1;
+                    d = mk_compose(df,d);
                 }
             }
             else {
@@ -2265,10 +2251,15 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
                             tout << "\n";
                         }
                         );
+    repaired = false;
     //std::cout << "Eval check " << mk_pp(q,m_m) << "..." << std::endl;
     cond * curr_cond = mk_star(mct,q);
-    repaired = false;
     if (do_eval_check(mct, q, active, vars, curr_cond, instantiations, 0, repaired)==l_false) {
+
+    //ptr_buffer<val> vsub;
+    //vsub.resize(q->get_num_decls(),0);
+
+    //if (do_eval_check(mct, q, active, vars, vsub, instantiations, 0, repaired)==l_false) {
         TRACE("eval_check", tout << "Eval check failed on quantifier " << mk_pp(q,m_m) << "\n";);
     }
     else {
@@ -2285,7 +2276,8 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
 }
 
 lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                                cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
+                                cond * curr_cond, //ptr_buffer<val> & vsub, 
+                                expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
     lbool eresult = l_undef;
     unsigned prev_size = active.size();
     if (!active.empty()) {
@@ -2305,9 +2297,10 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
         active.erase(active.begin()+best_index);
         expr * e = en->get_expr();
         TRACE("eval_check_debug", tout << "Process " << mk_pp(e,m_m) << "\n";
-                                  tout << "Current condition : ";
-                                  display(tout,curr_cond);
-                                  tout << "\n";);
+                                  //tout << "Current condition : ";
+                                  //display(tout,curr_cond);
+                                  //tout << "\n";
+                                  );
         val * result = 0;
         if (is_ground(e)) {
             //just use the evaluator
@@ -2373,6 +2366,11 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                 def * df = mct->get_def(*this,f);
                 if (!var_to_bind.empty()) {
                     var_bind_count += var_to_bind.size();
+#if 0
+                    for (unsigned i=0; i<df->get_num_entries(); i++) {
+                        
+                    }
+#else
                     //need to compute a compose
                     def * da = new_complete_def();
                     da->append_entry(*this, curr_cond, mk_value_tuple(children));
@@ -2458,6 +2456,7 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                             }
                         }
                     }
+#endif
                 }
                 else {
                     //just evaluate
