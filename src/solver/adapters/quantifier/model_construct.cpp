@@ -1164,6 +1164,22 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, cond * c, expr
     }
 }
 
+void model_constructor::get_inst(mc_context & mc, quantifier * q, ptr_buffer<val> & vsub, expr_ref_buffer & inst, bool & found_expr) {
+    found_expr = true;
+    bool used_only_rel_domain = true;
+    for (int j=(vsub.size()-1); j>=0; j--) {
+        abs_val * a = mc.mk_value(vsub[j]);
+        projection * p = get_projection(mc, q, j, false);
+        //first, get offset
+        expr * o = p->get_offset();
+        expr_ref ie(m_m);
+        bool c_found_expr;
+        p->get_rep()->get_witness(mc, a, ie, o, q->get_decl_sort((q->get_num_decls()-1)-j), c_found_expr);
+        inst.push_back(ie);
+        found_expr = found_expr && c_found_expr;
+    }
+}
+
 /*
 def * model_constructor::get_projection_definition(mc_context & mc, func_decl * f) {
     def * dp = 0;

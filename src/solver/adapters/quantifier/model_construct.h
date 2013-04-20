@@ -194,6 +194,7 @@ public:
     expr * get_universe(mc_context & mc, sort * s, unsigned i);
     //get term vector to instantiate q with, based on condition c
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
+    void get_inst(mc_context & mc, quantifier * q, ptr_buffer<val> & vsub, expr_ref_buffer & inst, bool & found_expr);
 protected: //TEMPORARY? debugging, for explicit projection construction
     //use projections explicitly
     bool m_projection_definitions;

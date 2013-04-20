@@ -336,7 +336,7 @@ void classify_info::classify_term(expr * e, bool hasPolarity, bool polarity, boo
 
         model_checkable = true;
         witnessable = true;
-        //ground_result = true;
+        ground_result = true;
         bool children_model_checkable = true;
         bool children_witnessable = true;
         for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {

@@ -291,6 +291,7 @@ public:
 
 class simple_def : public def
 {
+    friend class mc_context;
 protected:
     cond * m_cond_else;
     value_tuple * m_else;
@@ -403,6 +404,8 @@ protected: //cached information
     ptr_addr_map< val, value_tuple * > m_val_to_value_tuple;
     //quantifiers to star conditions
     ptr_addr_map< quantifier, cond * > m_quant_to_cond_star;
+    //size to star
+    u_map< cond * > m_size_to_star;
     //true and false
     expr * m_true;
     expr * m_false;
@@ -427,6 +430,10 @@ protected: //helper functions
     bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, val * v);
     //add instantiation
     bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
+                           bool filterEval = false, bool filterRepair = false, bool filterCache = false);
+    bool add_instantiation(model_constructor * mct, quantifier * q, ptr_buffer<val> & vsub, expr_ref_buffer & instantiations, bool & repaired,
+                           bool filterEval = false, bool filterRepair = false, bool filterCache = false);
+    bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, ptr_buffer<val> & vsub, expr_ref_buffer & instantiations, bool & repaired,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
     bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false) {
         bool repaired;
@@ -584,8 +591,8 @@ protected:
 
     lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
                         ptr_buffer<val> & vsub, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
-    lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                        cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
+    //lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
+    //                    cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
 public:
     //eval check
     lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);
