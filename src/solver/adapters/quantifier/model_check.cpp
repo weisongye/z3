@@ -2270,7 +2270,7 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
     ptr_buffer<val> vsub;
     vsub.resize(q->get_num_decls(),0);
 
-    if (do_eval_check(mct, q, active, vars, vsub, instantiations, 0, repaired)==l_false) {
+    if (do_eval_check(mct, q, active, vars, vsub, instantiations, 0, repaired, true)==l_false) {
         TRACE("eval_check", tout << "Eval check failed on quantifier " << mk_pp(q,m_m) << "\n";);
     }
     else {
@@ -2289,7 +2289,7 @@ lbool mc_context::eval_check(model_constructor * mct, quantifier * q, expr_ref_b
 lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
                                 //cond * curr_cond, 
                                 ptr_buffer<val> & vsub, 
-                                expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
+                                expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, bool firstTime) {
     lbool eresult = l_undef;
     unsigned prev_size = active.size();
     if (!active.empty()) {
@@ -2387,7 +2387,6 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                 def * df = mct->get_def(*this,f);
                 if (!var_to_bind.empty()) {
                     var_bind_count += var_to_bind.size();
-#if 1
                     ptr_vector<eval_node> new_active;
                     if (var_bind_count<q->get_num_decls()) {
                         //have each newly bound variable notify that they evaluate
@@ -2431,8 +2430,7 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                         en->m_value = df->get_value(i)->get_value(0);
                         //do the match
                         for (unsigned j=0; j<children.size(); j++) {
-                            if (children[j]->is_expr()) {
-                                SASSERT(is_var(to_expr(children[j])->get_value()));
+                            if (children[j]->is_expr() && is_var(to_expr(children[j])->get_value())) {
                                 unsigned vid = to_var(to_expr(children[j])->get_value())->get_idx();
                                 if (vsub[vid]) {
                                     if (!is_eq(vsub[vid],to_value(cf->get_value(j))->get_value())) {
@@ -2492,7 +2490,7 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                                     SASSERT(vsub[k]);
                                 }
                                 //we have an instantiation
-                                if (!add_instantiation(mct, q, vsub, instantiations, repaired, true, true, true)) {
+                                if (add_instantiation(mct, q, vsub, instantiations, repaired, true, true, true)) {
                                     eresult = l_true;
                                 }
                                 TRACE("eval_check_debug", tout << "Finished instantiation.\n";);
@@ -2502,91 +2500,9 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                         for (unsigned j=0; j<var_to_bind.size(); j++) {
                             vsub[var_to_bind[j]] = 0;
                         }
-                    }
-                    if (var_bind_count<q->get_num_decls()) {
-                        en->unnotify_evaluation();
-                        for (unsigned j=0; j<var_to_bind.size(); j++) {
-                            if (vars[var_to_bind[j]]) {
-                                vars[var_to_bind[j]]->unnotify_evaluation();
-                            }
-                        }
-                    }
-#else
-                    //need to compute a compose
-                    def * da = new_complete_def();
-                    da->append_entry(*this, curr_cond, mk_value_tuple(children));
-                    //now, do compose
-                    def * dc = mk_compose(df,da);
-                    TRACE("eval_check_debug", tout << "Evaled, Made definition : \n";
-                                              display(tout,dc);
-                                              tout << "\n";
-                                              tout << "Var bind count : " << var_to_bind.size() << " / " << var_bind_count << "\n";);
-                    ptr_vector<eval_node> new_active;
-                    if (var_bind_count<q->get_num_decls()) {
-                        //have each newly bound variable notify that they evaluate
-                        for (unsigned j=0; j<var_to_bind.size(); j++) {
-                            if (vars[var_to_bind[j]]) {
-                                vars[var_to_bind[j]]->notify_evaluation(new_active);
-                            }
-                        }
-                        //as well as this
-                        en->notify_evaluation(new_active);
-                        if (!new_active.empty()) {
-                            TRACE("eval_check_debug", 
-                                for (unsigned i=0; i<new_active.size(); i++) {
-                                    tout << "Now active : " << mk_pp(new_active[i]->get_expr(),m_m) << "\n";
-                                }
-                                );
-                            new_active.append(active.size(), active.c_ptr());
-                        }
-                    }
-                    //process each entry in the compose
-                    for (unsigned i=0; i<dc->get_num_entries(); i++) {
-                        cond * cc = dc->get_condition(i);
-                        //try each entry
-                        bool binds_all_vars = true;
-                        for (unsigned j=0; j<var_to_bind.size(); j++) {
-                            if (!cc->get_value(var_to_bind[j])->is_value()) {
-                                binds_all_vars = false;
-                                TRACE("eval_check_debug", tout << "Index " << j << " does not bind all variables.\n";);
-                                break;
-                            }
-                            else if (vars[var_to_bind[j]]) {
-                                vars[var_to_bind[j]]->m_value = to_value(cc->get_value(var_to_bind[j]))->get_value();
-                            }
-                        }
-                        if (binds_all_vars) {
-                            TRACE("eval_check_debug", tout << "Process entry "; display(tout, dc->get_condition(i)); tout << "\n";);
-                            if (var_bind_count<q->get_num_decls()) {
-                                en->m_value = dc->get_value(i)->get_value(0);
-                                if (new_active.empty()) {
-                                    if (en->get_expr()!=q->get_expr() || m_m.is_false(to_expr(en->m_value)->get_value())) {
-                                        //SASSERT(!active.empty() || en->get_expr()==q->get_expr());
-                                        eresult = do_eval_check(mct, q, active, vars, cc, instantiations, var_bind_count, repaired);
-                                        if (eresult==l_false) {
-                                            return l_false;
-                                        }
-                                    }
-                                }
-                                else {
-                                    eresult = do_eval_check(mct, q, new_active, vars, cc, instantiations, var_bind_count, repaired);
-                                    if (eresult==l_false) {
-                                        return l_false;
-                                    }
-                                }
-                            }
-                            else {
-                                //just do the evaluation now
-                                TRACE("eval_check_debug", tout << "Add instantiation "; display(tout, cc); tout << "\n";);
-                                for (unsigned k=0; k<cc->get_size(); k++) {
-                                    SASSERT(cc->get_value(k)->is_value());
-                                }
-                                //we have an instantiation
-                                if (!add_instantiation(mct, q, cc, instantiations, repaired, true, true, true)) {
-                                    eresult = l_true;
-                                }
-                                TRACE("eval_check_debug", tout << "Finished instantiation.\n";);
-                            }
+                        if (!firstTime && eresult==l_true) {
+                            SASSERT(!instantiations.empty());
+                            break;
                         }
                     }
                     if (var_bind_count<q->get_num_decls()) {
@@ -2597,7 +2513,6 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                             }
                         }
                     }
-#endif
                 }
                 else {
                     //just evaluate
@@ -2665,7 +2580,7 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                                  tout << "WARNING: no terms to evaluate.\n";);
         return l_false;
     }
-    SASSERT(active.size()==prev_size);
+    SASSERT(eresult==l_false || active.size()==prev_size);
     return eresult;
 }
 

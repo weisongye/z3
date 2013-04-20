@@ -590,7 +590,7 @@ protected:
     eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
 
     lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                        ptr_buffer<val> & vsub, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
+                        ptr_buffer<val> & vsub, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, bool firstTime = false);
     //lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
     //                    cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
 public:
