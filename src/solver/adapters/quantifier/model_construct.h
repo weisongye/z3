@@ -195,6 +195,9 @@ public:
     //get term vector to instantiate q with, based on condition c
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
     void get_inst(mc_context & mc, quantifier * q, ptr_buffer<val> & vsub, expr_ref_buffer & inst, bool & found_expr);
+    //
+    bool append_entry_to_annotated_simple_def(mc_context & mc, func_decl * f, cond * c, term_cond * tc, value_tuple * v);
+
 protected: //TEMPORARY? debugging, for explicit projection construction
     //use projections explicitly
     bool m_projection_definitions;

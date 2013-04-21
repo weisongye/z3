@@ -217,6 +217,22 @@ public:
     bool is_star();
 };
 
+//term condition (tuple of terms)
+class term_cond {
+    friend class mc_context;
+protected:
+    //the data
+    unsigned m_size;
+    expr * m_vec[];
+    term_cond(unsigned sz) : m_size(sz) {}
+    static term_cond * mk(mc_context & mc, unsigned arity);
+public:
+    //get the size of the condition
+    unsigned get_size() { return m_size; }
+    //get the value at index
+    expr * get_value(unsigned i) { return m_vec[i]; }
+};
+
 //trie of values
 class cond_generalization_trie 
 {
@@ -250,12 +266,14 @@ protected:
 public:
     enum {
         KIND_COMPLETE,
-        KIND_SIMPLE
+        KIND_SIMPLE,
+        KIND_ANNOTATED_SIMPLE
     };
     //get kind
     unsigned get_kind() { return m_kind; }
     bool is_complete() { return m_kind==KIND_COMPLETE; }
     bool is_simple() { return m_kind==KIND_SIMPLE; }
+    bool is_annotated_simple() { return m_kind==KIND_ANNOTATED_SIMPLE; }
 public:
     virtual unsigned get_num_entries() = 0;
     virtual cond * get_condition(unsigned i) = 0;
@@ -263,8 +281,9 @@ public:
     //add entry to the definition
     virtual bool append_entry(mc_context & mc, cond * c, value_tuple * val) = 0;
     //c should be a ground condition
-    virtual value_tuple * evaluate(mc_context & mc, cond * c) = 0;
-    virtual value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals) = 0;
+    virtual value_tuple * evaluate(mc_context & mc, cond * c, bool ignore_else = false) = 0;
+    virtual value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals, bool ignore_else = false) = 0;
+    //c should be a ground condition
     virtual void simplify(mc_context & mc) = 0;
 };
 
@@ -282,8 +301,8 @@ public:
     //add entry to the definition
     bool append_entry(mc_context & mc, cond * c, value_tuple * val);
     //c should be a ground condition
-    value_tuple * evaluate(mc_context & mc, cond * c);
-    value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals);
+    value_tuple * evaluate(mc_context & mc, cond * c, bool ignore_else = false);
+    value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals, bool ignore_else = false);
     //value_tuple * evaluate(mc_context & mc, ptr_buffer<abs_val> & vals);
     //simplify the definition
     void simplify(mc_context & mc);
@@ -296,19 +315,32 @@ protected:
     cond * m_cond_else;
     value_tuple * m_else;
 public:
-    simple_def() : def(KIND_SIMPLE), m_else(0) {}
+    simple_def(unsigned k = KIND_SIMPLE) : def(k), m_else(0) {}
     unsigned get_num_entries() { return m_conds.size()+(m_else ? 1 : 0); }
     cond * get_condition(unsigned i) { return i==m_conds.size() ? m_cond_else : m_conds[i]; }
     value_tuple * get_value(unsigned i) { return i==m_values.size() ? m_else : m_values[i]; }
     void set_else(cond * ce, value_tuple * ve) { m_cond_else = ce; m_else = ve; }
     value_tuple * get_else() { return m_else; }
-    //add entry to the definition
+    //add entry to the definition (should use terms)
     bool append_entry(mc_context & mc, cond * c, value_tuple * v);
     //c should be a ground condition
-    value_tuple * evaluate(mc_context & mc, cond * c);
-    value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals);
+    value_tuple * evaluate(mc_context & mc, cond * c, bool ignore_else = false);
+    value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals, bool ignore_else = false);
     //simplify the definition
     void simplify(mc_context & mc) {}
+};
+
+class annotated_simple_def : public simple_def
+{
+    friend class mc_context;
+protected:
+    ptr_vector<term_cond> m_term_conds;
+public:
+    annotated_simple_def() : simple_def(KIND_ANNOTATED_SIMPLE) {}
+    term_cond * get_term_condition(unsigned i) { return i==m_term_conds.size() ? 0 : m_term_conds[i]; }
+    //add entry to the definition (should use terms)
+    bool append_entry(mc_context & mc, cond * c, value_tuple * v) { SASSERT(false); return false; }
+    bool append_entry(mc_context & mc, cond * c, term_cond * tc, value_tuple * v);
 };
 
 
@@ -322,6 +354,10 @@ inline simple_def * to_simple(def * d) {
     return static_cast<simple_def *>(d);
 }
 
+inline annotated_simple_def * to_annotated_simple(def * d) {
+    SASSERT(d->get_kind()==def::KIND_ANNOTATED_SIMPLE);
+    return static_cast<annotated_simple_def *>(d);
+}
 
 class inst_trie 
 {
@@ -364,8 +400,6 @@ public:
     bool can_evaluate() { return is_app(m_e) && m_children_eval_count==to_app(m_e)->get_num_args(); }
 };
 
-
-
 class model_constructor;
 
 class mc_context
@@ -373,8 +407,6 @@ class mc_context
 protected:
     // do simplification?
     bool m_simplification;
-    // do partial evaluation
-    bool m_partial_evaluation;
     // do repair
     bool m_model_repairing;
     // do instantiation limiting
@@ -404,6 +436,7 @@ protected: //cached information
     ptr_addr_map< val, value_tuple * > m_val_to_value_tuple;
     //quantifiers to star conditions
     ptr_addr_map< quantifier, cond * > m_quant_to_cond_star;
+
     //size to star
     u_map< cond * > m_size_to_star;
     //true and false
@@ -417,13 +450,23 @@ protected: //cached information
     u_map< abs_val * > m_new_vals;
     //instantiations produced
     obj_map< quantifier, inst_trie * > m_inst_trie;
+private:
+    //evaluate cache
+    obj_map< expr, val * > m_evaluations;
+    //
+    bool m_evaluation_cache_active;
+    //set evaluation cache active
+    void set_evaluate_cache_active(bool v) {
+        if (v) { m_evaluations.reset(); }
+        m_evaluation_cache_active = v;
+    }
 protected: //helper functions
     //helper for check, the third argument is an optional mapping from variables to the definitions that should be used for them
     def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst);
     //helper for exhaustive_instantiate
     bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
     //evaluate
-    val * evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & vsub, bool add_entries_ensuring_non_star = false);
+    val * evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & vsub, expr * aeens_t = 0, bool add_entries_ensuring_non_star = false);
     val * evaluate(model_constructor * mct, expr * e, bool add_entries_ensuring_non_star = false);
     //repair model
     bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, bool polarity);
@@ -435,7 +478,7 @@ protected: //helper functions
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
     bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, ptr_buffer<val> & vsub, expr_ref_buffer & instantiations, bool & repaired,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
-    bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false) {
+    bool add_instantiation_simple(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false) {
         bool repaired;
         return add_instantiation(mct,q,c,instantiations,repaired, filterEval, false);
     }
@@ -518,6 +561,9 @@ public:
     cond * mk_meet(cond * c1, cond * c2);
     //condition make compose
     cond * mk_compose(cond * c1, value_tuple * v, cond * c2);
+    //do compose
+    bool do_compose(ptr_buffer<val> & c1, ptr_buffer<val> & v, cond * c2, 
+                    expr_ref_buffer & e1, term_cond * tc2);
     //make product
     def * mk_product(def * d1, def * d2);
     //make compose
@@ -546,10 +592,16 @@ public:
     cond * mk_cond(ptr_buffer<val> & vals);
     // copy the condition
     cond * copy(cond * c);
+    //make term condition
+    term_cond * mk_term_cond(ptr_buffer<expr> & args);
+    //make term condition
+    term_cond * mk_term_cond(expr * t);
     //make new def
     complete_def * new_complete_def();
     //make new def
     simple_def * new_simple_def();
+    //make new def
+    annotated_simple_def * new_annotated_simple_def();
 public: //other helper functions
     //get classifier 
     classify_util * get_classify_util() { return &m_cutil; }
@@ -577,8 +629,10 @@ public: //display functions
     //display the entry
     void display(std::ostream & out, cond * c, val * v);
     void display(std::ostream & out, cond * c, value_tuple * vt);
+    //display the term condition
+    void display(std::ostream & out, term_cond * c);
     //display the definition
-    void display(std::ostream & out, def * d );
+    void display(std::ostream & out, def * d, bool display_annotations = false);
 public:
     //check the quantifier
     lbool check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, expr_ref_buffer & instantiations_star, bool mk_inst_star);
@@ -590,9 +644,8 @@ protected:
     eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
 
     lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                        ptr_buffer<val> & vsub, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, bool firstTime = false);
-    //lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-    //                    cond * curr_cond, expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
+                        ptr_buffer<val> & vsub, expr_ref_buffer & esub, 
+                        expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, bool firstTime = false);
 public:
     //eval check
     lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);

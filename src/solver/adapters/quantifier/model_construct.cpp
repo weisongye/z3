@@ -730,6 +730,7 @@ void model_constructor::assert_partial_model(mc_context & mc, obj_map< expr, exp
                                           mc.display(tout,ev);
                                           tout << "\n";);
             ptr_buffer<abs_val> avals;
+            ptr_buffer<expr> eargs;
             for (unsigned i = 0; i<to_app(e)->get_num_args(); i++ ){
                 expr * ec = to_app(e)->get_arg(i);
                 expr * ecv = ec;
@@ -743,11 +744,16 @@ void model_constructor::assert_partial_model(mc_context & mc, obj_map< expr, exp
                 //record witness for relevant domain
                 projection * p = get_projection(mc, f, i);
                 p->add_relevant_domain(ec, v);
+                eargs.push_back(ec);
             }
-            cond * c = mc.mk_cond(avals);
             def * ed = get_ground_def(mc, f);
+            SASSERT(ed->is_annotated_simple());
+            annotated_simple_def * eds = to_annotated_simple(ed);
+            //append the entry
+            cond * c = mc.mk_cond(avals);
+            term_cond * tc = mc.mk_term_cond(eargs);
             value_tuple * vt = mc.mk_value_tuple(mc.mk_val(ev));
-            ed->append_entry(mc, c, vt);
+            eds->append_entry(mc, c, tc, vt);
         }
         //add to universe if range is uninterpreted sort
         sort * sev = get_sort(ev);
@@ -842,7 +848,7 @@ unsigned model_constructor::get_quantifier_id(mc_context & mc, quantifier * q) {
 def * model_constructor::get_ground_def(mc_context & mc, func_decl * f) {
     unsigned id = get_func_id(mc, f);
     if (!m_ground_def.contains(id)) {
-        def * d = mc.new_simple_def();
+        def * d = mc.new_annotated_simple_def();
         m_ground_def.insert(id, d);
         return d;
     }
@@ -942,7 +948,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
             value_tuple * vt = mc.mk_value_tuple(v);
             cond * cstar = mc.mk_star(f->get_arity());
             if (m_simple_definitions) {
-                simple_def * sd = mc.new_simple_def();
+                annotated_simple_def * sd = mc.new_annotated_simple_def();
                 sd->set_else(cstar, vt);
                 d = sd;
             }
@@ -981,16 +987,18 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
             //}
             //else 
             if (m_simple_definitions) {
-                simple_def * sd = mc.new_simple_def();
+                annotated_simple_def * sdg = to_annotated_simple(dg);
+                annotated_simple_def * sd = mc.new_annotated_simple_def();
                 for( unsigned j=0; j<dg->get_num_entries(); j++ ){
-                    sd->append_entry(mc, dg->get_condition(j), dg->get_value(j));
+                    sd->append_entry(mc, sdg->get_condition(j), sdg->get_term_condition(j), sdg->get_value(j));
                 }
                 cond * cstar = mc.mk_star(f->get_arity());
                 sd->set_else(cstar, dg->get_value(0));
                 d = sd;
             }
             else {
-                d = mc.new_complete_def();
+                complete_def * cd = mc.new_complete_def();
+                d = cd;
                 for( unsigned j=0; j<dg->get_num_entries(); j++ ){
                     d->append_entry(mc, dg->get_condition(j), dg->get_value(j));
                 }
@@ -1058,50 +1066,50 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                         break;
                     }
                 }
-            }
-            //if it is not complete, complete it
-            if (!is_complete) {
-                ptr_buffer<abs_val> avals;
-                for (unsigned k=0; k<f->get_arity(); k++) {
-                    abs_val * av = projs[k]->get_projected_default(mc);
-                    avals.push_back(av);
+                //if it is not complete, complete it
+                if (!is_complete) {
+                    ptr_buffer<abs_val> avals;
+                    for (unsigned k=0; k<f->get_arity(); k++) {
+                        abs_val * av = projs[k]->get_projected_default(mc);
+                        avals.push_back(av);
+                    }
+                    cond * cstar = mc.mk_cond(avals);
+                    value_tuple * def_val = dg->get_value(0);
+                    TRACE("model_construct",tout << "Complete the definition with ";
+                                            mc.display(tout,cstar,def_val);
+                                            tout << "\n";);
+                    d->append_entry(mc, cstar, def_val);
                 }
-                cond * cstar = mc.mk_cond(avals);
-                value_tuple * def_val = dg->get_value(0);
-                TRACE("model_construct",tout << "Complete the definition with ";
-                                        mc.display(tout,cstar,def_val);
-                                        tout << "\n";);
-                d->append_entry(mc, cstar, def_val);
-            }
 
-            //simplify the definition
-            if (m_simplification) {     
-                TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
-                                        mc.display(tout, d);
-                                        tout << "\n";);           
-                d->simplify(mc);
-                TRACE("model_construct_simp",tout << "After simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
-                                        mc.display(tout, d);
-                                        tout << "\n";);
-            }
+                //simplify the definition
+                if (m_simplification) {     
+                    TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
+                                            mc.display(tout, d);
+                                            tout << "\n";);           
+                    d->simplify(mc);
+                    TRACE("model_construct_simp",tout << "After simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
+                                            mc.display(tout, d);
+                                            tout << "\n";);
+                }
 
 #ifdef MODEL_CONSTRUCT_DEBUG
-            //for debugging: make sure all ground arguments agree on their evaluation
-            for (unsigned i=0; i<dg->get_num_entries(); i++) {
-                value_tuple * vt = d->evaluate(mc, dg->get_condition(i));
-                if (!mc.is_eq(vt->get_value(0), dg->get_value(i)->get_value(0))) {
-                    std::cout << "WARN #2" << std::endl;
-                    TRACE("model_construct_warn",tout << "WARNING: the following ground constraint is not satisfied by model construction: \n";
-                                                 tout << "  Function : " << mk_pp(f,m_m) << "\n";
-                                                 tout << "  Constraint : ";
-                                                 mc.display(tout, dg->get_condition(i), dg->get_value(i));
-                                                 tout << "\n";
-                                                 tout << "  Got result : ";
-                                                 mc.display(tout, vt);
-                                                 tout << "\n";);
+                //for debugging: make sure all ground arguments agree on their evaluation
+                for (unsigned i=0; i<dg->get_num_entries(); i++) {
+                    value_tuple * vt = cd->evaluate(mc, dg->get_condition(i));
+                    if (!mc.is_eq(vt->get_value(0), dg->get_value(i)->get_value(0))) {
+                        std::cout << "WARN #2" << std::endl;
+                        TRACE("model_construct_warn",tout << "WARNING: the following ground constraint is not satisfied by model construction: \n";
+                                                     tout << "  Function : " << mk_pp(f,m_m) << "\n";
+                                                     tout << "  Constraint : ";
+                                                     mc.display(tout, dg->get_condition(i), dg->get_value(i));
+                                                     tout << "\n";
+                                                     tout << "  Got result : ";
+                                                     mc.display(tout, vt);
+                                                     tout << "\n";);
+                    }
                 }
-            }
 #endif
+            }
         }
         //display
         TRACE("model_construct",tout << "Definition for " << mk_pp(f,m_m) << ": " << "\n";
@@ -1195,3 +1203,23 @@ def * model_constructor::get_projection_definition(mc_context & mc, func_decl * 
     return dp;
 }
 */
+
+bool model_constructor::append_entry_to_annotated_simple_def(mc_context & mc, func_decl * f, cond * c, term_cond * tc, value_tuple * v) {
+    def * df  = get_def(mc, f);
+    SASSERT(df->is_annotated_simple());
+    annotated_simple_def * sdf = to_annotated_simple(df);
+    if (sdf->append_entry(mc, c, tc, v)) {
+        //make sure it is in relevant domain
+        for (unsigned i=0; i<f->get_arity(); i++) {
+            projection * p = get_projection(mc, f, i);
+            SASSERT(c->get_value(i)->is_value());
+            val * vi = to_value(c->get_value(i))->get_value();
+            if (!p->has_relevant_domain_val(vi)) {
+                expr * ei = tc->get_value(i);
+                p->add_relevant_domain(ei, vi);
+            }
+        }
+        return true;
+    }
+    return false;
+}
