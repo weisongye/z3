@@ -18,6 +18,7 @@ Author:
 #define _MODEL_CONSTRUCT_H_
 
 #include"model_check.h"
+#include"full_model_check.h"
 
 namespace qsolver
 {
@@ -135,8 +136,8 @@ protected:
     //partial definitions reflecting ground assertions
     u_map< annotated_simple_def * > m_ground_def;
     //complete definitions
-    u_map< annotated_simple_def * > m_def;
-    u_map< complete_def * > m_complete_def;
+    u_map< annotated_simple_def * > m_annotated_simple_def;
+    u_map< def * > m_def;
     //terms that need to be in the partial model
     expr_ref_buffer m_partial_model_terms;
     //universe for uninterpreted sorts
@@ -191,7 +192,6 @@ public:
     annotated_simple_def * get_ground_def(mc_context & mc, func_decl * f);
     //get the complete definition for function
     annotated_simple_def * get_annotated_simple_def(mc_context & mc, func_decl * f);
-    complete_def * get_complete_def(mc_context & mc, func_decl * f);
     def * get_def(mc_context & mc, func_decl * f);
     //get universe size
     unsigned get_num_universe(sort * s);
@@ -199,9 +199,9 @@ public:
     expr * get_universe(mc_context & mc, sort * s, unsigned i);
     //get term vector to instantiate q with, based on condition c
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
-    void get_inst(mc_context & mc, quantifier * q, ptr_buffer<val> & vsub, expr_ref_buffer & inst, bool & found_expr);
+    void get_inst(mc_context & mc, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & inst, bool & found_expr);
     //
-    bool append_entry_to_annotated_simple_def(mc_context & mc, func_decl * f, cond * c, term_cond * tc, value_tuple * v);
+    bool append_entry_to_annotated_simple_def(mc_context & mc, func_decl * f, term_cond * c, term_cond * tc, expr * v);
 
 protected: //TEMPORARY? debugging, for explicit projection construction
     //use projections explicitly

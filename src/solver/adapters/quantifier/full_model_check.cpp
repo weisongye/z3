@@ -19,10 +19,277 @@ Author:
 #include"ast_pp.h"
 #include"model_construct.h"
 #include"classify_quantifier.h"
+#include"model_check.h"
 
 //#define EVAL_CHECK_DEBUG
 
 using namespace qsolver;
+
+value_tuple * value_tuple::mk(mc_context & mc, unsigned arity) {
+    //small_object_allocator & allocator = _m.get_allocator();
+    void * mem = mc.allocate(sizeof(value_tuple) + arity * sizeof(val*) );
+    return new (mem) value_tuple(arity);
+}
+
+cond * cond::mk(mc_context & mc, unsigned arity) {
+    //small_object_allocator & allocator = _m.get_allocator();
+    void * mem  = mc.allocate(sizeof(value_tuple) + arity * sizeof(abs_val*) );
+    return new (mem) cond(arity);
+}
+
+term_cond * term_cond::mk(mc_context & mc, unsigned arity) {
+    //small_object_allocator & allocator = _m.get_allocator();
+    void * mem  = mc.allocate(sizeof(value_tuple) + arity * sizeof(abs_val*) );
+    return new (mem) term_cond(arity);
+}
+
+bool cond::is_value() {
+    for (unsigned i=0; i<get_size(); i++) {
+        if (!m_vec[i]->is_value()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool cond::is_star() {
+    for (unsigned i=0; i<get_size(); i++) {
+        if (!m_vec[i]->is_star()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool cond_generalization_trie::has_generalization(mc_context & mc, cond * c, unsigned index, abs_val * star) {
+    SASSERT(index<c->get_size());
+    abs_val * curr = c->get_value(index);
+    cond_generalization_trie * ct;
+    if (m_children.find(curr, ct)) {
+        if (index==(c->get_size()-1)) {
+            return true;
+        }
+        else if (ct->has_generalization(mc, c, index+1, star)) {
+            return true;
+        }
+    }
+    if (star!=curr && m_children.find(star, ct)) {
+        return index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star);
+    }
+    else {
+
+        return false;
+    }
+}
+
+bool cond_generalization_trie::add(mc_context & mc, cond * c, unsigned index, abs_val * star, unsigned data_val) {
+    if (index==c->get_size()) {
+        if (m_data==0) {
+            m_data = data_val+1;
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    else {
+        abs_val * curr = c->get_value(index);
+        cond_generalization_trie * ct;
+        //first check if it is generalized
+        if (star!=curr && m_children.find(star,ct)) {
+            if (index==(c->get_size()-1) || ct->has_generalization(mc, c, index+1, star)) {
+                return false;
+            }
+        }
+        if (m_children.find(curr, ct)) {
+            return ct->add(mc, c, index+1, star, data_val);
+        }
+        else {
+            void * mem = mc.allocate(sizeof(cond_generalization_trie));
+            ct = new (mem) cond_generalization_trie;
+            m_children.insert(curr, ct);
+            return ct->add(mc, c, index+1, star, data_val);
+        }
+    }
+}
+
+bool cond_generalization_trie::add(mc_context & mc, cond * c, unsigned data_val) { 
+    return add(mc, c, 0, mc.mk_star(), data_val); 
+}
+
+bool cond_generalization_trie::evaluate(mc_context & mc, cond * c, unsigned index, unsigned & data_val) {
+    if (index==c->get_size()) {
+        if (m_data==0) {
+            return false;
+        }
+        else {
+            data_val = m_data-1;
+            return true;
+        }
+    }
+    else {
+        cond_generalization_trie * ct;
+        if (m_children.find(c->get_value(index), ct)) {
+            return ct->evaluate(mc, c, index+1, data_val);
+        }
+        else {
+            return false;
+        }
+    }
+}
+
+bool cond_generalization_trie::evaluate(mc_context & mc, ptr_buffer<abs_val> & vals, unsigned index, unsigned & data_val) {
+    if (index==vals.size()) {
+        if (m_data==0) {
+            return false;
+        }
+        else {
+            data_val = m_data-1;
+            return true;
+        }
+    }
+    else {
+        cond_generalization_trie * ct;
+        if (m_children.find(vals[index], ct)) {
+            return ct->evaluate(mc, vals, index+1, data_val);
+        }
+        else {
+            return false;
+        }
+    }
+}
+
+bool cond_generalization_trie::evaluate(mc_context & mc, ptr_buffer<val> & vals, unsigned index, unsigned & data_val) {
+    if (index==vals.size()) {
+        if (m_data==0) {
+            return false;
+        }
+        else {
+            data_val = m_data-1;
+            return true;
+        }
+    }
+    else {
+        cond_generalization_trie * ct;
+        if (m_children.find(mc.mk_value(vals[index]), ct)) {
+            return ct->evaluate(mc, vals, index+1, data_val);
+        }
+        else {
+            return false;
+        }
+    }
+}
+
+bool def::append_entry(mc_context & mc, cond * c, value_tuple * v) {
+    bool has_gen = !m_cgt.add(mc, c, m_conds.size());
+
+    // the unoptimized version:
+    /*
+    for (int i=(m_conds.size()-1); i>=0; i--) {
+        if (mc.is_generalization(m_conds[i],c)) {
+            SASSERT(has_gen);
+            return true;
+        }
+    }
+    SASSERT(!has_gen);
+    return false;
+    */
+    if (!has_gen) {
+        m_conds.push_back(c);
+        m_values.push_back(v);
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+value_tuple * def::evaluate(mc_context & mc, cond * c, bool ignore_else) {
+    SASSERT(!ignore_else);
+    //value_tuple * vte = 0;
+    unsigned index;
+    if (m_cgt.evaluate(mc, c, index)) {
+        //vte = m_values[index];
+        return m_values[index];
+    }
+    //unoptimized (or for non-ground)
+    for( unsigned i=0; i<m_conds.size(); i++ ){
+        if (mc.is_compatible(m_conds[i], c)) {
+            //if (vte) {
+            //    SASSERT(index==i);
+            //}
+            return m_values[i];
+        }
+    }
+    return 0;
+}
+
+value_tuple * def::evaluate(mc_context & mc, ptr_buffer<val> & vals, bool ignore_else) {
+    SASSERT(!ignore_else);
+    //value_tuple * vte = 0;
+    unsigned index;
+    if (m_cgt.evaluate(mc, vals, index)) {
+        //vte = m_values[index];
+        return m_values[index];
+    }
+    //unoptimized (or for non-ground)
+    for( unsigned i=0; i<m_conds.size(); i++ ){
+        if (mc.is_generalization(m_conds[i], vals)) {
+            //if (vte) {
+            //    SASSERT(index==i);
+            //}
+            return m_values[i];
+        }
+    }
+    return 0;
+}
+
+void def::simplify(mc_context & mc) {
+    if (m_has_simplified) {
+        TRACE("def_simplify",  tout << "Already simplified ? " << this << " ";
+                                mc.display(tout,this);
+                                tout << std::endl;);
+    }
+    else {
+        TRACE("def_simplify", tout << "Simplify " << this << "\n";);
+    }
+    SASSERT(!m_has_simplified);
+    m_has_simplified = true;
+    TRACE("def_simplify", tout << "Simplifying ";
+                          mc.display(tout,this);
+                          tout << "..." << "\n";);
+    unsigned i = 0;
+    while( i<m_conds.size() ){
+        bool found_generalization = false;
+        bool can_simplify = true;
+        for( unsigned j=(i+1); j<m_conds.size(); j++ ){
+            if (mc.is_compatible(m_conds[j], m_conds[i])) {
+                if (!mc.is_eq(m_values[j], m_values[i])) {
+                    TRACE("def_simplify", mc.display(tout, m_conds[j]); tout << "\n"; tout << j << " is compat, not eq " << i << "\n";);
+                    can_simplify = false;
+                    break;
+                }
+                if (mc.is_generalization(m_conds[j], m_conds[i])) {
+                    TRACE("def_simplify", tout << j << " is generalized, eq " << i << std::endl;);
+                    found_generalization = true;
+                    break;
+                }
+            }
+        }
+        if( can_simplify && found_generalization ){
+            TRACE("def_simplify", tout << "condition ";
+                                  mc.display(tout, m_conds[i]);
+                                  tout << " is m_inactive." << "\n";);
+            m_conds.erase(m_conds.begin()+i);
+            m_values.erase(m_values.begin()+i);
+        }
+        else {
+            i++;
+        }
+    }
+}
+
+
 
 full_model_check::full_model_check(ast_manager & _m) : m_m(_m), m_au(_m), m_bvu(_m) {
     m_simplification = false;
@@ -60,7 +327,7 @@ lbool full_model_check::run(mc_context & mc, model_constructor * mct, quantifier
         TRACE("mc_operation", tout << "Compute definition for bad...\n";);
         ptr_vector<def> approx;
         for (unsigned i=0; i<q->get_num_decls(); i++) {
-            def * dx = mc.new_complete_def();
+            def * dx = mc.new_def();
             projection * p = mct->get_projection(mc, q, i);
             value_tuple * def_vt;
             for (unsigned j=0; j<p->get_num_relevant_domain(); j++) {
@@ -182,7 +449,7 @@ def * full_model_check::do_check(mc_context & mc, model_constructor * mct, quant
             }
         }
         //trivial case
-        d = mc.new_complete_def();
+        d = mc.new_def();
         cond * star = mc.mk_star(mct, q);
         val * v = mc.mk_val(e);
         value_tuple * vt = mc.mk_value_tuple(v);
@@ -217,7 +484,7 @@ def * full_model_check::do_check(mc_context & mc, model_constructor * mct, quant
                     else { //make it directly
                         //it should be negated (since e is not the variable itself)
                         SASSERT(is_flipped);
-                        d = mc.new_complete_def();
+                        d = mc.new_def();
                         cond * cstar = mc.mk_star(mct, q);
                         val * vl = mc.mk_val(v, 0, is_flipped);
                         d->append_entry(mc, cstar, mc.mk_value_tuple(vl));
@@ -244,16 +511,18 @@ def * full_model_check::do_check(mc_context & mc, model_constructor * mct, quant
             func_decl * f = to_app(e)->get_decl();
             if (is_uninterp(e)) {
                 //uninterpreted case
-                def * df = mct->get_complete_def(mc, f);
+                def * df = mct->get_def(mc, f);
                 if (f->get_arity()==0) {
                     //if constant, look up the definition
-                    d = mc.new_complete_def();
+                    d = mc.new_def();
                     cond * star = mc.mk_star(mct, q);
                     value_tuple * vt = df->get_value(0);
                     d->append_entry(mc, star, vt);
                 } else {
+                    TRACE("model_check_debug",tout << "Do uninterpreted compose...\n";);
                     //interpretation is the composition of f with arguments
                     d = mc.mk_compose(df,d);
+                    TRACE("model_check_debug",tout << "Done with uninterpreted compose.\n";);
                 }
             }
             else {

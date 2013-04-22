@@ -498,7 +498,7 @@ void projection::get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * 
 /*
 def * projection::get_definition(mc_context & mc) {
     if (!m_proj_def) {
-        m_proj_def = mc.new_complete_def();
+        m_proj_def = mc.new_def();
         if (m_type==projection::PROJ_POINTWISE) {
             //it is all values in relevant domain v->v, followed by *->eval(e)
             for (unsigned i=0; i<m_rel_domain_val.size(); i++) {
@@ -595,8 +595,8 @@ void model_constructor::reset_round(mc_context & mc) {
     //     }
     // }
     m_ground_def.reset();
+    m_annotated_simple_def.reset();
     m_def.reset();
-    m_complete_def.reset();
     m_partial_model_terms.reset();
 
     //TODO: make this only when pop happens?
@@ -730,8 +730,8 @@ void model_constructor::assert_partial_model(mc_context & mc, obj_map< expr, exp
                                           tout << " -> ";
                                           mc.display(tout,ev);
                                           tout << "\n";);
-            ptr_buffer<abs_val> avals;
-            ptr_buffer<expr> eargs;
+            ptr_buffer<expr> args;
+            ptr_buffer<expr> annotations;
             for (unsigned i = 0; i<to_app(e)->get_num_args(); i++ ){
                 expr * ec = to_app(e)->get_arg(i);
                 expr * ecv = ec;
@@ -740,21 +740,17 @@ void model_constructor::assert_partial_model(mc_context & mc, obj_map< expr, exp
                     SASSERT(m.contains(ec));
                     ecv = m.find(ec);
                 }
-                val * v = mc.mk_val(ecv);
-                avals.push_back(mc.mk_value(v));
                 //record witness for relevant domain
                 projection * p = get_projection(mc, f, i);
-                p->add_relevant_domain(ec, v);
-                eargs.push_back(ec);
+                p->add_relevant_domain(ec, mc.mk_val(ecv));
+                args.push_back(ecv);
+                annotations.push_back(ec);
             }
-            def * ed = get_ground_def(mc, f);
-            SASSERT(ed->is_annotated_simple());
-            annotated_simple_def * eds = to_annotated_simple(ed);
+            annotated_simple_def * eds = get_ground_def(mc, f);
             //append the entry
-            cond * c = mc.mk_cond(avals);
-            term_cond * tc = mc.mk_term_cond(eargs);
-            value_tuple * vt = mc.mk_value_tuple(mc.mk_val(ev));
-            eds->append_entry(mc, c, tc, vt);
+            term_cond * c = mc.mk_term_cond(args);
+            term_cond * a = mc.mk_term_cond(annotations);
+            eds->append_entry(mc, c, a, ev);
         }
         //add to universe if range is uninterpreted sort
         sort * sev = get_sort(ev);
@@ -953,7 +949,7 @@ annotated_simple_def * model_constructor::get_annotated_simple_def(mc_context & 
     SASSERT(m_simple_definitions);
     unsigned id = get_func_id(mc, f);
     annotated_simple_def * sd;
-    if (m_def.find(id, sd)) {
+    if (m_annotated_simple_def.find(id, sd)) {
         return sd;
     }
     else {
@@ -964,48 +960,46 @@ annotated_simple_def * model_constructor::get_annotated_simple_def(mc_context & 
         TRACE("model_construct",tout << "Constructing definition for " << mk_pp(f,m_m) << "... " << "\n";);
         TRACE("model_construct", tout << "Ground definition for " << mk_pp(f,m_m) << " is: \n";
                                         mc.display(tout, dg);
-                                        tout << ", " << dg->get_num_entries() << "\n";);
+                                        tout << "\n";);
         if (dg->get_num_entries()==0) {
-            val * v = mc.mk_val(mc.get_some_value(f->get_range()));
-            value_tuple * vt = mc.mk_value_tuple(v);
-            cond * cstar = mk_star(mc, f);
-            sd->set_else(cstar, vt);
+            expr * e = mc.get_some_value(f->get_range());
+            sd->set_else(e);
         }
         else {
             for (unsigned j=0; j<dg->get_num_entries(); j++) {
-                sd->append_entry(mc, dg->get_condition(j), dg->get_term_condition(j), dg->get_value(j));
+                sd->append_entry(mc, dg->get_condition(j), dg->get_annotation(j), dg->get_value(j));
             }
-            cond * cstar = mk_star(mc, f);
-            sd->set_else(cstar, dg->get_value(0));
+            sd->set_else(dg->get_value(0));
         }
         //display
         TRACE("model_construct",tout << "Definition for " << mk_pp(f,m_m) << ": " << "\n";
                                 mc.display(tout, sd);
-                                tout << ", " << sd->get_num_entries() << "\n";);
+                                tout << "\n";);
 
-        m_def.insert(id, sd);
+        m_annotated_simple_def.insert(id, sd);
         return sd;
     }
 }
 
 
-complete_def * model_constructor::get_complete_def(mc_context & mc, func_decl * f) {
-    complete_def * cd = 0;
+def * model_constructor::get_def(mc_context & mc, func_decl * f) {
+    def * cd = 0;
     unsigned id = get_func_id(mc, f);
-    if (m_complete_def.find(id, cd)) {
+    if (m_def.find(id, cd)) {
         return cd;
     }
     else {
-        cd = mc.new_complete_def();
+        cd = mc.new_def();
         if (m_simple_definitions) {
             annotated_simple_def * sd = get_annotated_simple_def(mc, f);
+            SASSERT(sd->get_else());
             //convert simple def to complete def
             for( unsigned j=0; j<sd->get_num_entries(); j++ ){
-                cd->append_entry(mc, sd->get_condition(j), sd->get_value(j));
+                cd->append_entry(mc, mc.mk_cond(sd->get_condition(j)), mc.mk_value_tuple(mc.mk_val(sd->get_value(j))));
             }
             //add the star
             cond * cstar = mk_star(mc, f);
-            cd->append_entry(mc, cstar, sd->get_else());
+            cd->append_entry(mc, cstar, mc.mk_value_tuple(mc.mk_val(sd->get_else())));
         }
         else {
             annotated_simple_def * dg = get_ground_def(mc, f);
@@ -1017,9 +1011,12 @@ complete_def * model_constructor::get_complete_def(mc_context & mc, func_decl * 
                 cd->append_entry(mc, cstar, vt);
             }
             else {
+                SASSERT(false);
+                //TODO: fix
+                /*
                 //add the ground entries
                 for( unsigned j=0; j<dg->get_num_entries(); j++ ){
-                    cd->append_entry(mc, dg->get_condition(j), dg->get_value(j));
+                    cd->append_entry(mc, mc.mk_cond(dg->get_condition(j)), mc.mk_value_tuple(mc.mk_val(dg->get_value(j))));
                 }
                 //get projections
                 bool has_monotonic = false;
@@ -1040,8 +1037,7 @@ complete_def * model_constructor::get_complete_def(mc_context & mc, func_decl * 
                         unsigned pvCount = 0;
                         for (unsigned k=0; k<f->get_arity(); k++) {
                             if (projs[k]->get_projection_type()==projection::PROJ_POINTWISE) {
-                                abs_val * a = dg->get_condition(j)->get_value(k);
-                                val * v = to_value(a)->get_value();
+                                val * v = mc.mk_val(dg->get_condition(j)->get_value(k));
                                 abs_val * pv = projs[k]->get_projected_value(mc, v);
                                 if (pv->is_star()) {
                                     pvCount++;
@@ -1138,19 +1134,12 @@ complete_def * model_constructor::get_complete_def(mc_context & mc, func_decl * 
                     }
                 }
 #endif
+                */
+
             }
         }
-        m_complete_def.insert(id, cd);
+        m_def.insert(id, cd);
         return cd;
-    }
-}
-
-def * model_constructor::get_def(mc_context & mc, func_decl * f) {
-    if (m_simple_definitions) {
-        return get_annotated_simple_def(mc, f);
-    }
-    else {
-        return get_complete_def(mc, f);
     }
 }
 
@@ -1204,11 +1193,11 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, cond * c, expr
     }
 }
 
-void model_constructor::get_inst(mc_context & mc, quantifier * q, ptr_buffer<val> & vsub, expr_ref_buffer & inst, bool & found_expr) {
+void model_constructor::get_inst(mc_context & mc, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & inst, bool & found_expr) {
     found_expr = true;
     bool used_only_rel_domain = true;
     for (int j=(vsub.size()-1); j>=0; j--) {
-        abs_val * a = mc.mk_value(vsub[j]);
+        abs_val * a = mc.mk_value(mc.mk_val(vsub[j]));
         projection * p = get_projection(mc, q, j, false);
         //first, get offset
         expr * o = p->get_offset();
@@ -1236,17 +1225,15 @@ def * model_constructor::get_projection_definition(mc_context & mc, func_decl * 
 }
 */
 
-bool model_constructor::append_entry_to_annotated_simple_def(mc_context & mc, func_decl * f, cond * c, term_cond * tc, value_tuple * v) {
-    def * df  = get_def(mc, f);
-    SASSERT(df->is_annotated_simple());
-    annotated_simple_def * sdf = to_annotated_simple(df);
+bool model_constructor::append_entry_to_annotated_simple_def(mc_context & mc, func_decl * f, term_cond * c, term_cond * tc, expr * v) {
+    annotated_simple_def * sdf  = get_annotated_simple_def(mc, f);
     if (sdf->append_entry(mc, c, tc, v)) {
         TRACE("repair_model", tout << "Added "; mc.display(tout, c, v); tout << ", annotation : "; mc.display(tout, tc); tout << " to " << mk_pp(f, m_m) << "\n";);
         //make sure it is in relevant domain
         for (unsigned i=0; i<f->get_arity(); i++) {
             projection * p = get_projection(mc, f, i);
-            SASSERT(c->get_value(i)->is_value());
-            val * vi = to_value(c->get_value(i))->get_value();
+            SASSERT(c->get_value(i));
+            val * vi = mc.mk_val(c->get_value(i));
             if (!p->has_relevant_domain_val(vi)) {
                 expr * ei = tc->get_value(i);
                 p->add_relevant_domain(ei, vi);
