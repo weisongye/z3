@@ -33,10 +33,6 @@ namespace qsolver
 class mc_context;
 
 //values
-class v_int;
-class v_bv;
-class v_expr;
-
 class val
 {
     friend class mc_context;
@@ -137,10 +133,6 @@ public:
 
 
 //abstract values
-class av_val;
-class av_interval;
-class av_star;
-
 class abs_val {
 protected:
     unsigned m_kind;
@@ -345,6 +337,8 @@ class annotated_simple_def : public simple_def
 {
     friend class mc_context;
 protected:
+    cond * m_cond_else;
+    value_tuple * m_else;
     ptr_vector<term_cond> m_term_conds;
 public:
     annotated_simple_def() : simple_def(KIND_ANNOTATED_SIMPLE) {}
@@ -385,10 +379,12 @@ public:
 
 class model_constructor;
 class eval_check;
+class full_model_check;
 
 class mc_context
 {
     friend class eval_check;
+    friend class full_model_check;
 protected:
     // do simplification?
     bool m_simplification;
@@ -420,7 +416,6 @@ protected: //cached information
     ptr_addr_map< val, value_tuple * > m_val_to_value_tuple;
     //quantifiers to star conditions
     ptr_addr_map< quantifier, cond * > m_quant_to_cond_star;
-
     //size to star
     u_map< cond * > m_size_to_star;
     //true and false
@@ -433,7 +428,9 @@ protected: //cached information
     //new values
     u_map< abs_val * > m_new_vals;
     //instantiations produced
-    obj_map< quantifier, inst_trie * > m_inst_trie;
+    obj_map<quantifier, inst_trie *> m_inst_trie;
+    //classify infos
+    obj_map<quantifier, classify_info * > m_classify_info;
 private:
     //evaluate cache
     obj_map< expr, val * > m_evaluations;
@@ -445,8 +442,6 @@ private:
         m_evaluation_cache_active = v;
     }
 protected: //helper functions
-    //helper for check, the third argument is an optional mapping from variables to the definitions that should be used for them
-    def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst);
     //helper for exhaustive_instantiate
     bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
     //repair model
@@ -592,6 +587,8 @@ public: //other helper functions
     classify_util * get_classify_util() { return &m_cutil; }
     // is atomic value
     bool is_atomic_value(expr * e) { return m_cutil.is_atomic_value(e); }
+    //get classify info for quantifier
+    //classify_info * get_classify_info(quantifier * q);
     //make distinguished value
     expr * mk_distinguished_constant_expr(sort * s);
     //make some value
@@ -622,8 +619,7 @@ public: //display functions
     //display the definition
     void display(std::ostream & out, def * d, bool display_annotations = false);
 public:
-    //check the quantifier
-    lbool check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, expr_ref_buffer & instantiations_star, bool mk_inst_star);
+
     //exhaustive instantiate
     lbool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain, expr_ref_buffer & instantiations);
 

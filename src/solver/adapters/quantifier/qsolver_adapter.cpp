@@ -24,6 +24,7 @@ Revision History:
 #include"model_construct.h"
 #include"model_check.h"
 #include"eval_check.h"
+#include"full_model_check.h"
 
 #define USE_DATA_MEMBER
 
@@ -45,6 +46,7 @@ class qsolver_adapter : public solver {
     mc_context m_mc;
     model_constructor m_mct;
     eval_check m_ec;
+    full_model_check m_fmc;
 
     //statistics for quantifiers
     obj_map<quantifier, unsigned> m_q_inst_round;
@@ -101,7 +103,8 @@ public:
         m_produce_proofs(produce_proofs), 
         m_mc(m),
         m_mct(m), 
-        m_ec(m) {
+        m_ec(m),
+        m_fmc(m) {
         m_kernel->set_produce_models(true);
         m_q_next_index = 0;
         m_cancel = false;
@@ -327,7 +330,7 @@ public:
                 }
                 else {
                     //check the relevant quantifiers
-                    c_result = m_mc.check(&m_mct, quantifiers[pr_i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
+                    c_result = m_fmc.run(m_mc, &m_mct, quantifiers[pr_i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
                 }
                 //std::cout << "current result " << (c_result==l_true ? "true" : (c_result==l_false ? "false" : "undef")) << std::endl;
                 if (!instantiations.empty()) {

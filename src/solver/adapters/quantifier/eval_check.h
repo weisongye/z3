@@ -14,6 +14,7 @@ Author:
     Andy Reynolds 2013-04-21.
 
 --*/
+
 #ifndef _EVAL_CHECK_H_
 #define _EVAL_CHECK_H_
 
@@ -54,7 +55,7 @@ public:
 
 class eval_check
 {
-public:
+protected:
     //manager
     ast_manager & m_m;
     // do instantiation limiting
