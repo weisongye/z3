@@ -397,7 +397,7 @@ public:
     void notify_evaluation(ptr_vector<eval_node> & active);
     void unnotify_evaluation();
     val * get_evaluation() { return m_value; }
-    bool can_evaluate() { return is_app(m_e) && m_children_eval_count==to_app(m_e)->get_num_args(); }
+    bool can_evaluate() { return is_app(m_e) && (is_ground(m_e) || m_children_eval_count==to_app(m_e)->get_num_args()); }
 };
 
 class model_constructor;
@@ -411,6 +411,8 @@ protected:
     bool m_model_repairing;
     // do instantiation limiting
     bool m_eval_check_inst_limited;
+    // repeat eval check on multiple patterns
+    bool m_eval_check_multiple_patterns;
     //memory manager
     region m_reg;
     //rational manager
@@ -645,7 +647,8 @@ protected:
 
     lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
                         ptr_buffer<val> & vsub, expr_ref_buffer & esub, 
-                        expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, bool firstTime = false);
+                        expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, 
+                        sbuffer<unsigned> & start_index, bool firstTime = false);
 public:
     //eval check
     lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);
