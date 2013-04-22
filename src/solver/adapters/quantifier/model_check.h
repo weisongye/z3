@@ -39,9 +39,11 @@ class v_expr;
 
 class val
 {
+    friend class mc_context;
 protected:
+    expr * m_expr;
     unsigned m_kind;
-    val(unsigned k) : m_kind(k){}
+    val(unsigned k, expr * e = 0) : m_kind(k), m_expr(e){}
 public:
     enum {
         KIND_INT,
@@ -80,10 +82,9 @@ public:
 class v_expr : public val {
     friend class mc_context;
 protected:
-    expr * m_value;
-    v_expr(expr * v) : val(KIND_EXPR), m_value(v) {}
+    v_expr(expr * v) : val(KIND_EXPR, v) {}
 public:
-    expr * get_value() { return m_value; }
+    expr * get_value() { return m_expr; }
 };
 
 //variable with offset
@@ -533,6 +534,8 @@ public:
     value_tuple * mk_value_tuple(val * v);
     //make value tuple from set of values
     value_tuple * mk_value_tuple(ptr_buffer<val> & vals);
+    //make value tuple product
+    value_tuple * mk_concat(value_tuple * vt1, value_tuple * vt2);
     //is zero
     bool is_zero(val * v);
     //is v1 less than v2, isLower means null is interpreted as -INF, otherwise it is +INF
@@ -561,6 +564,8 @@ public:
     abs_val * mk_meet(abs_val * a1, abs_val * a2);
     //do meet
     cond * mk_meet(cond * c1, cond * c2);
+    //do meet, store in tc1
+    void do_meet(term_cond * tc1, term_cond * tc2);
     //condition make compose
     cond * mk_compose(cond * c1, value_tuple * v, cond * c2);
     //do compose

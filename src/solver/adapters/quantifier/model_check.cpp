@@ -463,6 +463,7 @@ val * mc_context::mk_val(expr* e) {
             void * mem = allocate(sizeof(v_expr));
             v = new (mem) v_expr(e);
         }
+        v->m_expr = e;
         m_expr_to_val.insert(e,v);
         if (!m_expr_produced.contains(e)) {
             m_expr_produced.push_back(e);
@@ -617,11 +618,26 @@ value_tuple * mc_context::mk_value_tuple(val * v) {
 
 value_tuple * mc_context::mk_value_tuple(ptr_buffer<val> & vals) {
     value_tuple * vt = value_tuple::mk(*this, vals.size());
-    for (unsigned i=0; i<vt->get_size(); i++) {
+    for (unsigned i=0; i<vals.size(); i++) {
         vt->m_vec[i] = vals[i];
     }
     return vt;
 }
+
+value_tuple * mc_context::mk_concat(value_tuple * vt1, value_tuple * vt2) {
+    value_tuple * v = value_tuple::mk(*this, vt1->get_size() + vt2->get_size());
+    unsigned index = 0;
+    for( unsigned k=0; k<vt1->get_size(); k++ ){
+        v->m_vec[index] = vt1->m_vec[k];
+        index++;
+    }
+    for( unsigned k=0; k<vt2->get_size(); k++ ){
+        v->m_vec[index] = vt2->m_vec[k];
+        index++;
+    }
+    return v;
+}
+
 
 bool mc_context::is_zero(val * v) {
     if (v->is_int()) {
@@ -672,7 +688,7 @@ bool mc_context::is_eq(val * v1, val * v2) {
         SASSERT(to_bv(v1)->get_size()==to_bv(v2)->get_size());
         return m_zm.eq(to_bv(v1)->get_value(), to_bv(v2)->get_value());
     }else if (v1->is_expr()) {
-        return to_expr(v1)->m_value==to_expr(v2)->m_value;
+        return to_expr(v1)->m_expr==to_expr(v2)->m_expr;
     }else if (v1->is_var_offset()) {
         if (to_var_offset(v1)->get_is_negated()==to_var_offset(v2)->get_is_negated()) {
             val * vo1 = to_var_offset(v1)->get_offset();
@@ -898,20 +914,21 @@ cond * mc_context::mk_meet(cond * c1, cond * c2) {
 def * mc_context::mk_product(def * d1, def * d2) {
     def * d = new_complete_def();
     for( unsigned i=0; i<d1->get_num_entries(); i++ ){
-        for( unsigned j=0; j<d2->get_num_entries(); j++ ){
-            if (is_compatible(d1->get_condition(i), d2->get_condition(j))) {
-                cond * c = mk_meet(d1->get_condition(i), d2->get_condition(j));
-                value_tuple * v = value_tuple::mk(*this, d1->get_value(i)->get_size() + d2->get_value(j)->get_size());
-                unsigned index = 0;
-                for( unsigned k=0; k<d1->get_value(i)->get_size(); k++ ){
-                    v->m_vec[index] = d1->get_value(i)->m_vec[k];
-                    index++;
+        cond * cc = d1->get_condition(i);
+        if (cc->is_value()) {
+            value_tuple * ve = d2->evaluate(*this, cc);
+            if (ve) {
+                value_tuple * vv = mk_concat(d1->get_value(i), ve);
+                d->append_entry(*this, cc, vv);
+            }
+        }
+        else {
+            for( unsigned j=0; j<d2->get_num_entries(); j++ ){
+                if (is_compatible(d1->get_condition(i), d2->get_condition(j))) {
+                    cond * c = mk_meet(d1->get_condition(i), d2->get_condition(j));
+                    value_tuple * v = mk_concat(d1->get_value(i), d2->get_value(j));
+                    d->append_entry(*this, c, v);
                 }
-                for( unsigned k=0; k<d2->get_value(j)->get_size(); k++ ){
-                    v->m_vec[index] = d2->get_value(j)->m_vec[k];
-                    index++;
-                }
-                d->append_entry(*this, c, v);
             }
         }
     }
@@ -1371,19 +1388,21 @@ cond * mc_context::mk_canon(cond * c) {
 }
 
 void mc_context::get_expr_from_val(val * v, expr_ref & e) {
-    if (v->is_expr()) {
-        e = to_expr(v)->get_value();
-    }
-    else if (v->is_int()) {
-        rational r(to_int(v)->get_value());
-        e = m_au.mk_numeral(r, true);
-    }
-    else if (v->is_bv()) {
-        rational r(to_bv(v)->get_value());
-        e = m_bvu.mk_numeral(r, to_bv(v)->get_size());
+    if (v->m_expr) {
+        e = v->m_expr;
     }
     else {
-        SASSERT(false);
+        if (v->is_int()) {
+            rational r(to_int(v)->get_value());
+            e = m_au.mk_numeral(r, true);
+        }
+        else if (v->is_bv()) {
+            rational r(to_bv(v)->get_value());
+            e = m_bvu.mk_numeral(r, to_bv(v)->get_size());
+        }
+        else {
+            SASSERT(false);
+        }
     }
 }
 
