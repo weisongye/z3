@@ -1004,15 +1004,13 @@ bool mc_context::do_compose(ptr_buffer<val> & c1, ptr_buffer<val> & v, cond * c2
             }
             else {
                 c1[vid] = c2v;
-                e1.set((c1.size()-1)-vid, tc2->get_value(j));
-                /*
-                val * ve = evaluate(mct,to_annotated_simple(df)->get_term_condition(i)->get_value(j));
-                if (!is_eq(ve,vtmp)) {
-                    std::cout << "not equal "; display(std::cout, to_annotated_simple(df)->get_term_condition(i)->get_value(j)); std::cout << " = "; display(std::cout, ve); std::cout << " "; display(std::cout, vtmp); std::cout << "\n";
-                    display(std::cout, df, true);
+                unsigned v_index = (c1.size()-1)-vid;
+                if (!e1[v_index] || get_depth(e1[v_index])>get_depth(tc2->get_value(j))) {
+                    //if (e1[v_index]) {
+                    //    std::cout << "depth " << get_depth(e1[v_index]) << " " << get_depth(tc2->get_value(j)) << "\n";
+                    //}
+                    e1.set(v_index, tc2->get_value(j));
                 }
-                SASSERT(is_eq(ve, vtmp));
-                */
             }
         }
         else if (!is_eq(v[j],c2v)) {
@@ -2040,7 +2038,7 @@ val * mc_context::evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & 
             ptr_buffer<val> children;
             bool children_valid = true;
             for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
-                val * vc = evaluate(mct, to_app(e)->get_arg(i), vsub, aeens_t ? to_app(aeens_t)->get_arg(i) : 0);
+                val * vc = evaluate(mct, to_app(e)->get_arg(i), vsub, aeens_t ? to_app(aeens_t)->get_arg(i) : 0, add_entries_ensuring_non_star);
                 if (!vc) {
                     children_valid = false;
                     break;
@@ -2504,11 +2502,7 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
         eval_node * en = active[best_index];
         active.erase(active.begin()+best_index);
         expr * e = en->get_expr();
-        TRACE("eval_check_debug", tout << "Process " << mk_pp(e,m_m) << "\n";
-                                  //tout << "Current condition : ";
-                                  //display(tout,curr_cond);
-                                  //tout << "\n";
-                                  );
+        TRACE("eval_check_debug", tout << "Process " << mk_pp(e,m_m) << "\n";);
         val * result = 0;
         if (is_ground(e)) {
             //just use the evaluator
@@ -2620,10 +2614,19 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                         term_cond * tcf = to_annotated_simple(df)->get_term_condition(i);
                         en->m_value = df->get_value(i)->get_value(0);
                         if (do_compose(vsub, children, cf, esub, tcf)) {
+
                             for (unsigned j=0; j<var_to_bind.size(); j++) {
                                 if (vars[var_to_bind[j]]) {
                                     vars[var_to_bind[j]]->m_value = vsub[var_to_bind[j]];
                                 }
+#ifdef MODEL_CHECK_DEBUG
+                                val * ve = evaluate(mct, esub[(vsub.size()-1)-var_to_bind[j]]);
+                                if (!is_eq(ve, vsub[var_to_bind[j]])) {
+                                    TRACE("eval_check_warn", tout << "Bad term : " << mk_pp(esub[(vsub.size()-1)-var_to_bind[j]], m_m) << "\n";
+                                                             tout << "Evaluates to "; display(tout,ve); tout << ", not equal to "; display(tout, vsub[var_to_bind[j]]); tout << "\n";);
+                                    SASSERT(false);
+                                }
+#endif
                             }
                             TRACE("eval_check_debug", tout << "Process entry : "; 
                                                         for (unsigned l=0; l<vsub.size(); l++) {
@@ -2669,6 +2672,7 @@ lbool mc_context::do_eval_check(model_constructor * mct, quantifier * q, ptr_vec
                         //undo the match
                         for (unsigned j=0; j<var_to_bind.size(); j++) {
                             vsub[var_to_bind[j]] = 0;
+                            esub.set((vsub.size()-1)-var_to_bind[j], 0);
                         }
                         if (!firstTime && eresult==l_true) {
                             SASSERT(!instantiations.empty());

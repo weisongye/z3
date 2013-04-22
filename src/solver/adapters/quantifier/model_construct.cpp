@@ -1209,6 +1209,7 @@ bool model_constructor::append_entry_to_annotated_simple_def(mc_context & mc, fu
     SASSERT(df->is_annotated_simple());
     annotated_simple_def * sdf = to_annotated_simple(df);
     if (sdf->append_entry(mc, c, tc, v)) {
+        TRACE("repair_model", tout << "Added "; mc.display(tout, c, v); tout << ", annotation : "; mc.display(tout, tc); tout << " to " << mk_pp(f, m_m) << "\n";);
         //make sure it is in relevant domain
         for (unsigned i=0; i<f->get_arity(); i++) {
             projection * p = get_projection(mc, f, i);
