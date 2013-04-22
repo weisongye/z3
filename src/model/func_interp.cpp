@@ -74,6 +74,7 @@ func_interp::func_interp(ast_manager & m, unsigned arity):
     m_else(0),
     m_args_are_values(true),
     m_interp(0) {
+    m_sorted = false;
 }
 
 func_interp::~func_interp() {
@@ -85,6 +86,18 @@ func_interp::~func_interp() {
     }
     m_manager.dec_ref(m_else);
     m_manager.dec_ref(m_interp);
+}
+
+int func_interp::compare(expr * const * args1, expr * const * args2) const {
+    for (unsigned i = 0; i < m_arity; i++) {
+        expr * a1 = args1[i];
+        expr * a2 = args2[i];
+        if (a1->get_id() < a2->get_id())
+            return -1;
+        if (a1->get_id() > a2->get_id())
+            return 1;
+    }
+    return 0;
 }
 
 func_interp * func_interp::copy() const {
@@ -136,12 +149,43 @@ bool func_interp::is_constant() const {
    args_are_values to true if for all entries e e.args_are_values() is true.
 */
 func_entry * func_interp::get_entry(expr * const * args) const {
-    ptr_vector<func_entry>::const_iterator it  = m_entries.begin();
-    ptr_vector<func_entry>::const_iterator end = m_entries.end();
-    for (; it != end; ++it) {
-        func_entry * curr = *it;
-        if (curr->eq_args(m(), m_arity, args))
-            return curr;
+    if (m_args_are_values) {
+        if (!m_sorted) {
+            func_interp * _this = const_cast<func_interp*>(this);
+            std::sort(_this->m_entries.begin(), _this->m_entries.end(), lt(*_this));
+            _this->m_sorted = true;
+        }
+        // Using binary search to find the entry
+        unsigned sz = m_entries.size();
+        if (sz == 0)
+            return 0;
+        int low  = 0;
+        int high = sz - 1;
+        while (true) {
+            int mid            = low + ((high - low)/2);
+            func_entry * e_mid = m_entries[mid];
+            int s = compare(args, e_mid->get_args());
+            if (s > 0) {
+                low = mid + 1;
+            }
+            else if (s < 0) {
+                high = mid - 1;
+            }
+            else {
+                return e_mid;
+            }
+            if (low > high)
+                return 0;
+        }
+    }
+    else {
+        ptr_vector<func_entry>::const_iterator it  = m_entries.begin();
+        ptr_vector<func_entry>::const_iterator end = m_entries.end();
+        for (; it != end; ++it) {
+            func_entry * curr = *it;
+            if (curr->eq_args(m(), m_arity, args))
+                return curr;
+        }
     }
     return 0;
 }

@@ -37,7 +37,7 @@ class func_interp;
 
 class func_entry {
     bool   m_args_are_values; //!< true if is_value(m_args[i]) is true for all i in [0, arity)
-
+    
     // m_result and m_args[i] must be ground terms.
     
     expr * m_result;
@@ -69,12 +69,24 @@ class func_interp {
     ptr_vector<func_entry> m_entries;
     expr *                 m_else;
     bool                   m_args_are_values; //!< true if forall e in m_entries e.args_are_values() == true
-    
+    bool                   m_sorted; //!< True if entries are sorted.
+
     expr *                 m_interp; //!< cache for representing the whole interpretation as a single expression (it uses ite terms).
+
 
     void reset_interp_cache();
 
     expr * get_interp_core() const;
+
+    int compare(expr * const * args1, expr * const * args2) const;
+
+    struct lt { 
+        func_interp & m;
+        lt(func_interp & _m):m(_m) {}
+        bool operator()(func_entry const * e1, func_entry const * e2) const {
+            return m.compare(e1->get_args(), e2->get_args()) == -1;
+        }
+    };
 
 public:
     func_interp(ast_manager & m, unsigned arity);
