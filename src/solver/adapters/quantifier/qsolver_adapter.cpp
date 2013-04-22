@@ -23,6 +23,7 @@ Revision History:
 #include"ast_pp.h"
 #include"model_construct.h"
 #include"model_check.h"
+#include"eval_check.h"
 
 #define USE_DATA_MEMBER
 
@@ -43,6 +44,7 @@ class qsolver_adapter : public solver {
     //for model checking and construction
     mc_context m_mc;
     model_constructor m_mct;
+    eval_check m_ec;
 
     //statistics for quantifiers
     obj_map<quantifier, unsigned> m_q_inst_round;
@@ -98,7 +100,8 @@ public:
         m_ground_formulas(m),
         m_produce_proofs(produce_proofs), 
         m_mc(m),
-        m_mct(m) {
+        m_mct(m), 
+        m_ec(m) {
         m_kernel->set_produce_models(true);
         m_q_next_index = 0;
         m_cancel = false;
@@ -319,7 +322,7 @@ public:
                 }
                 else if (do_eval_check) {
                     bool repaired;
-                    c_result = m_mc.eval_check(&m_mct,quantifiers[pr_i], instantiations, repaired);
+                    c_result = m_ec.run(m_mc, &m_mct, quantifiers[pr_i], instantiations, repaired);
                     changed_model = changed_model || repaired;
                 }
                 else {

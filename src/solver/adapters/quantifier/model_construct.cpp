@@ -596,6 +596,7 @@ void model_constructor::reset_round(mc_context & mc) {
     // }
     m_ground_def.reset();
     m_def.reset();
+    m_complete_def.reset();
     m_partial_model_terms.reset();
 
     //TODO: make this only when pop happens?
@@ -845,10 +846,10 @@ unsigned model_constructor::get_quantifier_id(mc_context & mc, quantifier * q) {
     }
 }
 
-def * model_constructor::get_ground_def(mc_context & mc, func_decl * f) {
+annotated_simple_def * model_constructor::get_ground_def(mc_context & mc, func_decl * f) {
     unsigned id = get_func_id(mc, f);
     if (!m_ground_def.contains(id)) {
-        def * d = mc.new_annotated_simple_def();
+        annotated_simple_def * d = mc.new_annotated_simple_def();
         m_ground_def.insert(id, d);
         return d;
     }
@@ -932,75 +933,103 @@ void model_constructor::add_relevant_domain(projection * p, expr * e) {
     }
 }
 
-def * model_constructor::get_def(mc_context & mc, func_decl * f) {
+cond * model_constructor::mk_star(mc_context & mc, func_decl * f) {
+    if (m_monotonic_projections) {
+        //make the star condition
+        ptr_buffer<abs_val> avals;
+        for (unsigned k=0; k<f->get_arity(); k++) {
+            projection * p = get_projection(mc, f, k);
+            abs_val * av = p->get_projected_default(mc);
+            avals.push_back(av);
+        }
+        return mc.mk_cond(avals);
+    }
+    else {
+        return mc.mk_star(f->get_arity());
+    }
+}
+
+annotated_simple_def * model_constructor::get_annotated_simple_def(mc_context & mc, func_decl * f) {
+    SASSERT(m_simple_definitions);
     unsigned id = get_func_id(mc, f);
-    if (!m_def.contains(id)) {
+    annotated_simple_def * sd;
+    if (m_def.find(id, sd)) {
+        return sd;
+    }
+    else {
         //the ground definition
-        def * dg = get_ground_def(mc, f);
+        annotated_simple_def * dg = get_ground_def(mc, f);
         //d is the complete definition we will construct
-        def * d;
+        sd = mc.new_annotated_simple_def();
         TRACE("model_construct",tout << "Constructing definition for " << mk_pp(f,m_m) << "... " << "\n";);
         TRACE("model_construct", tout << "Ground definition for " << mk_pp(f,m_m) << " is: \n";
                                         mc.display(tout, dg);
-                                        tout << "\n";);
+                                        tout << ", " << dg->get_num_entries() << "\n";);
         if (dg->get_num_entries()==0) {
             val * v = mc.mk_val(mc.get_some_value(f->get_range()));
             value_tuple * vt = mc.mk_value_tuple(v);
-            cond * cstar = mc.mk_star(f->get_arity());
-            if (m_simple_definitions) {
-                annotated_simple_def * sd = mc.new_annotated_simple_def();
-                sd->set_else(cstar, vt);
-                d = sd;
-            }
-            else {
-                //need to make at least one entry
-                d = mc.new_complete_def();
-                d->append_entry(mc, cstar, vt);
-            }
+            cond * cstar = mk_star(mc, f);
+            sd->set_else(cstar, vt);
         }
         else {
-            //get projections
-            bool has_monotonic = false;
-            bool is_complete = true;
-            ptr_vector<projection> projs;
-            for (unsigned k=0; k<f->get_arity(); k++) {
-                projs.push_back(get_projection(mc, f, k));
-                if (projs[k]->get_projection_type()==projection::PROJ_MONOTONIC) {
-                    has_monotonic = true;
-                }
+            for (unsigned j=0; j<dg->get_num_entries(); j++) {
+                sd->append_entry(mc, dg->get_condition(j), dg->get_term_condition(j), dg->get_value(j));
             }
-            //now, complete the definition
-            //if (m_projection_definitions) {
-                //SASSERT(false);
-                /*
-                //get the projection for the function
-                def * dp = get_projection_definition(mc, f);
-                if (dp) {
-                    //complete definition is the ground definition composed with projection
-                    d = mc.mk_compose(dg, dp);
-                }
-                else {
-                    d = dg;
-                    SASSERT(f->get_arity()==0);
-                }
-                */
-            //}
-            //else 
-            if (m_simple_definitions) {
-                annotated_simple_def * sdg = to_annotated_simple(dg);
-                annotated_simple_def * sd = mc.new_annotated_simple_def();
-                for( unsigned j=0; j<dg->get_num_entries(); j++ ){
-                    sd->append_entry(mc, sdg->get_condition(j), sdg->get_term_condition(j), sdg->get_value(j));
-                }
+            cond * cstar = mk_star(mc, f);
+            sd->set_else(cstar, dg->get_value(0));
+        }
+        //display
+        TRACE("model_construct",tout << "Definition for " << mk_pp(f,m_m) << ": " << "\n";
+                                mc.display(tout, sd);
+                                tout << ", " << sd->get_num_entries() << "\n";);
+
+        m_def.insert(id, sd);
+        return sd;
+    }
+}
+
+
+complete_def * model_constructor::get_complete_def(mc_context & mc, func_decl * f) {
+    complete_def * cd = 0;
+    unsigned id = get_func_id(mc, f);
+    if (m_complete_def.find(id, cd)) {
+        return cd;
+    }
+    else {
+        cd = mc.new_complete_def();
+        if (m_simple_definitions) {
+            annotated_simple_def * sd = get_annotated_simple_def(mc, f);
+            //convert simple def to complete def
+            for( unsigned j=0; j<sd->get_num_entries(); j++ ){
+                cd->append_entry(mc, sd->get_condition(j), sd->get_value(j));
+            }
+            //add the star
+            cond * cstar = mk_star(mc, f);
+            cd->append_entry(mc, cstar, sd->get_else());
+        }
+        else {
+            annotated_simple_def * dg = get_ground_def(mc, f);
+            if (dg->get_num_entries()==0) {
+                val * v = mc.mk_val(mc.get_some_value(f->get_range()));
+                value_tuple * vt = mc.mk_value_tuple(v);
                 cond * cstar = mc.mk_star(f->get_arity());
-                sd->set_else(cstar, dg->get_value(0));
-                d = sd;
+                //need to make at least one entry
+                cd->append_entry(mc, cstar, vt);
             }
             else {
-                complete_def * cd = mc.new_complete_def();
-                d = cd;
+                //add the ground entries
                 for( unsigned j=0; j<dg->get_num_entries(); j++ ){
-                    d->append_entry(mc, dg->get_condition(j), dg->get_value(j));
+                    cd->append_entry(mc, dg->get_condition(j), dg->get_value(j));
+                }
+                //get projections
+                bool has_monotonic = false;
+                bool is_complete = true;
+                ptr_vector<projection> projs;
+                for (unsigned k=0; k<f->get_arity(); k++) {
+                    projs.push_back(get_projection(mc, f, k));
+                    if (projs[k]->get_projection_type()==projection::PROJ_MONOTONIC) {
+                        has_monotonic = true;
+                    }
                 }
                 //determine the order to process the entries (so that their projected conditions do not get subsumed)
                 sbuffer<unsigned> order_indices;
@@ -1056,10 +1085,10 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                     TRACE("model_construct_debug", tout << "Process entries " << entry_start << " .... " << (entry_index-1) << "\n";);
                     //process order_indicies[entry_start]....order_indicies[entry_index-1]
                     ptr_buffer<abs_val> avals;
-                    construct_entries(mc, f, dg, order_indices, process_entries, avals, d);
+                    construct_entries(mc, f, dg, order_indices, process_entries, avals, cd);
                 }
                 //check if complete: look at last entry
-                cond * c_last = d->get_condition(d->get_num_entries()-1);  
+                cond * c_last = cd->get_condition(cd->get_num_entries()-1);  
                 for (unsigned k=0; k<f->get_arity(); k++) {
                     if (projs[k]->get_projection_type()==projection::PROJ_POINTWISE && !c_last->get_value(k)->is_star()) {
                         is_complete = false;
@@ -1078,17 +1107,17 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                     TRACE("model_construct",tout << "Complete the definition with ";
                                             mc.display(tout,cstar,def_val);
                                             tout << "\n";);
-                    d->append_entry(mc, cstar, def_val);
+                    cd->append_entry(mc, cstar, def_val);
                 }
 
                 //simplify the definition
                 if (m_simplification) {     
                     TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
-                                            mc.display(tout, d);
+                                            mc.display(tout, cd);
                                             tout << "\n";);           
-                    d->simplify(mc);
+                    cd->simplify(mc);
                     TRACE("model_construct_simp",tout << "After simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
-                                            mc.display(tout, d);
+                                            mc.display(tout, cd);
                                             tout << "\n";);
                 }
 
@@ -1111,15 +1140,18 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
 #endif
             }
         }
-        //display
-        TRACE("model_construct",tout << "Definition for " << mk_pp(f,m_m) << ": " << "\n";
-                                mc.display(tout, d);
-                                tout << "\n";);
-
-        m_def.insert(id, d);
-        return d;
+        m_complete_def.insert(id, cd);
+        return cd;
     }
-    return m_def.find(id);
+}
+
+def * model_constructor::get_def(mc_context & mc, func_decl * f) {
+    if (m_simple_definitions) {
+        return get_annotated_simple_def(mc, f);
+    }
+    else {
+        return get_complete_def(mc, f);
+    }
 }
 
 //get universe size

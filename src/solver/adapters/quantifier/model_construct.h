@@ -133,9 +133,10 @@ protected:
     unsigned get_quantifier_id(mc_context & mc, quantifier * q);
 
     //partial definitions reflecting ground assertions
-    u_map< def * > m_ground_def;
+    u_map< annotated_simple_def * > m_ground_def;
     //complete definitions
-    u_map< def * > m_def;
+    u_map< annotated_simple_def * > m_def;
+    u_map< complete_def * > m_complete_def;
     //terms that need to be in the partial model
     expr_ref_buffer m_partial_model_terms;
     //universe for uninterpreted sorts
@@ -154,6 +155,8 @@ protected:
                            def * d);
     //add term to relevant domain of projection
     void add_relevant_domain(projection * p, expr * e);
+    //get star for function
+    cond * mk_star(mc_context & mc, func_decl * f);
 public:
     //constructor
     model_constructor(ast_manager & _m, bool use_monotonic_projections = false);
@@ -185,8 +188,10 @@ public:
     //get function at index
     func_decl * get_function(unsigned i) { return m_funcs[i]; }
     //get the definition for function
-    def * get_ground_def(mc_context & mc, func_decl * f);
+    annotated_simple_def * get_ground_def(mc_context & mc, func_decl * f);
     //get the complete definition for function
+    annotated_simple_def * get_annotated_simple_def(mc_context & mc, func_decl * f);
+    complete_def * get_complete_def(mc_context & mc, func_decl * f);
     def * get_def(mc_context & mc, func_decl * f);
     //get universe size
     unsigned get_num_universe(sort * s);

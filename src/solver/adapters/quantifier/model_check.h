@@ -315,6 +315,15 @@ class simple_def : public def
 protected:
     cond * m_cond_else;
     value_tuple * m_else;
+private:
+    int compare(cond * c1, cond * c2) const;
+    struct lt_index { 
+        simple_def & m_d;
+        lt_index(simple_def & _d):m_d(_d) {}
+        bool operator()(unsigned i, unsigned j) const {
+            return m_d.compare(m_d.get_condition(i), m_d.get_condition(j)) == -1;
+        }
+    };
 public:
     simple_def(unsigned k = KIND_SIMPLE) : def(k), m_else(0) {}
     unsigned get_num_entries() { return m_conds.size()+(m_else ? 1 : 0); }
@@ -327,6 +336,7 @@ public:
     //c should be a ground condition
     value_tuple * evaluate(mc_context & mc, cond * c, bool ignore_else = false);
     value_tuple * evaluate(mc_context & mc, ptr_buffer<val> & vals, bool ignore_else = false);
+
     //simplify the definition
     void simplify(mc_context & mc) {}
 };
@@ -373,47 +383,17 @@ public:
     bool add(mc_context & mc, expr_ref_buffer & inst) { return add(mc, inst, 0); }
 };
 
-
-class eval_node
-{
-    friend class mc_context;    //temporary
-private:
-    expr * m_e;
-    //def * m_value;
-    val * m_value;
-    ptr_vector<eval_node> m_parents;
-    ptr_vector<eval_node> m_children;
-    unsigned m_children_eval_count;
-    unsigned m_vars_to_bind;
-public:
-    eval_node(expr * e) : m_e(e), m_value(0), m_children_eval_count(0), m_vars_to_bind(0) {}
-
-    expr * get_expr() { return m_e; }
-    void add_parent(eval_node * p) { 
-        m_parents.push_back(p); 
-        p->m_children.push_back(this);
-    }
-    unsigned get_num_children() { return m_children.size(); }
-    eval_node * get_child(unsigned i) { return m_children[i]; }
-    void notify_evaluation(ptr_vector<eval_node> & active);
-    void unnotify_evaluation();
-    val * get_evaluation() { return m_value; }
-    bool can_evaluate() { return is_app(m_e) && (is_ground(m_e) || m_children_eval_count==to_app(m_e)->get_num_args()); }
-};
-
 class model_constructor;
+class eval_check;
 
 class mc_context
 {
+    friend class eval_check;
 protected:
     // do simplification?
     bool m_simplification;
     // do repair
     bool m_model_repairing;
-    // do instantiation limiting
-    bool m_eval_check_inst_limited;
-    // repeat eval check on multiple patterns
-    bool m_eval_check_multiple_patterns;
     //memory manager
     region m_reg;
     //rational manager
@@ -426,6 +406,7 @@ protected:
     bv_rewriter m_bvr;
     //the utility object for classification questions
     classify_util m_cutil;
+
 protected: //cached information
     // the star abstract value
     av_star m_star;
@@ -468,9 +449,6 @@ protected: //helper functions
     def * do_check(model_constructor * mct, quantifier * q, expr * e, ptr_vector<def> & subst);
     //helper for exhaustive_instantiate
     bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
-    //evaluate
-    val * evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & vsub, expr * aeens_t = 0, bool add_entries_ensuring_non_star = false);
-    val * evaluate(model_constructor * mct, expr * e, bool add_entries_ensuring_non_star = false);
     //repair model
     bool repair_formula(model_constructor * mct, quantifier * q, expr * e, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, bool polarity);
     bool repair_term(model_constructor * mct, quantifier * q, expr * t, ptr_buffer<val> & vsub, expr_ref_buffer & tsub, val * v);
@@ -622,6 +600,9 @@ public: //other helper functions
     void mk_offset_sub(expr * e, expr * o, expr_ref & r);
     //make expression from value
     void get_expr_from_val(val * v, expr_ref & e);
+    //evaluate
+    val * evaluate(model_constructor * mct, expr * e, ptr_buffer<val> & vsub, expr * aeens_t = 0, bool add_entries_ensuring_non_star = false);
+    val * evaluate(model_constructor * mct, expr * e, bool add_entries_ensuring_non_star = false);
 public: //display functions
     //display the expression
     void display(std::ostream & out, expr * e);
@@ -646,17 +627,6 @@ public:
     //exhaustive instantiate
     lbool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain, expr_ref_buffer & instantiations);
 
-
-protected:
-    eval_node * mk_eval_node(expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
-
-    lbool do_eval_check(model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                        ptr_buffer<val> & vsub, expr_ref_buffer & esub, 
-                        expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, 
-                        sbuffer<unsigned> & start_index, bool firstTime = false);
-public:
-    //eval check
-    lbool eval_check(model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);
 };
 
 }
