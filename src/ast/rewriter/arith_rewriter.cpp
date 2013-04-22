@@ -417,25 +417,42 @@ br_status arith_rewriter::mk_le_ge_eq_core(expr * arg1, expr * arg2, op_kind kin
     return BR_FAILED;
 }
 
+#define EVAL_NUM(op)                                                    \
+{                                                                       \
+    numeral a1, a2;                                                     \
+    if (m_util.is_numeral(arg1, a1) && m_util.is_numeral(arg2, a2)) {   \
+        if (a1 op a2)                                                   \
+            result = m().mk_true();                                     \
+        else                                                            \
+            result = m().mk_false();                                    \
+        return BR_DONE;                                                 \
+    }                                                                   \
+}
+
 br_status arith_rewriter::mk_le_core(expr * arg1, expr * arg2, expr_ref & result) {
+    EVAL_NUM(<=);
     return mk_le_ge_eq_core(arg1, arg2, LE, result);
 }
 
 br_status arith_rewriter::mk_lt_core(expr * arg1, expr * arg2, expr_ref & result) {
+    EVAL_NUM(<);
     result = m().mk_not(m_util.mk_le(arg2, arg1));
     return BR_REWRITE2;
 }
 
 br_status arith_rewriter::mk_ge_core(expr * arg1, expr * arg2, expr_ref & result) {
+    EVAL_NUM(>=);
     return mk_le_ge_eq_core(arg1, arg2, GE, result);
 }
 
 br_status arith_rewriter::mk_gt_core(expr * arg1, expr * arg2, expr_ref & result) {
+    EVAL_NUM(>);
     result = m().mk_not(m_util.mk_le(arg1, arg2));
     return BR_REWRITE2;
 }
 
 br_status arith_rewriter::mk_eq_core(expr * arg1, expr * arg2, expr_ref & result) {
+    EVAL_NUM(==);
     if (m_eq2ineq) {
         result = m().mk_and(m_util.mk_le(arg1, arg2), m_util.mk_ge(arg1, arg2));
         return BR_REWRITE2;
