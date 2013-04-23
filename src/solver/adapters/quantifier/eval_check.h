@@ -34,6 +34,7 @@ class term_cond {
 protected:
     //the data
     unsigned m_size;
+    expr * m_result;
     expr * m_vec[];
     term_cond(unsigned sz) : m_size(sz) {}
     static term_cond * mk(mc_context & mc, unsigned arity);
@@ -42,6 +43,10 @@ public:
     unsigned get_size() { return m_size; }
     //get the value at index
     expr * get_value(unsigned i) { return m_vec[i]; }
+    //get annotation at index
+    expr * get_annotation(unsigned i) { return m_vec[m_size + i]; }
+    //get result
+    expr * get_result() { return m_result; }
     //is value
     bool is_value();
 };
@@ -64,27 +69,27 @@ public:
 };
 
 
-class annotated_simple_def
+class simple_def
 {
     friend class eval_check;
 protected:
     term_cond_trie m_tct;
     ptr_vector<term_cond> m_conds;
-    ptr_vector<expr> m_values;
-    ptr_vector<term_cond> m_annotations;
+    ptr_vector<term_cond> m_unsorted_conds;
     expr * m_else;
+    bool m_sorted;
 public:
-    annotated_simple_def() : m_else(0) {}
-    unsigned get_num_entries() { return m_conds.size(); }
-    term_cond * get_condition(unsigned i) { return m_conds[i]; }
-    term_cond * get_annotation(unsigned i) { return m_annotations[i]; }
-    expr * get_value(unsigned i) { return m_values[i]; }
+    simple_def() : m_else(0), m_sorted(true) {}
+    unsigned get_num_entries() { return m_unsorted_conds.size(); }
+    term_cond * get_condition(unsigned i) { return m_unsorted_conds[i]; }
+    expr * get_value(unsigned i) { return m_unsorted_conds[i]->get_result(); }
     void set_else(expr * ee) {m_else = ee; }
     expr * get_else() { return m_else; }
     //evaluate
+    expr * evaluate(mc_context & mc, term_cond * c, bool ignore_else = false);
     expr * evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else = false);
     //add entry to the definition
-    bool append_entry(mc_context & mc, term_cond * c, term_cond * a, expr * v);
+    bool append_entry(mc_context & mc, term_cond * c);
 };
 
 

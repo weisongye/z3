@@ -21,8 +21,51 @@ Author:
 #include"model_check.h"
 
 //#define EVAL_CHECK_DEBUG
+#define USE_BINARY_SEARCH
 
 using namespace qsolver;
+
+struct lt_index { 
+public:
+    static int compare(term_cond * tc1, term_cond * tc2) {
+        SASSERT(tc1->get_size()==tc2->get_size());
+        for (unsigned i=0; i<tc1->get_size(); i++) {
+            if (tc1->get_value(i)<tc2->get_value(i)) {
+                return 1;
+            }
+            else if (tc1->get_value(i)>tc2->get_value(i)) {
+                return -1;
+            }
+        }
+        return 0;
+    }
+    static int compare(expr_ref_buffer & vals, term_cond * tc2) {
+        SASSERT(vals.size()==tc2->get_size());
+        for (unsigned i=0; i<vals.size(); i++) {
+            if (vals[i]<tc2->get_value(i)) {
+                return 1;
+            }
+            else if (vals[i]>tc2->get_value(i)) {
+                return -1;
+            }
+        }
+        return 0;
+    }
+public:
+    simple_def & m_sdf;
+    lt_index(simple_def & sdf) : m_sdf(sdf) {}
+    bool operator()(term_cond * tc1, term_cond * tc2) const {
+        return compare(tc1, tc2) == -1;
+    }
+};
+
+
+term_cond * term_cond::mk(mc_context & mc, unsigned arity) {
+    //small_object_allocator & allocator = _m.get_allocator();
+    void * mem  = mc.allocate(sizeof(expr) + arity * 2 * sizeof(expr*) );
+    return new (mem) term_cond(arity);
+}
+
 
 bool term_cond::is_value() {
     for (unsigned i=0; i<get_size(); i++) {
@@ -100,35 +143,121 @@ bool term_cond_trie::evaluate(mc_context & mc, expr_ref_buffer & vals, unsigned 
     }
 }
 
-expr * annotated_simple_def::evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else) {
-    /*
-    unsigned index2;
-    for( unsigned i=0; i<m_conds.size(); i++ ){
-        if (mc.is_generalization(m_conds[i], vals)) {
-           index2 = i;
+#ifdef USE_BINARY_SEARCH
+
+expr * simple_def::evaluate(mc_context & mc, term_cond * c, bool ignore_else) {
+    unsigned sz = m_conds.size();
+    if (sz == 0) {
+        return ignore_else ? 0 : m_else;
+    }
+    if (!m_sorted) {
+        //sort the definition
+        lt_index lti(*this);
+        std::sort(m_conds.begin(), m_conds.end(), lti);
+        for (unsigned i=0; i<(sz-1); i++) { 
+            SASSERT(lt_index::compare(m_conds[i],m_conds[i+1])==-1);
+        }
+        m_sorted = true;
+    }
+    int low  = 0;
+    int high = sz - 1;
+    while (true) {
+        int mid            = low + ((high - low)/2);
+        int s = lt_index::compare(c, m_conds[mid]);
+        if (s > 0) {
+            low = mid + 1;
+        }
+        else if (s < 0) {
+            high = mid - 1;
+        }
+        else {
+            return m_conds[mid]->get_result();
+        }
+        if (low > high) {
+            return ignore_else ? 0 : m_else;
         }
     }
-    */
+    SASSERT(false);
+    return ignore_else ? 0 : m_else;
+}
+
+expr * simple_def::evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else) {
+    unsigned sz = m_conds.size();
+    if (sz == 0) {
+        return ignore_else ? 0 : m_else;
+    }
+    if (!m_sorted) {
+        //sort the definition
+        lt_index lti(*this);
+        std::sort(m_conds.begin(), m_conds.end(), lti);
+        for (unsigned i=0; i<(sz-1); i++) { 
+            SASSERT(lt_index::compare(m_conds[i],m_conds[i+1])==-1);
+        }
+        m_sorted = true;
+    }
+    int low  = 0;
+    int high = sz - 1;
+    while (true) {
+        int mid            = low + ((high - low)/2);
+        int s = lt_index::compare(vals, m_conds[mid]);
+        if (s > 0) {
+            low = mid + 1;
+        }
+        else if (s < 0) {
+            high = mid - 1;
+        }
+        else {
+            return m_conds[mid]->get_result();
+        }
+        if (low > high) {
+            return ignore_else ? 0 : m_else;
+        }
+    }
+    SASSERT(false);
+    return ignore_else ? 0 : m_else;
+}
+
+bool simple_def::append_entry(mc_context & mc, term_cond * c) {
+    if (!evaluate(mc, c, true)) {
+        m_sorted = false;
+        m_conds.push_back(c);
+        m_unsorted_conds.push_back(c);
+        return true;
+    }
+    return false;
+}
+
+
+#else
+
+expr * simple_def::evaluate(mc_context & mc, term_cond * c, bool ignore_else) {
     unsigned index;
-    if (m_tct.evaluate(mc, vals, index)) {
-        //SASSERT(index==index2);
-        return m_values[index];
+    if (m_tct.evaluate(mc, c, index)) {
+        return m_conds[index]->get_result();
     }
     return ignore_else ? 0 : m_else;
 }
 
-bool annotated_simple_def::append_entry(mc_context & mc, term_cond * c, term_cond * a, expr * v) {
+expr * simple_def::evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else) {
+    unsigned index;
+    if (m_tct.evaluate(mc, vals, index)) {
+        return m_conds[index]->get_result();
+    }
+    return ignore_else ? 0 : m_else;
+}
+
+bool simple_def::append_entry(mc_context & mc, term_cond * c) {
     SASSERT(c->is_value());
     if (m_tct.add(mc, c, m_conds.size())) {
         m_conds.push_back(c);
-        m_annotations.push_back(a);
-        m_values.push_back(v);
+        m_unsorted_conds.push_back(c);
         return true;
     }
     else {
         return false;
     }
 }
+#endif
 
 void eval_node::notify_evaluation(ptr_vector<eval_node> & active) {
     for (unsigned i=0; i<m_parents.size(); i++) {
@@ -251,7 +380,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
         for (unsigned i=0; i<active.size(); i++) {
             unsigned ii = (active.size()-1)-i;
             if (active[ii]->can_evaluate() && (!firstTime || !start_index.contains(ii))) {
-                unsigned score = 1 + active[ii]->m_vars_to_bind; //TODO?
+                unsigned score = 1 + active[ii]->m_vars_to_bind; //TODO : more heuristics
                 //get score
                 if (score>max_score) {
                     best_index = ii;
@@ -326,7 +455,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
             func_decl * f = to_app(e)->get_decl();
             //compute the definition
             if (is_uninterp(f)) {
-                annotated_simple_def * df = mct->get_annotated_simple_def(mc,f);
+                simple_def * df = mct->get_simple_def(mc,f);
                 if (!var_to_bind.empty()) {
                     var_bind_count += var_to_bind.size();
                     ptr_vector<eval_node> new_active;
@@ -365,11 +494,12 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                                                     tout << " ";
                                                 };
                                                 );
-                    for (unsigned i=0; i<df->get_num_entries(); i++) {
+                    unsigned process_num_entries = df->get_num_entries();
+                    for (unsigned i=0; i<process_num_entries; i++) {
+                    //for (unsigned i=0; i<df->get_num_entries(); i++) {
                         term_cond * cf = df->get_condition(i);
-                        term_cond * tcf = df->get_annotation(i);
                         en->m_value = df->get_value(i);
-                        if (mc.do_compose(vsub, children, cf, esub, tcf)) {
+                        if (mc.do_compose(vsub, children, esub, cf)) {
                             for (unsigned j=0; j<var_to_bind.size(); j++) {
                                 if (vars[var_to_bind[j]]) {
                                     vars[var_to_bind[j]]->m_value = vsub[var_to_bind[j]];
@@ -415,6 +545,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                                 //we have an instantiation
                                 for (unsigned k=0; k<vsub.size(); k++) {
                                     SASSERT(vsub[k]);
+                                    SASSERT(esub[k]);
                                 }
                                 if (mc.add_instantiation(mct, q, esub, vsub, instantiations, repaired, true, true, false)) {
                                     eresult = l_true;

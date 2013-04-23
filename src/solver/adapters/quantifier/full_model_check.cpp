@@ -37,12 +37,6 @@ cond * cond::mk(mc_context & mc, unsigned arity) {
     return new (mem) cond(arity);
 }
 
-term_cond * term_cond::mk(mc_context & mc, unsigned arity) {
-    //small_object_allocator & allocator = _m.get_allocator();
-    void * mem  = mc.allocate(sizeof(value_tuple) + arity * sizeof(abs_val*) );
-    return new (mem) term_cond(arity);
-}
-
 bool cond::is_value() {
     for (unsigned i=0; i<get_size(); i++) {
         if (!m_vec[i]->is_value()) {

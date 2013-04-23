@@ -682,10 +682,8 @@ cond * mc_context::mk_compose(cond * c1, value_tuple * v, cond * c2) {
     }
 }
 
-bool mc_context::do_compose(expr_ref_buffer & c1, expr_ref_buffer & v, term_cond * c2, 
-                            expr_ref_buffer & e1, term_cond * tc2) {
+bool mc_context::do_compose(expr_ref_buffer & c1, expr_ref_buffer & v, expr_ref_buffer & e1, term_cond * c2) {
     SASSERT(v.size()==c2->get_size());
-    SASSERT(v.size()==tc2->get_size());
     SASSERT(c1.size()==e1.size());
     SASSERT(c2->is_value());
     //do the compose
@@ -701,11 +699,12 @@ bool mc_context::do_compose(expr_ref_buffer & c1, expr_ref_buffer & v, term_cond
             else {
                 c1.set(vid, c2v);
                 unsigned v_index = (c1.size()-1)-vid;
-                if (!e1[v_index] || get_depth(e1[v_index])>get_depth(tc2->get_value(j))) {
+                expr * c2a = c2->get_annotation(j);
+                if (!e1[v_index] || get_depth(e1[v_index])>get_depth(c2a)) {
                     //if (e1[v_index]) {
                     //    std::cout << "depth " << get_depth(e1[v_index]) << " " << get_depth(tc2->get_value(j)) << "\n";
                     //}
-                    e1.set(v_index, tc2->get_value(j));
+                    e1.set(v_index, c2a);
                 }
             }
         }
@@ -970,7 +969,7 @@ cond * mc_context::copy(cond * c) {
     }
     return cc;
 }
-
+/*
 term_cond * mc_context::mk_term_cond(ptr_buffer<expr> & args) {
     term_cond * tc = term_cond::mk(*this, args.size());
     for (unsigned i=0; i<tc->get_size(); i++) {
@@ -995,15 +994,38 @@ term_cond * mc_context::mk_term_cond(expr * t) {
     }
     return tc;
 }
+*/
+term_cond * mc_context::mk_term_cond(ptr_buffer<expr> & values, ptr_buffer<expr> & annotations, expr * result) {
+    SASSERT(values.size()==annotations.size());
+    term_cond * tc = term_cond::mk(*this, values.size());
+    for (unsigned i=0; i<tc->get_size(); i++) {
+        tc->m_vec[i] = values[i];
+        tc->m_vec[values.size()+i] = annotations[i];
+    }
+    tc->m_result = result;
+    return tc;
+}
+
+term_cond * mc_context::mk_term_cond(expr_ref_buffer & values, expr * annotate_t, expr * result) {
+    SASSERT(is_app(annotate_t));
+    SASSERT(values.size()==to_app(annotate_t)->get_num_args());
+    term_cond * tc = term_cond::mk(*this, values.size());
+    for (unsigned i=0; i<tc->get_size(); i++) {
+        tc->m_vec[i] = values[i];
+        tc->m_vec[values.size()+i] = to_app(annotate_t)->get_arg(i);
+    }
+    tc->m_result = result;
+    return tc;
+}
 
 def * mc_context::new_def() {
     void * mem = allocate(sizeof(def));
     return new (mem) def;
 }
 
-annotated_simple_def * mc_context::new_annotated_simple_def() {
-    void * mem = allocate(sizeof(annotated_simple_def));
-    return new (mem) annotated_simple_def;
+simple_def * mc_context::new_simple_def() {
+    void * mem = allocate(sizeof(simple_def));
+    return new (mem) simple_def;
 }
 
 val * mc_context::mk_canon(val * v) {
@@ -1257,32 +1279,27 @@ void mc_context::display(std::ostream & out, term_cond * tc) {
         display(out, tc->get_value(i));
     }
     out << ")";
-}
-
-void mc_context::display(std::ostream & out, term_cond * c, expr * v) {
-    display(out, c);
     out << " -> ";
-    display(out, v);
+    display(out, tc->get_result());
+    out << "   annotation : (";
+    for( unsigned i=0; i<tc->get_size(); i++ ){
+        if(i>0) out << ", ";
+        display(out, tc->get_annotation(i));
+    }
+    out << ")";
 }
 
 //display the definition
 void mc_context::display(std::ostream & out, def * d) {
     for( unsigned i=0; i<d->get_num_entries(); i++ ){
-        display(out, d->get_condition(i), d->get_value(i));
+        display(out, d->get_condition(i));
         out << "\n";
     }
 }
 
-void mc_context::display(std::ostream & out, annotated_simple_def * d, bool display_annotations) {
+void mc_context::display(std::ostream & out, simple_def * d) {
     for( unsigned i=0; i<d->get_num_entries(); i++ ){
-        display(out, d->get_condition(i), d->get_value(i));
-        if (display_annotations) {
-            term_cond * tc = d->get_annotation(i);
-            if (tc) {
-                out << "   annotation : ";
-                display(out, tc);
-            }
-        }
+        display(out, d->get_condition(i));
         out << "\n";
     }
     if (d->get_else()) {
@@ -1446,73 +1463,28 @@ val * mc_context::evaluate_interp(func_decl * f, ptr_buffer<val> & vals) {
             }
             break;
         }
-        //default case, use rewriter
-        ptr_vector<expr> evals;
-        for (unsigned i=0; i<vals.size(); i++) {
-            rational ri(to_int(vals[i])->get_value());
-            evals.push_back(m_au.mk_numeral(ri, true));
-        }
-        expr_ref nr(m_m);
-        m_ar.mk_app(f, evals.size(), evals.c_ptr(), nr);
-        if (!m_expr_produced.contains(nr)) {
-            m_expr_produced.push_back(nr);
-        }
-        return mk_val(nr);
+
     }
     else if (f->get_family_id()==m_bvu.get_family_id()) {
-        //default case, use rewriter
-        ptr_vector<expr> evals;
-        for (unsigned i=0; i<vals.size(); i++) {
-            SASSERT(vals[i]->is_bv());
-            rational ri(to_bv(vals[i])->get_value());
-            evals.push_back(m_bvu.mk_numeral(ri, to_bv(vals[i])->get_size()));
-        }
-        expr_ref nr(m_m);
-        m_bvr.mk_app(f, evals.size(), evals.c_ptr(), nr);
-        if (!m_expr_produced.contains(nr)) {
-            m_expr_produced.push_back(nr);
-        }
-        return mk_val(nr);
+
     }
     else if (m_m.is_eq(f)) {
         return mk_val(is_eq(vals[0], vals[1]) ? m_true : m_false);
     }
-    else if (f->get_family_id()==m_m.get_basic_family_id()) {
-        //boolean children should be expressions
-        for (unsigned i=0; i<vals.size(); i++) {
-            if (f->get_decl_kind()!=OP_ITE || i==0) {
-                SASSERT(vals[i]->is_expr());
-            }
-        }
-        switch (f->get_decl_kind()) {
-        case OP_AND:
-            for (unsigned i=0; i<vals.size(); i++) {
-                if (m_m.is_false(to_expr(vals[i])->get_value())) {
-                    return mk_val(m_false);
-                }
-            }
-            return mk_val(m_true);
-            break;
-        case OP_OR:
-            for (unsigned i=0; i<vals.size(); i++) {
-                if (m_m.is_true(to_expr(vals[i])->get_value())) {
-                    return mk_val(m_true);
-                }
-            }
-            return mk_val(m_false);
-            break;
-        case OP_IFF:
-            return mk_val(is_eq(vals[0], vals[1]) ? m_true : m_false);
-            break;
-        case OP_NOT:
-             return mk_val(m_m.is_true(to_expr(vals[0])->get_value()) ? m_false : m_true);
-            break;
-        case OP_ITE:
-            return m_m.is_true(to_expr(vals[0])->get_value()) ? vals[1] : vals[2];
-            break;
-        }
+    else if (f->get_family_id()==m_m.get_basic_family_id() && f->get_decl_kind()==OP_ITE) {
+        return m_m.is_true(to_expr(vals[0])->get_value()) ? vals[1] : vals[2];
     }
-    TRACE("evaluate_warn", tout << "Don't know how to evaluate " << mk_pp(f,m_m) << "\n";);
+    //default case
+    expr_ref_buffer evals(m_m);
+    for (unsigned i=0; i<vals.size(); i++) {
+        expr_ref v(m_m);
+        get_expr_from_val(vals[i], v);
+        evals.push_back(v);
+    }
+    expr * e = evaluate_interp(f, evals);
+    if (e) {
+        return mk_val(e);
+    }
     SASSERT(false);
     return 0;
 }
@@ -1628,17 +1600,16 @@ expr * mc_context::evaluate(model_constructor * mct, expr * e, expr_ref_buffer &
                 TRACE("eval_term_op", tout << "Evaluated children.\n";);
                 func_decl * f = to_app(e)->get_decl();
                 if (is_uninterp(e)) {
-                    annotated_simple_def * df  = mct->get_annotated_simple_def(*this, f);
+                    simple_def * df  = mct->get_simple_def(*this, f);
                     TRACE("eval_term_op", tout << "Evaluate uf.\n";);
                     ev = df->evaluate(*this, children);
                     //see if we have to add ground entry
                     if (add_entries_ensuring_non_star) {
                         if (ev==df->get_else()) {
-                            term_cond * c = mk_term_cond(children);
-                            term_cond * tc = mk_term_cond(aeens_t);
-                            TRACE("repair_model_debug", tout << "Append entry to ensure non-star evaluation : "; display(tout, c, ev); 
+                            term_cond * c = mk_term_cond(children, aeens_t, ev);
+                            TRACE("repair_model_debug", tout << "Append entry to ensure non-star evaluation : "; display(tout, c); 
                                                         tout << " of " << mk_pp(e,m_m) << ".\n   Substituted term is " << mk_pp(aeens_t,m_m) << "\n";);
-                            mct->append_entry_to_annotated_simple_def(*this, f, c, tc, ev);
+                            mct->append_entry_to_simple_def(*this, f, c);
                         }
                     }
                 }
@@ -1737,7 +1708,7 @@ bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, 
         args.push_back(vc);
     }
     func_decl * f = to_app(t)->get_decl();
-    annotated_simple_def * df = mct->get_annotated_simple_def(*this, f);
+    simple_def * df = mct->get_simple_def(*this, f);
     if (!df->evaluate(*this, args, true)) {
         TRACE("repair_model", tout << "Can be fixed by adding (";
                               for (unsigned i=0; i<args.size(); i++) {
@@ -1769,9 +1740,8 @@ bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, 
             expr * ve = evaluate(mct, to_app(t)->get_arg(i), vsub, to_app(ts)->get_arg(i), true);
             SASSERT(ve==args[i]);
         }
-        term_cond * c = mk_term_cond(args);
-        term_cond * tc = mk_term_cond(ts);
-        mct->append_entry_to_annotated_simple_def(*this, f, c, tc, v);
+        term_cond * c = mk_term_cond(args, ts, v);
+        mct->append_entry_to_simple_def(*this, f, c);
         return true;
     }
     else {
@@ -1863,8 +1833,8 @@ bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr
 #ifdef MODEL_CHECK_DEBUG
     for (unsigned j=0; j<vsub.size(); j++) {
         SASSERT(inst[j]);
-        val * ve = evaluate(mct, inst[j]);
-        if (!is_eq(ve, vsub[(vsub.size()-1)-j])) {
+        expr * ve = evaluate(mct, inst[j]);
+        if (ve!=vsub[(vsub.size()-1)-j]) {
             TRACE("inst_warn",  tout << "Instantiate quantifier " << mk_pp(q,m_m) << " with : \n";
                                 for( unsigned k=0; k<vsub.size(); k++) {
                                     tout << "   " << mk_pp(inst[(vsub.size()-1)-k],m_m) << " : ";

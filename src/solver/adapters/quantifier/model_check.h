@@ -226,8 +226,7 @@ public:
     //condition make compose
     cond * mk_compose(cond * c1, value_tuple * v, cond * c2);
     //do compose
-    bool do_compose(expr_ref_buffer & c1, expr_ref_buffer & v, term_cond * c2, 
-                    expr_ref_buffer & e1, term_cond * tc2);
+    bool do_compose(expr_ref_buffer & c1, expr_ref_buffer & v, expr_ref_buffer & e1, term_cond * c2);
     //make product
     def * mk_product(def * d1, def * d2);
     //make compose
@@ -259,14 +258,19 @@ public:
     // copy the condition
     cond * copy(cond * c);
     //make term condition
-    term_cond * mk_term_cond(ptr_buffer<expr> & args);
-    term_cond * mk_term_cond(expr_ref_buffer & args);
+    //term_cond * mk_term_cond(ptr_buffer<expr> & args);
     //make term condition
-    term_cond * mk_term_cond(expr * t);
+    //term_cond * mk_term_cond(expr_ref_buffer & args);
+    //make term condition
+    //term_cond * mk_term_cond(expr * t);
+    //make term condition
+    term_cond * mk_term_cond(ptr_buffer<expr> & values, ptr_buffer<expr> & annotations, expr * result);
+    //make term condition
+    term_cond * mk_term_cond(expr_ref_buffer & values, expr * annotate_t, expr * result);
     //make new def
     def * new_def();
     //make new def
-    annotated_simple_def * new_annotated_simple_def();
+    simple_def * new_simple_def();
 public: //other helper functions
     //get classifier 
     classify_util * get_classify_util() { return &m_cutil; }
@@ -301,10 +305,9 @@ public: //display functions
     void display(std::ostream & out, cond * c, value_tuple * vt);
     //display the term condition
     void display(std::ostream & out, term_cond * c);
-    void display(std::ostream & out, term_cond * c, expr * v);
     //display the definition
     void display(std::ostream & out, def * d);
-    void display(std::ostream & out, annotated_simple_def * d, bool display_annotations = false);
+    void display(std::ostream & out, simple_def * d);
 public:
 
     //exhaustive instantiate

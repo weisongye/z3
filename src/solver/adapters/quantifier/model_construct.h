@@ -134,9 +134,9 @@ protected:
     unsigned get_quantifier_id(mc_context & mc, quantifier * q);
 
     //partial definitions reflecting ground assertions
-    u_map< annotated_simple_def * > m_ground_def;
+    u_map< simple_def * > m_ground_def;
     //complete definitions
-    u_map< annotated_simple_def * > m_annotated_simple_def;
+    u_map< simple_def * > m_simple_def;
     u_map< def * > m_def;
     //terms that need to be in the partial model
     expr_ref_buffer m_partial_model_terms;
@@ -189,9 +189,9 @@ public:
     //get function at index
     func_decl * get_function(unsigned i) { return m_funcs[i]; }
     //get the definition for function
-    annotated_simple_def * get_ground_def(mc_context & mc, func_decl * f);
+    simple_def * get_ground_def(mc_context & mc, func_decl * f);
     //get the complete definition for function
-    annotated_simple_def * get_annotated_simple_def(mc_context & mc, func_decl * f);
+    simple_def * get_simple_def(mc_context & mc, func_decl * f);
     def * get_def(mc_context & mc, func_decl * f);
     //get universe size
     unsigned get_num_universe(sort * s);
@@ -201,7 +201,7 @@ public:
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
     void get_inst(mc_context & mc, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & inst, bool & found_expr);
     //
-    bool append_entry_to_annotated_simple_def(mc_context & mc, func_decl * f, term_cond * c, term_cond * tc, expr * v);
+    bool append_entry_to_simple_def(mc_context & mc, func_decl * f, term_cond * c);
 
 protected: //TEMPORARY? debugging, for explicit projection construction
     //use projections explicitly
