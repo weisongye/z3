@@ -25,6 +25,7 @@ Revision History:
 #include"model_check.h"
 #include"eval_check.h"
 #include"full_model_check.h"
+#include"exhaustive_check.h"
 
 #define USE_DATA_MEMBER
 
@@ -47,8 +48,11 @@ class qsolver_adapter : public solver {
     model_constructor m_mct;
     eval_check m_ec;
     full_model_check m_fmc;
+    exhaustive_check m_exhc;
 
     //statistics for quantifiers
+    unsigned m_total_rounds;
+    unsigned m_total_inst;
     obj_map<quantifier, unsigned> m_q_inst_round;
     obj_map<quantifier, unsigned> m_q_inst;
     unsigned m_q_next_index;
@@ -104,8 +108,11 @@ public:
         m_mc(m),
         m_mct(m), 
         m_ec(m),
-        m_fmc(m) {
+        m_fmc(m),
+        m_exhc(m) {
         m_kernel->set_produce_models(true);
+        m_total_rounds = 0;
+        m_total_inst = 0;
         m_q_next_index = 0;
         m_cancel = false;
     }
@@ -243,6 +250,7 @@ public:
     }
 
     lbool check_quantifiers() {
+        m_total_rounds++;
         model_ref aM;
         m_kernel->get_model(aM);
         if (!aM)
@@ -276,7 +284,6 @@ public:
         if (needs_make_model) {
             //reset the round
             m_mc.reset_round();
-            m_mct.m_simple_definitions = do_eval_check;
             m_mct.reset_round(m_mc);
 
             //assert the relevant quantifiers
@@ -320,8 +327,7 @@ public:
                 expr_ref_buffer instantiations_star(m_manager);
                 lbool c_result;
                 if (do_exhaustive_instantiate) {
-                    m_mc.exhaustive_instantiate(&m_mct, quantifiers[pr_i], true, instantiations);
-                    c_result = l_true;
+                    c_result = m_exhc.run(m_mc, &m_mct, quantifiers[pr_i], true, instantiations);
                 }
                 else if (do_eval_check) {
                     bool repaired;
@@ -414,13 +420,16 @@ public:
             assert_expr_core(instantiation_lemmas[i]);
         }
         std::cout << "Produced " << instantiation_lemmas.size() << " lemmas \n";
+        m_total_inst += instantiation_lemmas.size();
         if (instantiation_lemmas.empty() || !star_only_if_non_star) {
             for (unsigned i=0; i<instantiation_lemmas_star.size(); i++) {
                 TRACE("qsolver_inst", tout << "Produced (star) instantiation : " << mk_pp(instantiation_lemmas_star[i],m_manager) << "\n";);
                 assert_expr_core(instantiation_lemmas_star[i]);
             }
             std::cout << "Produced " << instantiation_lemmas_star.size() << " star lemmas.\n";
+            m_total_inst += instantiation_lemmas_star.size();
         }
+        //std::cout << "Repaired " << m_mct.m_stat_repairs << " times.\n";
         return result;
     }
 
@@ -431,8 +440,11 @@ public:
             if (m_cancel)
                 return l_undef;
             lbool r = m_kernel->check_sat(num_assumptions, assumptions);
-            if (r == l_false)
+            if (r == l_false) {
+                std::cout << "Total inst : " << m_total_inst << "\n";
+                std::cout << "Total rounds : " << m_total_rounds << "\n";
                 return r;
+            }
             r = check_quantifiers();
             if (r == l_true || r == l_undef)
                 return r;

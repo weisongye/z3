@@ -87,7 +87,6 @@ protected:
     bv_rewriter m_bvr;
     //the utility object for classification questions
     classify_util m_cutil;
-
 protected: //cached information
     // the star abstract value
     av_star * m_star;
@@ -125,8 +124,6 @@ private:
         m_evaluation_cache_active = v;
     }
 protected: //helper functions
-    //helper for exhaustive_instantiate
-    bool do_exhaustive_instantiate(model_constructor * mct, quantifier * q, ptr_vector<expr> & inst, bool use_rel_domain, expr_ref_buffer & instantiations);
     //repair model
     bool repair_formula(model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity);
     bool repair_term(model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v);
@@ -222,11 +219,11 @@ public:
     //do meet
     cond * mk_meet(cond * c1, cond * c2);
     //do meet, store in tc1
-    void do_meet(term_cond * tc1, term_cond * tc2);
+    void do_meet(annot_entry * tc1, annot_entry * tc2);
     //condition make compose
     cond * mk_compose(cond * c1, value_tuple * v, cond * c2);
     //do compose
-    bool do_compose(expr_ref_buffer & c1, expr_ref_buffer & v, expr_ref_buffer & e1, term_cond * c2);
+    bool do_compose(expr_ref_buffer & c1, expr_ref_buffer & v, expr_ref_buffer & e1, annot_entry * c2);
     //make product
     def * mk_product(def * d1, def * d2);
     //make compose
@@ -254,21 +251,15 @@ public:
     //mk cond
     cond * mk_cond(ptr_buffer<val> & vals);
     //mk cond
-    cond * mk_cond(term_cond * tc);
+    cond * mk_cond(annot_entry * tc);
     // copy the condition
     cond * copy(cond * c);
-    //make term condition
-    //term_cond * mk_term_cond(ptr_buffer<expr> & args);
-    //make term condition
-    //term_cond * mk_term_cond(expr_ref_buffer & args);
-    //make term condition
-    //term_cond * mk_term_cond(expr * t);
-    //make term condition
-    term_cond * mk_term_cond(ptr_buffer<expr> & values, ptr_buffer<expr> & annotations, expr * result);
-    //make term condition
-    term_cond * mk_term_cond(expr_ref_buffer & values, expr * annotate_t, expr * result);
     //make new def
     def * new_def();
+    //make term condition
+    annot_entry * mk_annot_entry(ptr_buffer<expr> & values, ptr_buffer<expr> & annotations, expr * result);
+    //make term condition
+    annot_entry * mk_annot_entry(expr_ref_buffer & values, expr * annotate_t, expr * result);
     //make new def
     simple_def * new_simple_def();
 public: //other helper functions
@@ -304,15 +295,10 @@ public: //display functions
     void display(std::ostream & out, cond * c, val * v);
     void display(std::ostream & out, cond * c, value_tuple * vt);
     //display the term condition
-    void display(std::ostream & out, term_cond * c);
+    void display(std::ostream & out, annot_entry * c);
     //display the definition
     void display(std::ostream & out, def * d);
     void display(std::ostream & out, simple_def * d);
-public:
-
-    //exhaustive instantiate
-    lbool exhaustive_instantiate(model_constructor * mct, quantifier * q, bool use_rel_domain, expr_ref_buffer & instantiations);
-
 };
 
 }

@@ -572,12 +572,11 @@ void projection::compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_
                             });
 }
 
-model_constructor::model_constructor(ast_manager & _m, bool use_monotonic_projections)
+model_constructor::model_constructor(ast_manager & _m)
     : m_m(_m), m_au(_m), m_bvu(_m), m_partial_model_terms(_m) {
-    m_projection_definitions = false;
-    m_monotonic_projections = use_monotonic_projections;
+    m_monotonic_projections = false;
     m_simplification = false;
-    m_simple_definitions = false;
+    m_simple_definitions = true;
 }
 
 void model_constructor::reset_round(mc_context & mc) {
@@ -606,6 +605,9 @@ void model_constructor::reset_round(mc_context & mc) {
     m_quant_to_id.reset();
     m_quants.reset();
     m_quant_var_proj.reset();
+
+    //stats
+    m_stat_repairs = 0;
 }
 
 void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection> & var_proj, bool hasPolarity, bool polarity) {
@@ -748,7 +750,7 @@ void model_constructor::assert_partial_model(mc_context & mc, obj_map< expr, exp
             }
             simple_def * eds = get_ground_def(mc, f);
             //append the entry
-            term_cond * c = mc.mk_term_cond(args, annotations, ev);
+            annot_entry * c = mc.mk_annot_entry(args, annotations, ev);
             eds->append_entry(mc, c);
         }
         //add to universe if range is uninterpreted sort
@@ -974,7 +976,7 @@ simple_def * model_constructor::get_simple_def(mc_context & mc, func_decl * f) {
         TRACE("model_construct",tout << "Definition for " << mk_pp(f,m_m) << ": " << "\n";
                                 mc.display(tout, sd);
                                 tout << "\n";);
-
+        sd->m_num_real_entries = sd->get_num_entries();
         m_simple_def.insert(id, sd);
         return sd;
     }
@@ -1164,6 +1166,16 @@ expr * model_constructor::get_universe(mc_context & mc, sort * s, unsigned i) {
     }
 }
 
+expr * model_constructor::get_some_element_universe(mc_context & mc, sort * s, expr * except) {
+    expr * u = get_universe(mc, s, 0);
+    if (u!=except) {
+        return u;
+    }
+    else {
+        return get_num_universe(s)>1 ? get_universe(mc, s, 1) : 0;
+    }
+}
+
 projection * model_constructor::get_projection(mc_context & mc, func_decl * f, unsigned i, bool mk_rep) {
     unsigned fid = get_func_id(mc, f);
     projection * p = m_func_arg_proj.find(fid)[i];
@@ -1208,25 +1220,10 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, expr_ref_buffe
     }
 }
 
-/*
-def * model_constructor::get_projection_definition(mc_context & mc, func_decl * f) {
-    def * dp = 0;
-    for (unsigned i=0; i<f->get_arity(); i++) {
-        projection * p = get_projection(mc, f, i);
-        def * dpa = p->get_definition(mc);
-        dp = i==0 ? dpa : mc.mk_product(dp, dpa);
-        dp->simplify(mc);
-    }
-    TRACE("rel_domain_projection", tout << "Projection is : " << "\n";
-                                   mc.display(tout, dp);
-                                   tout << "\n";);
-    return dp;
-}
-*/
-
-bool model_constructor::append_entry_to_simple_def(mc_context & mc, func_decl * f, term_cond * c) {
+bool model_constructor::append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c) {
     simple_def * sdf  = get_simple_def(mc, f);
     if (sdf->append_entry(mc, c)) {
+        m_stat_repairs++;
         TRACE("repair_model_mct", tout << "Added "; mc.display(tout, c); tout << " to " << mk_pp(f, m_m) << "\n";);
         //make sure it is in relevant domain
         for (unsigned i=0; i<f->get_arity(); i++) {

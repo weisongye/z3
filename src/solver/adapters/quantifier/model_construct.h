@@ -160,7 +160,7 @@ protected:
     cond * mk_star(mc_context & mc, func_decl * f);
 public:
     //constructor
-    model_constructor(ast_manager & _m, bool use_monotonic_projections = false);
+    model_constructor(ast_manager & _m);
     //do these 5 things in the following order before calling get_def:
     //reset the round
     void reset_round(mc_context & mc);
@@ -190,27 +190,24 @@ public:
     func_decl * get_function(unsigned i) { return m_funcs[i]; }
     //get the definition for function
     simple_def * get_ground_def(mc_context & mc, func_decl * f);
-    //get the complete definition for function
+    //get the simple definition for function
     simple_def * get_simple_def(mc_context & mc, func_decl * f);
+    //get the complete definition for function
     def * get_def(mc_context & mc, func_decl * f);
     //get universe size
     unsigned get_num_universe(sort * s);
     //get universe 
     expr * get_universe(mc_context & mc, sort * s, unsigned i);
+    //get some element of the universe
+    expr * get_some_element_universe(mc_context & mc, sort * s, expr * except = 0);
     //get term vector to instantiate q with, based on condition c
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
     void get_inst(mc_context & mc, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & inst, bool & found_expr);
     //
-    bool append_entry_to_simple_def(mc_context & mc, func_decl * f, term_cond * c);
+    bool append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c);
 
-protected: //TEMPORARY? debugging, for explicit projection construction
-    //use projections explicitly
-    bool m_projection_definitions;
-    //map from func id to projection function
-    u_map< def * > m_projections;
-public:
-    //get the projection definition for f
-    //def * get_projection_definition(mc_context & mc, func_decl * f);
+    //stats
+    unsigned m_stat_repairs;
 };
 
 

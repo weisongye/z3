@@ -26,9 +26,10 @@ namespace qsolver
 
 class eval_check;
 class mc_context;
+class model_constructor;
 
 //term condition (tuple of terms)
-class term_cond {
+class annot_entry {
     friend class mc_context;
     friend class eval_check;
 protected:
@@ -36,8 +37,8 @@ protected:
     unsigned m_size;
     expr * m_result;
     expr * m_vec[];
-    term_cond(unsigned sz) : m_size(sz) {}
-    static term_cond * mk(mc_context & mc, unsigned arity);
+    annot_entry(unsigned sz) : m_size(sz) {}
+    static annot_entry * mk(mc_context & mc, unsigned arity);
 public:
     //get the size of the condition
     unsigned get_size() { return m_size; }
@@ -53,18 +54,18 @@ public:
 
 
 //trie of values
-class term_cond_trie 
+class annot_entry_trie 
 {
 private:
     unsigned m_data;
-    obj_map< expr, term_cond_trie  * > m_children;
-    bool add(mc_context & mc, term_cond * c, unsigned index, unsigned data_val);
-    bool evaluate(mc_context & mc, term_cond * c, unsigned index, unsigned & data_val);
+    obj_map< expr, annot_entry_trie  * > m_children;
+    bool add(mc_context & mc, annot_entry * c, unsigned index, unsigned data_val);
+    bool evaluate(mc_context & mc, annot_entry * c, unsigned index, unsigned & data_val);
     bool evaluate(mc_context & mc, expr_ref_buffer & vals, unsigned index, unsigned & data_val);
 public:
-    term_cond_trie () : m_data(0) {}
-    bool add(mc_context & mc, term_cond * c, unsigned data_val) { return add(mc, c, 0, data_val); }
-    bool evaluate(mc_context & mc, term_cond * c, unsigned & data_val) { return evaluate(mc, c, 0, data_val); }
+    annot_entry_trie () : m_data(0) {}
+    bool add(mc_context & mc, annot_entry * c, unsigned data_val) { return add(mc, c, 0, data_val); }
+    bool evaluate(mc_context & mc, annot_entry * c, unsigned & data_val) { return evaluate(mc, c, 0, data_val); }
     bool evaluate(mc_context & mc, expr_ref_buffer & vals, unsigned & data_val) { return evaluate(mc, vals, 0, data_val); }
 };
 
@@ -72,24 +73,26 @@ public:
 class simple_def
 {
     friend class eval_check;
+    friend class model_constructor;
 protected:
-    term_cond_trie m_tct;
-    ptr_vector<term_cond> m_conds;
-    ptr_vector<term_cond> m_unsorted_conds;
+    annot_entry_trie m_tct;
+    ptr_vector<annot_entry> m_conds;
+    ptr_vector<annot_entry> m_unsorted_conds;
     expr * m_else;
     bool m_sorted;
+    unsigned m_num_real_entries;
 public:
-    simple_def() : m_else(0), m_sorted(true) {}
+    simple_def() : m_else(0), m_sorted(true), m_num_real_entries(0) {}
     unsigned get_num_entries() { return m_unsorted_conds.size(); }
-    term_cond * get_condition(unsigned i) { return m_unsorted_conds[i]; }
+    annot_entry * get_condition(unsigned i) { return m_unsorted_conds[i]; }
     expr * get_value(unsigned i) { return m_unsorted_conds[i]->get_result(); }
     void set_else(expr * ee) {m_else = ee; }
     expr * get_else() { return m_else; }
     //evaluate
-    expr * evaluate(mc_context & mc, term_cond * c, bool ignore_else = false);
+    expr * evaluate(mc_context & mc, annot_entry * c, bool ignore_else = false);
     expr * evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else = false);
     //add entry to the definition
-    bool append_entry(mc_context & mc, term_cond * c);
+    bool append_entry(mc_context & mc, annot_entry * c);
 };
 
 
@@ -131,6 +134,12 @@ protected:
     bool m_eval_check_inst_limited;
     // repeat eval check on multiple patterns
     bool m_eval_check_multiple_patterns;
+    //first time
+    bool m_first_time;
+    //start indicies
+    sbuffer<unsigned> m_start_index;
+    //start score
+    unsigned m_start_score;
 public:
     eval_check(ast_manager & _m);
 protected:
@@ -138,8 +147,7 @@ protected:
 
     lbool do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
                         expr_ref_buffer & vsub, expr_ref_buffer & esub, 
-                        expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired, 
-                        sbuffer<unsigned> & start_index, bool firstTime = false);
+                        expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
 public:
     //eval check
     lbool run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);
