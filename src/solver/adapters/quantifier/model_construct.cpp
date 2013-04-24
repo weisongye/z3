@@ -601,6 +601,7 @@ void model_constructor::reset_round(mc_context & mc) {
 
     m_repair_quant.reset();
     m_repair_inst.reset();
+    m_repairs_permanent.reset();
 
     //TODO: make this only when pop happens?
     m_func_to_id.reset();
@@ -985,7 +986,6 @@ simple_def * model_constructor::get_simple_def(mc_context & mc, func_decl * f) {
         TRACE("model_construct",tout << "Definition for " << mk_pp(f,m_m) << ": " << "\n";
                                 mc.display(tout, sd);
                                 tout << "\n";);
-        sd->m_num_real_entries = sd->get_num_entries();
         m_simple_def.insert(id, sd);
         return sd;
     }
@@ -1230,10 +1230,10 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, expr_ref_buffe
 }
 
 bool model_constructor::append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c,
-                                                   quantifier * q_reason, annot_entry * inst_reason) {
+                                                   quantifier * q_repair, annot_entry * inst_repair) {
     SASSERT(is_uninterp(f));
     simple_def * sdf  = get_simple_def(mc, f);
-    if (sdf->append_entry(mc, c)) {
+    if (sdf->append_entry(mc, c, true)) {
         m_was_repaired = true;
         m_stat_repairs++;
         TRACE("repair_model_mct", tout << "Added "; mc.display(tout, c); tout << " to " << mk_pp(f, m_m) << "\n";);
@@ -1247,27 +1247,27 @@ bool model_constructor::append_entry_to_simple_def(mc_context & mc, func_decl * 
                 p->add_relevant_domain(ei, vi);
             }
         }
-        if (q_reason && inst_reason) {
-             m_repair_quant.insert(c, q_reason);
-             m_repair_inst.insert(c, inst_reason);
-        }
+        append_repair(c, q_repair, inst_repair);
         return true;
     }
     return false;
 }
 
-quantifier * model_constructor::get_q_reason(annot_entry * c) {
-    quantifier * q;
-    if (m_repair_quant.find(c,q)) {
-        return q;
+void model_constructor::append_repair(annot_entry * c, quantifier * q_repair, annot_entry * inst_repair) {
+    if (q_repair && inst_repair) {
+        if (m_repair_quant.contains(c)) {
+            ptr_vector<quantifier> & qvec = m_repair_quant.find(c);
+            ptr_vector<annot_entry> & ivec = m_repair_inst.find(c);
+            qvec.push_back(q_repair);
+            ivec.push_back(inst_repair);
+        }
+        else {
+            ptr_vector<quantifier> qvec;
+            ptr_vector<annot_entry> ivec;
+            qvec.push_back(q_repair);
+            ivec.push_back(inst_repair);
+            m_repair_quant.insert(c, qvec);
+            m_repair_inst.insert(c, ivec);
+        }
     }
-    return 0;
-}
-
-annot_entry * model_constructor::get_inst_reason(annot_entry * c) {
-    annot_entry * i;
-    if (m_repair_inst.find(c,i)) {
-        return i;
-    }
-    return 0;
 }

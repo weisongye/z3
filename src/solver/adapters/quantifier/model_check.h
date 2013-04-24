@@ -74,6 +74,7 @@ protected:
     bool m_simplification;
     // do repair
     bool m_model_repairing;
+    bool m_model_repairing_recurse;
     //memory manager
     region m_reg;
     //rational manager
@@ -134,6 +135,7 @@ protected: //helper functions
                      ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason);
     expr * ensure_interpretation(model_constructor * mct, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, 
                                  quantifier * q_reason = 0, annot_entry * inst_reason = 0);
+    bool append_entry_to_simple_def(model_constructor * mct, func_decl * f, annot_entry * c, quantifier * q_reason = 0, annot_entry * inst_reason = 0);
     //add instantiation
     bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);

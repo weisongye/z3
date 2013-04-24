@@ -107,6 +107,7 @@ public:
 
 class model_constructor
 {
+    friend class mc_context;
 public:
     // use monotonic projections?
     bool m_monotonic_projections;
@@ -143,9 +144,10 @@ protected:
     //universe for uninterpreted sorts
     obj_map< sort, ptr_vector<expr> > m_universe;
 
-    //map from repair entries to the reason why they were added
-    ptr_addr_map<annot_entry, quantifier *> m_repair_quant;
-    ptr_addr_map<annot_entry, annot_entry *> m_repair_inst;
+    //map from repair entries to the repair why they were added
+    ptr_addr_map<annot_entry, ptr_vector<quantifier> > m_repair_quant;
+    ptr_addr_map<annot_entry, ptr_vector<annot_entry> > m_repair_inst;
+    ptr_vector<annot_entry> m_repairs_permanent;
 protected:
     //managers for expressions
     ast_manager & m_m;
@@ -210,13 +212,15 @@ public:
 public: //for model repair
     //
     bool append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c, 
-                                    quantifier * q_reason = 0, annot_entry * inst_reason = 0);
+                                    quantifier * q_repair = 0, annot_entry * inst_repair = 0);
+    void append_repair(annot_entry * c, quantifier * q_repair, annot_entry * inst_repair);
     bool m_was_repaired;
     //stats
     unsigned m_stat_repairs;
-    //get reason
-    quantifier * get_q_reason(annot_entry * c);
-    annot_entry * get_inst_reason(annot_entry * c);
+    //get repair
+    bool is_permanent(annot_entry * c) { return m_repairs_permanent.contains(c); }
+    void push_permanent_repair(annot_entry * c) { m_repairs_permanent.push_back(c); }
+    void pop_permanent_repair() { m_repairs_permanent.pop_back(); }
 };
 
 

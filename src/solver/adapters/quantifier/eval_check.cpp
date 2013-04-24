@@ -231,21 +231,18 @@ expr * simple_def::evaluate(expr_ref_buffer & vals, bool partial) {
 }
 
 bool simple_def::is_repair_entry(annot_entry * c) {
-    unsigned index;
-    if (get_index_of(c, index)) {
-        return index>=m_num_real_entries;
-    }
-    else {
-        SASSERT(false);
-        return false;
-    }
+    SASSERT(m_unsorted_conds.contains(c));
+    return m_unsorted_repair_conds.contains(c);
 }
 
-bool simple_def::append_entry(mc_context & mc, annot_entry * c) {
+bool simple_def::append_entry(mc_context & mc, annot_entry * c, bool is_repair) {
     if (!evaluate(c, true)) {
         m_sorted = false;
         m_conds.push_back(c);
         m_unsorted_conds.push_back(c);
+        if (is_repair) {
+            m_unsorted_repair_conds.push_back(c);
+        }
         return true;
     }
     return false;

@@ -86,13 +86,13 @@ protected:
     annot_entry_trie m_tct;
     ptr_vector<annot_entry> m_conds;
     ptr_vector<annot_entry> m_unsorted_conds;
+    ptr_vector<annot_entry> m_unsorted_repair_conds;
     expr * m_else;
     bool m_sorted;
-    unsigned m_num_real_entries;
     void sort_entries();
     bool get_index_of(annot_entry * c, unsigned & index);
 public:
-    simple_def() : m_else(0), m_sorted(true), m_num_real_entries(0) {}
+    simple_def() : m_else(0), m_sorted(true) {}
     unsigned get_num_entries() { return m_unsorted_conds.size(); }
     annot_entry * get_condition(unsigned i) { return m_unsorted_conds[i]; }
     expr * get_value(unsigned i) { return m_unsorted_conds[i]->get_result(); }
@@ -105,7 +105,7 @@ public:
     //is this a repair entry?
     bool is_repair_entry(annot_entry * c);
     //add entry to the definition
-    bool append_entry(mc_context & mc, annot_entry * c);
+    bool append_entry(mc_context & mc, annot_entry * c, bool is_repair = false);
 };
 
 
