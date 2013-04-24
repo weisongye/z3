@@ -142,6 +142,10 @@ protected:
     expr_ref_buffer m_partial_model_terms;
     //universe for uninterpreted sorts
     obj_map< sort, ptr_vector<expr> > m_universe;
+
+    //map from repair entries to the reason why they were added
+    ptr_addr_map<annot_entry, quantifier *> m_repair_quant;
+    ptr_addr_map<annot_entry, annot_entry *> m_repair_inst;
 protected:
     //managers for expressions
     ast_manager & m_m;
@@ -203,11 +207,16 @@ public:
     //get term vector to instantiate q with, based on condition c
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
     void get_inst(mc_context & mc, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & inst, bool & found_expr);
+public: //for model repair
     //
-    bool append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c);
-
+    bool append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c, 
+                                    quantifier * q_reason = 0, annot_entry * inst_reason = 0);
+    bool m_was_repaired;
     //stats
     unsigned m_stat_repairs;
+    //get reason
+    quantifier * get_q_reason(annot_entry * c);
+    annot_entry * get_inst_reason(annot_entry * c);
 };
 
 

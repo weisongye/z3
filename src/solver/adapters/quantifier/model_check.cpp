@@ -21,7 +21,8 @@ Author:
 #include"var_subst.h"
 #include"full_model_check.h"
 
-//#define MODEL_CHECK_DEBUG
+#define MODEL_CHECK_DEBUG
+#define REPAIR_DEBUG
 
 using namespace qsolver;
 
@@ -88,12 +89,12 @@ void mc_context::reset_round() {
     m_val_to_value_tuple.reset();
     m_expr_produced.reset();
     m_size_to_star.reset();
+    m_evaluation_cache_active = false;
     m_evaluations.reset();
+    m_partial_evaluations.reset();
 
     m_reg.reset();
 
-    m_evaluation_cache_active = false;
-    m_evaluations.reset();
 }
 
 //push user context
@@ -106,6 +107,7 @@ void mc_context::pop() {
     //m_classify_info.reset();
     m_sort_to_dist_expr.reset();
     m_expr_produced_global.reset();
+
 }
 
 
@@ -970,6 +972,17 @@ cond * mc_context::copy(cond * c) {
     return cc;
 }
 
+annot_entry * mc_context::mk_annot_entry(expr_ref_buffer & values, expr_ref_buffer & annotations, expr * result) {
+    SASSERT(values.size()==annotations.size());
+    annot_entry * tc = annot_entry::mk(*this, values.size());
+    for (unsigned i=0; i<tc->get_size(); i++) {
+        tc->m_vec[i] = values[i];
+        tc->m_vec[values.size()+i] = annotations[i];
+    }
+    tc->m_result = result;
+    return tc;
+}
+
 annot_entry * mc_context::mk_annot_entry(ptr_buffer<expr> & values, ptr_buffer<expr> & annotations, expr * result) {
     SASSERT(values.size()==annotations.size());
     annot_entry * tc = annot_entry::mk(*this, values.size());
@@ -1390,7 +1403,7 @@ val * mc_context::evaluate_interp(func_decl * f, ptr_buffer<val> & vals) {
 }
 
 expr * mc_context::evaluate_interp(func_decl * f, expr_ref_buffer & vals) {
-   SASSERT(!is_uninterp(f));
+    SASSERT(!is_uninterp(f));
     TRACE("evaluate_debug", tout << "evaluate " << mk_pp(f,m_m) << " with arguments: \n";
                             for (unsigned i=0; i<vals.size(); i++) {
                                 display(tout, vals[i]);
@@ -1471,62 +1484,70 @@ expr * mc_context::evaluate_interp(func_decl * f, expr_ref_buffer & vals) {
 
 
 //evaluate ground term 
-expr * mc_context::evaluate(model_constructor * mct, expr * e, expr_ref_buffer & vsub, expr * aeens_t, bool add_entries_ensuring_non_star) {
+expr * mc_context::evaluate(model_constructor * mct, expr * e, expr_ref_buffer & vsub, bool partial) {
     if (is_atomic_value(e)) {
         return e;
     }
     else if (is_app(e)) {
         expr * ev = 0;
-        if (!add_entries_ensuring_non_star && m_evaluation_cache_active && m_evaluations.find(e, ev)) {
-            return ev;
-        }
-        else {
-            expr_ref_buffer children(m_m);
-            bool children_valid = true;
-            for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
-                expr * vc = evaluate(mct, to_app(e)->get_arg(i), vsub, aeens_t ? to_app(aeens_t)->get_arg(i) : 0, add_entries_ensuring_non_star);
-                if (!vc) {
-                    children_valid = false;
-                    break;
-                }
-                children.push_back(vc);
-                //for short circuiting
-                if (vc && ((m_m.is_or(e) && m_m.is_true(vc)) || 
-                           (m_m.is_and(e) && m_m.is_false(vc))) ) {
-                    break;
-                }
-            }
-            if (children_valid) {
-                TRACE("eval_term_op", tout << "Evaluated children.\n";);
-                func_decl * f = to_app(e)->get_decl();
-                if (is_uninterp(e)) {
-                    simple_def * df  = mct->get_simple_def(*this, f);
-                    TRACE("eval_term_op", tout << "Evaluate uf.\n";);
-                    ev = df->evaluate(*this, children);
-                    //see if we have to add ground entry
-                    if (add_entries_ensuring_non_star) {
-                        if (ev==df->get_else()) {
-                            annot_entry * c = mk_annot_entry(children, aeens_t, ev);
-                            TRACE("repair_model_debug", tout << "Append entry to ensure non-star evaluation : "; display(tout, c); 
-                                                        tout << " of " << mk_pp(e,m_m) << ".\n   Substituted term is " << mk_pp(aeens_t,m_m) << "\n";);
-                            mct->append_entry_to_simple_def(*this, f, c);
-                        }
-                    }
-                }
-                else {
-                    TRACE("eval_term_op", tout << "Evaluate interpreted " << mk_pp(e,m_m) << "\n";);
-                    ev = evaluate_interp(f, children);
+        if (m_evaluation_cache_active) {
+            if (partial) {
+                if (m_partial_evaluations.find(e, ev)) {
+                    return ev;
                 }
             }
             else {
-                ev = 0;
+                if (m_evaluations.find(e, ev)) {
+                    return ev;
+                }
             }
-            TRACE("eval_term_debug", tout << "Evaluated " << mk_pp(e,m_m) << " to "; display(tout, ev); tout << "\n";);
-            if (m_evaluation_cache_active) {
+        }
+
+        expr_ref_buffer children(m_m);
+        bool children_valid = true;
+        for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
+            expr * vc = evaluate(mct, to_app(e)->get_arg(i), vsub, partial);
+            if (!vc) {
+                children_valid = false;
+            }
+            else {
+                children.push_back(vc);
+                //for short circuiting
+                if (m_m.is_or(e) && m_m.is_true(vc)) {
+                    ev = m_true;
+                    break;
+                }
+                if (m_m.is_and(e) && m_m.is_false(vc)) {
+                    ev = m_false;
+                    break;
+                }
+            }
+        }
+        if (!ev && children_valid) {
+            TRACE("eval_term_op", tout << "Evaluated children.\n";);
+            func_decl * f = to_app(e)->get_decl();
+            if (is_uninterp(e)) {
+                simple_def * df  = mct->get_simple_def(*this, f);
+                TRACE("eval_term_op", tout << "Evaluate uf.\n";);
+                ev = df->evaluate(children, partial);
+            }
+            else {
+                TRACE("eval_term_interp", tout << "Evaluate interpreted " << mk_pp(e,m_m) << "\n";);
+                ev = evaluate_interp(f, children);
+            }
+        }
+        TRACE("eval_term_debug", tout << (partial ? "(partial)" : "") << " evaluated " << mk_pp(e,m_m) << " to "; 
+                                    if (ev==0) {tout << "[null]"; }else{ display(tout, ev); }
+                                    tout << "\n";);
+        if (m_evaluation_cache_active) {
+            if (partial) {
+                m_partial_evaluations.insert(e, ev);
+            }
+            if (!partial || ev) {
                 m_evaluations.insert(e, ev);
             }
-            return ev;
         }
+        return ev;
     }
     else if (is_var(e)) {
         return vsub[to_var(e)->get_idx()];
@@ -1537,13 +1558,13 @@ expr * mc_context::evaluate(model_constructor * mct, expr * e, expr_ref_buffer &
     }
 }
 
-expr * mc_context::evaluate(model_constructor * mct, expr * e, bool add_entries_ensuring_non_star) {
+
+expr * mc_context::evaluate(model_constructor * mct, expr * e, bool partial) {
     expr_ref_buffer vsub(m_m);
-    expr * aeens_t = 0;
-    return evaluate(mct, e, vsub, aeens_t, add_entries_ensuring_non_star);
+    return evaluate(mct, e, vsub, partial);
 }
 
-bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & instantiations, bool & repaired,
+bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
                                    bool filterEval, bool filterRepair, bool filterCache) {
     //get the corresponding instantiation from the model construction object
     expr_ref_buffer inst(m_m);
@@ -1564,10 +1585,10 @@ bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr
             m_expr_produced_global.push_back(inst[j]);
         }
     }
-    return add_instantiation(mct, q, inst, vsub, instantiations, repaired, filterEval, filterRepair, filterCache);
+    return add_instantiation(mct, q, inst, vsub, instantiations, filterEval, filterRepair, filterCache);
 }
 
-bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
+bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations,
                                   bool filterEval, bool filterRepair, bool filterCache) {
     //since condition may contain values made from direct evaluation, we must canonize the condition before consulting externally
     cond * cic = mk_canon(c);
@@ -1609,13 +1630,13 @@ bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, cond
             }
         }
     }
-    return add_instantiation(mct, q, inst, val_subs, instantiations, repaired, filterEval, filterRepair, filterCache);
+    return add_instantiation(mct, q, inst, val_subs, instantiations, filterEval, filterRepair, filterCache);
 }
 
 bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, 
-                                   expr_ref_buffer & instantiations, bool & repaired,
+                                   expr_ref_buffer & instantiations,
                                    bool filterEval, bool filterRepair, bool filterCache) {
-    TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
+    TRACE("inst_debug",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
                     for (unsigned j=0; j<inst.size(); j++) {
                             tout << "   " << mk_pp(inst[j],m_m) << "\n";
                     }
@@ -1654,23 +1675,32 @@ bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr
                 TRACE("inst_debug",tout << "Filter based on evaluation...\n";);
                 expr * v = evaluate(mct, q->get_expr(), vsub);
                 if (v && m_m.is_true(v)) {
-                    TRACE("inst",tout << "...instantiation evaluated to true in model.\n";);
+                    TRACE("inst_debug",tout << "...instantiation evaluated to true in model.\n";);
                     addInstantiation = false;
                 }
             }
             if (addInstantiation && filterRepair && m_model_repairing) {
                 TRACE("inst_debug",tout << "Filter based on model repairing...\n";);
-                if (repair_formula(mct, q, q->get_expr(), vsub, inst, true)) {
-                    repaired = true;
+                ptr_buffer<annot_entry> fail_entry;
+                ptr_buffer<expr> fail_value;
+                ptr_buffer<func_decl> fail_func;
+                annot_entry * inst_reason = 0;
+                if (repair_formula(mct, q, q->get_expr(), vsub, inst, true, fail_entry, fail_value, fail_func, inst_reason)) {
                     addInstantiation = false;
-                    TRACE("inst",tout << "...instantiation was repaired.\n";);
+                    TRACE("inst_debug",tout << "...instantiation was repaired.\n";);
                     //make sure the repair was actually successful...
-                    //set_evaluate_cache_active(false);
-                    //expr * v2 = evaluate(mct, q->get_expr(), vsub);
-                    //SASSERT(v2);
-                    //SASSERT(m_m.is_true(v2));
+#ifdef REPAIR_DEBUG
+                    set_evaluate_cache_active(false);
+                    expr * v2 = evaluate(mct, q->get_expr(), vsub, true);
+                    SASSERT(v2);
+                    SASSERT(m_m.is_true(v2));
+#endif
                 }
                 else {
+                    for (unsigned i=0; i<fail_entry.size(); i++) {
+                        TRACE("repair_model_recurse", tout << "Would have been able to repair, if not for : "; display(tout, fail_entry[i]); tout << " in " << mk_pp(fail_func[i],m_m) << "\n";
+                                                      tout << "Wanted value was " << mk_pp(fail_value[i], m_m) << "\n";);
+                    }
                     TRACE("repair_model", tout << "Could not repair!\n";);
                 }
             }
@@ -1687,10 +1717,16 @@ bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr
             }
             if (!it->add(*this, inst)) {
                 addInstantiation = false;
-                TRACE("inst",tout << "...instantiation was already added to cache.\n";);
+                TRACE("inst_debug",tout << "...instantiation was already added to cache.\n";);
             }
         }
         if (addInstantiation) {
+            TRACE("inst",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
+                            for (unsigned j=0; j<inst.size(); j++) {
+                                    tout << "   " << mk_pp(inst[j],m_m) << "\n";
+                            }
+                            tout << "\n";
+                            );
             expr_ref instance(m_m);
             instantiate(m_m, q, inst.c_ptr(), instance);
             instantiations.push_back(instance);
@@ -1702,144 +1738,256 @@ bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr
 
 
 //repair model
-bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity) {
-    TRACE("repair_model_debug", tout << "Try fixing " << mk_pp(e,m_m) << ", polarity = " << polarity << "\n";);
+bool mc_context::repair_formula(model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity, 
+                                ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason) {
+    TRACE("repair_model_debug", tout << "Try repairing " << mk_pp(e,m_m) << ", polarity = " << polarity << "\n";);
     if (is_app(e)) {
         //try to make the formula with var_subst equal to polarity
         if ((m_m.is_or(e) && polarity) || (m_m.is_and(e) && !polarity)) {
+            //first do partial evaluation of each argument
+            sbuffer<unsigned> children_undef;
             for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
-                if (repair_formula(mct, q, to_app(e)->get_arg(i), vsub, tsub, polarity)) {
+                expr * ecv = evaluate(mct, to_app(e)->get_arg(i), vsub, true);
+                if (ecv && m_m.is_true(ecv)==polarity) {
+                    //already true in partial model, no need to do anything else
+                    TRACE("repair_model", tout << "Disjunction, no need to repair, it is already true.\n";);
+                    return true;
+                }
+                else {
+                    children_undef.push_back(i);
+                }
+            }
+            //now, process the undefined children
+            for (unsigned i=0; i<children_undef.size(); i++) {
+                if (repair_formula(mct, q, to_app(e)->get_arg(children_undef[i]), vsub, tsub, polarity, fail_entry, fail_value, fail_func, inst_reason)) {
                     return true;
                 }
             }
             return false;
         }
         else if (m_m.is_not(e)) {
-            return repair_formula(mct, q, to_app(e)->get_arg(0), vsub, tsub, !polarity);
+            return repair_formula(mct, q, to_app(e)->get_arg(0), vsub, tsub, !polarity, fail_entry, fail_value, fail_func, inst_reason);
         }
         else if (m_m.is_eq(e) || m_m.is_iff(e) || m_au.is_le(e) || m_au.is_ge(e)) { 
-            for (unsigned i=0; i<2; i++) {
-                expr * ec = to_app(e)->get_arg(i);
-                if (is_app(ec) && is_uninterp(to_app(ec)->get_decl())) {
-                    expr * vcomp = 0;       //the term we are trying to make the term equal to
-                    //evaluate the other side
-                    expr * eco = to_app(e)->get_arg(i==0 ? 1 : 0);
-                    expr * ecov = evaluate(mct, eco, vsub);
-                    if (ecov) {
-                        if (polarity) {
-                            vcomp = ecov;
-                        }
-                        else {
-                            if (m_m.is_iff(e)) {
-                                SASSERT(m_m.is_true(ecov) || m_m.is_false(ecov));
-                                vcomp = m_m.is_true(ecov) ? m_false : m_true;
-                            }
-                            else if (m_m.is_eq(e) || m_au.is_le(e) || m_au.is_ge(e)) {
-                                sort * s = get_sort(ecov);
-                                if (m_au.is_int(s)) {
-                                    rational r;
-                                    if (m_au.is_numeral(ecov, r)) {
-                                        mpz result(m_au.is_ge(e) ? -1 : 1);
-                                        m_zm.add(r.to_mpq().numerator(), result, result);
-                                        vcomp = m_au.mk_numeral(result, true);
-                                        if (!m_expr_produced.contains(vcomp)) {
-                                            m_expr_produced.push_back(vcomp);
+            //first check if *both* sides are defined in partial model
+            expr * ev = evaluate(mct, e, vsub, true);
+            if (ev) {
+                if (m_m.is_true(ev)==polarity) {
+                    TRACE("repair_model", tout << "Relation, no need to repair, it is already true.\n";);
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            }
+            else {
+                //two iterations
+                // on first iteration, check if one side is defined in partial model (this is prefered)
+                // on second iteration, check if neither side is defined
+                bool processed[2] = {false, false};
+                for (unsigned r=0; r<2; r++) {
+                    for (unsigned i=0; i<2; i++) {
+                        if (!processed[i]) {
+                            expr * ec = to_app(e)->get_arg(i);
+                            if (is_app(ec) && is_uninterp(to_app(ec)->get_decl())) {
+                                //evaluate the other side
+                                expr * eco = to_app(e)->get_arg(i==0 ? 1 : 0);
+                                expr * ecov = 0;
+                                if (r==0) {
+                                    ecov = evaluate(mct, eco, vsub, true); //it must have a definition in the partial model
+                                }
+                                else {
+                                    ecov = evaluate(mct, eco, vsub);    //now try full
+                                }
+                                if (ecov) {
+                                    processed[i] = true;
+                                    expr * vcomp = 0;       //the term we are trying to make the term equal to
+                                    if (polarity) {
+                                        vcomp = ecov;
+                                    }
+                                    else {
+                                        if (m_m.is_iff(e)) {
+                                            SASSERT(m_m.is_true(ecov) || m_m.is_false(ecov));
+                                            vcomp = m_m.is_true(ecov) ? m_false : m_true;
+                                        }
+                                        else if (m_m.is_eq(e) || m_au.is_le(e) || m_au.is_ge(e)) {
+                                            sort * s = get_sort(ecov);
+                                            if (m_au.is_int(s)) {
+                                                rational r;
+                                                if (m_au.is_numeral(ecov, r)) {
+                                                    mpz result(m_au.is_ge(e) ? -1 : 1);
+                                                    m_zm.add(r.to_mpq().numerator(), result, result);
+                                                    vcomp = m_au.mk_numeral(result, true);
+                                                    if (!m_expr_produced.contains(vcomp)) {
+                                                        m_expr_produced.push_back(vcomp);
+                                                    }
+                                                }
+                                                else if (m_m.is_uninterp(s)) {
+                                                    vcomp = mct->get_some_element_universe(*this, s, ecov);
+                                                }
+                                            }
                                         }
                                     }
-                                    else if (m_m.is_uninterp(s)) {
-                                        vcomp = mct->get_some_element_universe(*this, s, ecov);
+                                    if (vcomp && repair_term(mct, q, ec, vsub, tsub, vcomp, fail_entry, fail_value, fail_func, inst_reason)) {
+                                        if (r==1) {
+                                            //ensure the interpretation of the other side is defined in partial model if necessary
+                                            expr * ecov2 = ensure_interpretation(mct, eco, vsub, tsub, q, inst_reason); 
+                                            SASSERT(ecov==ecov2);
+                                        }
+                                        return true;
                                     }
                                 }
                             }
                         }
                     }
-                    if (vcomp && repair_term(mct, q, ec, vsub, tsub, vcomp)) {
-                        return true;
-                    }
                 }
             }
         }
         else if (m_m.is_ite(e)) {
-            expr * c = evaluate(mct, to_app(e)->get_arg(0));
+            expr * c = evaluate(mct, to_app(e)->get_arg(0), true);  //it must have a definition in the partial model
             if (c) {
                 SASSERT(m_m.is_true(c) || m_m.is_false(c));
                 //first try to repair children
-                if (m_m.is_true(c)) {
-                    if (repair_formula(mct, q, to_app(e)->get_arg(1), vsub, tsub, polarity)) {
-                        return true;
+                for (unsigned i=0; i<2; i++) {
+                    if (m_m.is_true(c)==(i==0)) {
+                        if (repair_formula(mct, q, to_app(e)->get_arg(i+1), vsub, tsub, polarity, fail_entry, fail_value, fail_func, inst_reason)) {
+                            return true;
+                        }
                     }
                 }
-                else if (m_m.is_false(c)) {
-                    if (repair_formula(mct, q, to_app(e)->get_arg(2), vsub, tsub, polarity)) {
-                        return true;
-                    }
-                }
-                //try to repair condition
-                expr * ec = evaluate(mct, to_app(e)->get_arg(m_m.is_true(c) ? 2 : 1), vsub);
-                //check if child is favorable
-                if (ec && m_m.is_true(ec)==polarity) {
-                    if (repair_formula(mct, q, to_app(e)->get_arg(0), vsub, tsub, !m_m.is_true(c))) {
-                        return true;
-                    }
+            }
+            //try to repair condition
+            expr * ec = evaluate(mct, to_app(e)->get_arg(m_m.is_true(c) ? 2 : 1), vsub, true);
+            //check if child is favorable
+            if (ec && m_m.is_true(ec)==polarity) {
+                if (repair_formula(mct, q, to_app(e)->get_arg(0), vsub, tsub, !m_m.is_true(c), fail_entry, fail_value, fail_func, inst_reason)) {
+                    return true;
                 }
             }
         }
         else if (is_uninterp(to_app(e)->get_decl())) {
-            //predicate case
-            return repair_term(mct, q, e, vsub, tsub, polarity ? m_true : m_false);
+            //predicate case (easy)
+            return repair_term(mct, q, e, vsub, tsub, polarity ? m_true : m_false, fail_entry, fail_value, fail_func, inst_reason);
         }
     }
     return false;
 }
 
-bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v) {
+bool mc_context::repair_term(model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v, 
+                             ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason) {
     //try to make the term with var_subst equal to v
     SASSERT(is_uninterp(t));
-    //evaluate the arguments
+    //fully evaluate the arguments
     expr_ref_buffer args(m_m);
     for (unsigned i=0; i<to_app(t)->get_num_args(); i++) {
         expr * vc = evaluate(mct, to_app(t)->get_arg(i), vsub);
-        if (!vc) return 0;
+        if (!vc) return false;
         args.push_back(vc);
     }
     func_decl * f = to_app(t)->get_decl();
+    //SASSERT(is_uninterp(f));
     simple_def * df = mct->get_simple_def(*this, f);
-    if (!df->evaluate(*this, args, true)) {
-        TRACE("repair_model", tout << "Can be fixed by adding (";
-                              for (unsigned i=0; i<args.size(); i++) {
-                                  if (i>0) tout << ", ";
-                                  display(tout, args[i]);
-                              }
-                              tout << ") -> ";
-                              display(tout,v);
-                              tout << " to " << mk_pp(f,m_m) << "\n";);
-        TRACE("repair_model_debug", tout << "variable substitution is : \n";
-                                    for (unsigned i=0; i<vsub.size(); i++) {
-                                        tout << "   " << mk_pp(tsub[(vsub.size()-1)-i], m_m) << ", value = "; display(tout, vsub[i]);
-                                        expr * ve = evaluate(mct,tsub[(vsub.size()-1)-i],vsub);
-                                        SASSERT(ve==vsub[i]);
-                                        tout << ", evaluated = "; display(tout,ve); tout << "\n";
-                                    }
-                                    );
-        expr_ref ts(m_m);
-        var_subst vs(m_m);
-        vs(t,tsub.size(),tsub.c_ptr(), ts);
-        TRACE("repair_model_debug", tout << "Substituted term is " << mk_pp(ts,m_m) << "\n";);
-        if (!m_expr_produced.contains(ts)) {
-            m_expr_produced.push_back(ts);
+    //see if the entry exists in df
+    annot_entry * tae = df->get_entry(args);
+    bool success = false;
+    if ((tae && tae->get_result()==v) || !tae) {
+        //TODO: make inst_reason
+        if (tae) {
+            //already true in partial model, no need to do anything
+            success = true;
+            TRACE("repair_model", tout << "Uninterpreted function, no need to repair, it is already correct.\n";);
         }
+        else {
+            TRACE("repair_model", tout << "Can be fixed by adding (";
+                                  for (unsigned i=0; i<args.size(); i++) {
+                                      if (i>0) tout << ", ";
+                                      display(tout, args[i]);
+                                  }
+                                  tout << ") -> ";
+                                  display(tout,v);
+                                  tout << " to " << mk_pp(f,m_m) << "\n";);
+            TRACE("repair_model_debug", tout << "variable substitution is : \n";
+                                        for (unsigned i=0; i<vsub.size(); i++) {
+                                            tout << "   " << mk_pp(tsub[(vsub.size()-1)-i], m_m) << ", value = "; display(tout, vsub[i]);
+                                            expr * ve = evaluate(mct,tsub[(vsub.size()-1)-i],vsub);
+                                            SASSERT(ve==vsub[i]);
+                                            tout << ", evaluated = "; display(tout,ve); tout << "\n";
+                                        }
+                                        );
+            expr_ref ts(m_m);
+            var_subst vs(m_m);
+            vs(t,tsub.size(),tsub.c_ptr(), ts);
+            TRACE("repair_model_debug", tout << "Substituted term is " << mk_pp(ts,m_m) << "\n";);
+            if (!m_expr_produced.contains(ts)) {
+                m_expr_produced.push_back(ts);
+            }
 
-        // do the repair
-        //make sure all arguments have ground entries
-        for (unsigned i=0; i<to_app(t)->get_num_args(); i++) {
-            expr * ve = evaluate(mct, to_app(t)->get_arg(i), vsub, to_app(ts)->get_arg(i), true);
-            SASSERT(ve==args[i]);
+            // do the repair
+            //if (!inst_reason) {
+            //    inst_reason = mk_annot_entry(vsub, tsub, m_true);
+            //}
+            annot_entry * c = mk_annot_entry(args, ts, v);
+            mct->append_entry_to_simple_def(*this, f, c, q, inst_reason);
         }
-        annot_entry * c = mk_annot_entry(args, ts, v);
-        mct->append_entry_to_simple_def(*this, f, c);
+        //then, make sure all entries are produced by ground entries
+        for (unsigned i=0; i<to_app(t)->get_num_args(); i++) {
+            expr * env = ensure_interpretation(mct, to_app(t)->get_arg(i), vsub, tsub, q, inst_reason);
+            SASSERT(env==args[i]);
+        }
         return true;
     }
     else {
+        //if it was made by another repair, we might want to investigate further
+        if (df->is_repair_entry(tae)) {
+            fail_entry.push_back(tae);
+            fail_value.push_back(v);
+            fail_func.push_back(f);
+        }
         return false;
     }
+}
+
+expr * mc_context::ensure_interpretation(model_constructor * mct, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub,
+                                         quantifier * q_reason, annot_entry * inst_reason) {
+
+    expr * ev = evaluate(mct, e, vsub, true);
+    if (!ev) {
+        SASSERT(is_app(e));
+        expr_ref_buffer children(m_m);
+        for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
+            expr * vc = ensure_interpretation(mct, to_app(e)->get_arg(i), vsub, tsub, q_reason, inst_reason);
+            if (!vc) {
+                return 0;
+            }
+            else {
+                children.push_back(vc);
+            }
+        }
+        func_decl * f = to_app(e)->get_decl();
+        if (is_uninterp(e)) {
+            simple_def * df  = mct->get_simple_def(*this, f);
+            ev = df->evaluate(children, true);
+            if (!ev) {
+                //need to make the term
+                expr_ref ts(m_m);
+                var_subst vs(m_m);
+                vs(e,tsub.size(),tsub.c_ptr(), ts);
+                if (!m_expr_produced.contains(ts)) {
+                    m_expr_produced.push_back(ts);
+                }
+                annot_entry * c = mk_annot_entry(children, ts, df->get_else());
+                TRACE("repair_model_debug", tout << "Append entry to ensure non-star evaluation : "; display(tout, c); 
+                                            tout << " of " << mk_pp(e,m_m) << ".\n   Substituted term from which annotation will be taken is " << mk_pp(ts,m_m) << "\n";);
+                //if (!inst_reason) {
+                //    inst_reason = mk_annot_entry(vsub, tsub, m_true);
+                //}
+                mct->append_entry_to_simple_def(*this, f, c, q_reason, inst_reason);
+                ev = df->get_else();
+            }
+        }
+        else {
+            ev = evaluate_interp(f, children);
+        }
+    }
+    return ev;
 }

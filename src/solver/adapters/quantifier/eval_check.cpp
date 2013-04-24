@@ -101,7 +101,7 @@ bool annot_entry_trie::add(mc_context & mc, annot_entry * c, unsigned index, uns
     }
 }
 
-bool annot_entry_trie::evaluate(mc_context & mc, annot_entry * c, unsigned index, unsigned & data_val) {
+bool annot_entry_trie::evaluate(annot_entry * c, unsigned index, unsigned & data_val) {
     if (index==c->get_size()) {
         if (m_data==0) {
             return false;
@@ -114,7 +114,7 @@ bool annot_entry_trie::evaluate(mc_context & mc, annot_entry * c, unsigned index
     else {
         annot_entry_trie * ct;
         if (m_children.find(c->get_value(index), ct)) {
-            return ct->evaluate(mc, c, index+1, data_val);
+            return ct->evaluate(c, index+1, data_val);
         }
         else {
             return false;
@@ -122,7 +122,7 @@ bool annot_entry_trie::evaluate(mc_context & mc, annot_entry * c, unsigned index
     }
 }
 
-bool annot_entry_trie::evaluate(mc_context & mc, expr_ref_buffer & vals, unsigned index, unsigned & data_val) {
+bool annot_entry_trie::evaluate(expr_ref_buffer & vals, unsigned index, unsigned & data_val) {
     if (index==vals.size()) {
         if (m_data==0) {
             return false;
@@ -135,7 +135,7 @@ bool annot_entry_trie::evaluate(mc_context & mc, expr_ref_buffer & vals, unsigne
     else {
         annot_entry_trie * ct;
         if (m_children.find(vals[index], ct)) {
-            return ct->evaluate(mc, vals, index+1, data_val);
+            return ct->evaluate(vals, index+1, data_val);
         }
         else {
             return false;
@@ -145,20 +145,24 @@ bool annot_entry_trie::evaluate(mc_context & mc, expr_ref_buffer & vals, unsigne
 
 #ifdef USE_BINARY_SEARCH
 
-expr * simple_def::evaluate(mc_context & mc, annot_entry * c, bool ignore_else) {
-    unsigned sz = m_conds.size();
-    if (sz == 0) {
-        return ignore_else ? 0 : m_else;
-    }
+void simple_def::sort_entries() {
     if (!m_sorted) {
         //sort the definition
         lt_index lti(*this);
         std::sort(m_conds.begin(), m_conds.end(), lti);
-        for (unsigned i=0; i<(sz-1); i++) { 
-            SASSERT(lt_index::compare(m_conds[i],m_conds[i+1])==-1);
-        }
+        //for (unsigned i=0; i<(m_conds.size()-1); i++) { 
+        //    SASSERT(lt_index::compare(m_conds[i],m_conds[i+1])==-1;);
+        //}
         m_sorted = true;
     }
+}
+
+bool simple_def::get_index_of(annot_entry * c, unsigned & index) {
+    unsigned sz = m_conds.size();
+    if (sz == 0) {
+        return false;
+    }
+    sort_entries();
     int low  = 0;
     int high = sz - 1;
     while (true) {
@@ -171,30 +175,31 @@ expr * simple_def::evaluate(mc_context & mc, annot_entry * c, bool ignore_else) 
             high = mid - 1;
         }
         else {
-            return m_conds[mid]->get_result();
+            index = mid;
+            return true;
         }
         if (low > high) {
-            return ignore_else ? 0 : m_else;
+            return false;
         }
     }
     SASSERT(false);
-    return ignore_else ? 0 : m_else;
+    return false;
 }
 
-expr * simple_def::evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else) {
+expr * simple_def::evaluate(annot_entry * c, bool partial) {
+    unsigned index;
+    if (get_index_of(c, index)) {
+        return m_conds[index]->get_result();
+    }
+    return partial ? 0 : m_else;
+}
+
+annot_entry * simple_def::get_entry(expr_ref_buffer & vals) {
     unsigned sz = m_conds.size();
     if (sz == 0) {
-        return ignore_else ? 0 : m_else;
+        return 0;
     }
-    if (!m_sorted) {
-        //sort the definition
-        lt_index lti(*this);
-        std::sort(m_conds.begin(), m_conds.end(), lti);
-        for (unsigned i=0; i<(sz-1); i++) { 
-            SASSERT(lt_index::compare(m_conds[i],m_conds[i+1])==-1);
-        }
-        m_sorted = true;
-    }
+    sort_entries();
     int low  = 0;
     int high = sz - 1;
     while (true) {
@@ -207,18 +212,37 @@ expr * simple_def::evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore
             high = mid - 1;
         }
         else {
-            return m_conds[mid]->get_result();
+            return m_conds[mid];
         }
         if (low > high) {
-            return ignore_else ? 0 : m_else;
+            return 0;
         }
     }
     SASSERT(false);
-    return ignore_else ? 0 : m_else;
+    return 0;
+}
+
+expr * simple_def::evaluate(expr_ref_buffer & vals, bool partial) {
+    annot_entry * ae = get_entry(vals);
+    if (ae) {
+        return ae->get_result();
+    }
+    return partial ? 0 : m_else;
+}
+
+bool simple_def::is_repair_entry(annot_entry * c) {
+    unsigned index;
+    if (get_index_of(c, index)) {
+        return index>=m_num_real_entries;
+    }
+    else {
+        SASSERT(false);
+        return false;
+    }
 }
 
 bool simple_def::append_entry(mc_context & mc, annot_entry * c) {
-    if (!evaluate(mc, c, true)) {
+    if (!evaluate(c, true)) {
         m_sorted = false;
         m_conds.push_back(c);
         m_unsorted_conds.push_back(c);
@@ -230,20 +254,20 @@ bool simple_def::append_entry(mc_context & mc, annot_entry * c) {
 
 #else
 
-expr * simple_def::evaluate(mc_context & mc, annot_entry * c, bool ignore_else) {
+expr * simple_def::evaluate(annot_entry * c, bool partial) {
     unsigned index;
-    if (m_tct.evaluate(mc, c, index)) {
+    if (m_tct.evaluate(c, index)) {
         return m_conds[index]->get_result();
     }
-    return ignore_else ? 0 : m_else;
+    return partial ? 0 : m_else;
 }
 
-expr * simple_def::evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else) {
+expr * simple_def::evaluate(expr_ref_buffer & vals, bool partial) {
     unsigned index;
-    if (m_tct.evaluate(mc, vals, index)) {
+    if (m_tct.evaluate(vals, index)) {
         return m_conds[index]->get_result();
     }
-    return ignore_else ? 0 : m_else;
+    return partial ? 0 : m_else;
 }
 
 bool simple_def::append_entry(mc_context & mc, annot_entry * c) {
@@ -263,6 +287,7 @@ void eval_node::notify_evaluation(ptr_vector<eval_node> & active) {
     for (unsigned i=0; i<m_parents.size(); i++) {
         m_parents[i]->m_children_eval_count++;
         TRACE("eval_node", tout << "parent inc " << m_parents[i]->m_children_eval_count << " / " << to_app(m_parents[i]->get_expr())->get_num_args() << "\n";);
+
         if (m_parents[i]->can_evaluate()) {
             SASSERT(!active.contains(m_parents[i]));
             active.push_back(m_parents[i]);
@@ -278,10 +303,55 @@ void eval_node::unnotify_evaluation() {
 eval_check::eval_check(ast_manager & _m) : m_m(_m) {
     m_eval_check_inst_limited = true;    
     m_eval_check_multiple_patterns = false;
+    m_ground_partial_evaluation = false;
 }
 
-eval_node * eval_check::mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                                     obj_map< expr, eval_node *> & evals, expr * parent) {
+void eval_check::set_var_bind_eval_node(eval_node * en, unsigned vid) {
+    if (!m_bind_terms.contains(vid)) {
+        ptr_vector< eval_node > vec;
+        vec.push_back(en);
+        m_bind_terms.insert(vid, vec);
+        en->m_vars_to_bind++;
+    }
+    else {
+        ptr_vector< eval_node > & vec = m_bind_terms.find(vid);
+        if (!vec.contains(en)) {
+            vec.push_back(en);
+            en->m_vars_to_bind++;
+        }
+    }
+
+}
+
+void eval_check::set_var_bound(unsigned vid, ptr_vector<eval_node> & new_active) {
+    if (m_vars[vid]) {
+        m_vars[vid]->notify_evaluation(new_active);
+    }
+
+    if (m_bind_terms.contains(vid)) {
+        ptr_vector< eval_node > & vec = m_bind_terms.find(vid);
+        for (unsigned i=0; i<vec.size(); i++) {
+            vec[i]->m_vars_to_bind--;
+        }
+    }
+
+}
+
+void eval_check::set_var_unbound(unsigned vid) {
+    if (m_vars[vid]) {
+        m_vars[vid]->unnotify_evaluation();
+    }
+
+    if (m_bind_terms.contains(vid)) {
+        ptr_vector< eval_node > & vec = m_bind_terms.find(vid);
+        for (unsigned i=0; i<vec.size(); i++) {
+            vec[i]->m_vars_to_bind++;
+        }
+    }
+
+}
+
+eval_node * eval_check::mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_node> & active, obj_map< expr, eval_node *> & evals, unsigned q_depth) {
     eval_node * ene;
     if (evals.find(e, ene)) {
         return ene;
@@ -289,6 +359,7 @@ eval_node * eval_check::mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_
     else {
         void * mem = mc.allocate(sizeof(eval_node));
         ene = new (mem) eval_node(e);
+        ene->m_q_depth = q_depth;
         if (!is_ground(e) && is_app(e)) {
             for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
                 expr * ec = to_app(e)->get_arg(i);
@@ -296,14 +367,13 @@ eval_node * eval_check::mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_
                     ene->m_children_eval_count++;
                     ene->m_children.push_back(0);
                 }
-                //else if (is_uninterp(e) && m_cutil.is_var_offset(ec, classify_util::REQ_GROUND)) {
                 else if (is_uninterp(e) && is_var(ec)) {
                     ene->m_children_eval_count++;
-                    ene->m_vars_to_bind++;
                     ene->m_children.push_back(0);
+                    set_var_bind_eval_node(ene, to_var(ec)->get_idx());
                 }
                 else {
-                    eval_node * enec = mk_eval_node(mc, ec, active, vars, evals, e);
+                    eval_node * enec = mk_eval_node(mc, ec, active, evals, q_depth+1);
                     enec->add_parent(ene);
                 }
             }
@@ -313,19 +383,21 @@ eval_node * eval_check::mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_
         }
         if (is_var(e)) {
             unsigned vid = to_var(e)->get_idx();
-            vars[vid] = ene;
+            m_vars[vid] = ene;
         }
         evals.insert(e, ene);
         return ene;
     }
 }
 
-lbool eval_check::run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired) {
+lbool eval_check::run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations) {
+    m_var_bind_count = 0;
+    m_vars.reset();
+    m_vars.resize(q->get_num_decls(),0);
+    m_bind_terms.reset();
     ptr_vector<eval_node> active;
-    ptr_buffer<eval_node> vars;
-    vars.resize(q->get_num_decls(),0);
     obj_map< expr, eval_node *> evals;
-    mk_eval_node(mc, q->get_expr(), active, vars, evals);
+    mk_eval_node(mc, q->get_expr(), active, evals);
 
     //std::random_shuffle(active.begin(), active.end());
 
@@ -342,7 +414,7 @@ lbool eval_check::run(mc_context & mc, model_constructor * mct, quantifier * q, 
                             tout << "\n";
                         }
                         );
-    repaired = false;
+    m_depth = 0;
     //std::cout << "Eval check " << mk_pp(q,m_m) << "..." << std::endl;
 
     unsigned prev_size = active.size();
@@ -356,7 +428,7 @@ lbool eval_check::run(mc_context & mc, model_constructor * mct, quantifier * q, 
     m_start_score = 0;
     do {
         m_first_time = true;
-        if (do_eval_check(mc, mct, q, active, vars, vsub, esub, instantiations, 0, repaired)==l_false) {
+        if (do_eval_check(mc, mct, q, active, vsub, esub, instantiations)==l_false) {
             TRACE("eval_check", tout << "Eval check failed on quantifier " << mk_pp(q,m_m) << "\n";);
             return instantiations.empty() ? l_undef : l_false;
         }
@@ -370,23 +442,34 @@ lbool eval_check::run(mc_context & mc, model_constructor * mct, quantifier * q, 
     return instantiations.empty() ? l_undef : l_false;
 }
 
-lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                                expr_ref_buffer & vsub, expr_ref_buffer & esub, 
-                                expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired) {
+lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active,
+                                expr_ref_buffer & vsub, expr_ref_buffer & esub, expr_ref_buffer & instantiations) {
+    m_depth++;
     lbool eresult = l_undef;
     unsigned prev_size = active.size();
     bool firstTime = m_first_time;
     if (!active.empty()) {
         unsigned best_index = active.size()-1;
         unsigned max_score = 0;
+        unsigned max_score2 = 0;
+        unsigned max_score3 = 0;
         for (unsigned i=0; i<active.size(); i++) {
             unsigned ii = (active.size()-1)-i;
             if (active[ii]->can_evaluate() && (!m_first_time || !m_start_index.contains(ii))) {
                 unsigned score = 1 + active[ii]->m_vars_to_bind; //TODO : more heuristics
                 //get score
-                if (score>max_score) {
-                    best_index = ii;
-                    max_score = score;
+                if (score>=max_score) {
+                    unsigned score2 = 1;// + (10000-active[ii]->m_q_depth);
+                    if (score>max_score || score2>=max_score2) {
+                        expr * e = active[ii]->get_expr();
+                        unsigned score3 = 1;
+                        if (score>max_score || score2>max_score2 || score3>max_score3) {
+                            best_index = ii;
+                            max_score = score;
+                            max_score2 = score2;
+                            max_score3 = score3;
+                        }
+                    }
                 }
             }
         }
@@ -410,8 +493,8 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
         TRACE("eval_check_debug", tout << "Process " << mk_pp(e,m_m) << "\n";);
         expr * result = 0;
         if (is_ground(e)) {
-            //just use the evaluator
-            result = mc.evaluate(mct, e);
+            //just use the evaluator  (partial?)
+            result = mc.evaluate(mct, e, m_ground_partial_evaluation);
         }
         else {
             //evaluate the expression
@@ -451,20 +534,19 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                     }
                 }
             }
+            //SASSERT(var_to_bind.size()==en->m_vars_to_bind);
             func_decl * f = to_app(e)->get_decl();
             //compute the definition
             if (is_uninterp(f)) {
                 simple_def * df = mct->get_simple_def(mc,f);
                 if (!var_to_bind.empty()) {
-                    var_bind_count += var_to_bind.size();
+                    m_var_bind_count += var_to_bind.size();
                     ptr_vector<eval_node> new_active;
-                    if (var_bind_count<q->get_num_decls()) {
+                    if (m_var_bind_count<q->get_num_decls()) {
                         //have each newly bound variable notify that they evaluate
                         for (unsigned j=0; j<var_to_bind.size(); j++) {
                             SASSERT(vsub[var_to_bind[j]]==0);
-                            if (vars[var_to_bind[j]]) {
-                                vars[var_to_bind[j]]->notify_evaluation(new_active);
-                            }
+                            set_var_bound(var_to_bind[j], new_active);
                         }
                         //as well as this
                         en->notify_evaluation(new_active);
@@ -494,14 +576,15 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                                                 };
                                                 );
                     unsigned process_num_entries = df->get_num_entries();
+                    //std::cout << m_depth << " process " << df->get_num_entries() << " for " << mk_pp(e,m_m) << " ... \n";
                     for (unsigned i=0; i<process_num_entries; i++) {
                     //for (unsigned i=0; i<df->get_num_entries(); i++) {
                         annot_entry * cf = df->get_condition(i);
                         en->m_value = df->get_value(i);
                         if (mc.do_compose(vsub, children, esub, cf)) {
                             for (unsigned j=0; j<var_to_bind.size(); j++) {
-                                if (vars[var_to_bind[j]]) {
-                                    vars[var_to_bind[j]]->m_value = vsub[var_to_bind[j]];
+                                if (m_vars[var_to_bind[j]]) {
+                                    m_vars[var_to_bind[j]]->m_value = vsub[var_to_bind[j]];
                                 }
 #ifdef EVAL_CHECK_DEBUG
                                 expr * ve = evaluate(mct, esub[(vsub.size()-1)-var_to_bind[j]]);
@@ -519,19 +602,19 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                                                         }
                                                         );
                             //TRACE("eval_check_debug", tout << "Process entry "; mc.display(tout, dc->get_condition(i)); tout << "\n";);
-                            if (var_bind_count<q->get_num_decls()) {
+                            if (m_var_bind_count<q->get_num_decls()) {
                                 en->m_value = df->get_value(i);
                                 if (new_active.empty()) {
                                     if (en->get_expr()!=q->get_expr() || m_m.is_false(en->m_value)) {
                                         //SASSERT(!active.empty() || en->get_expr()==q->get_expr());
-                                        eresult = do_eval_check(mc, mct, q, active, vars, vsub, esub, instantiations, var_bind_count, repaired);
+                                        eresult = do_eval_check(mc, mct, q, active, vsub, esub, instantiations);
                                         if (eresult==l_false) {
                                             return l_false;
                                         }
                                     }
                                 }
                                 else {
-                                    eresult = do_eval_check(mc, mct, q, new_active, vars, vsub, esub, instantiations, var_bind_count, repaired);
+                                    eresult = do_eval_check(mc, mct, q, new_active, vsub, esub, instantiations);
                                     if (eresult==l_false) {
                                         return l_false;
                                     }
@@ -546,7 +629,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                                     SASSERT(vsub[k]);
                                     SASSERT(esub[k]);
                                 }
-                                if (mc.add_instantiation(mct, q, esub, vsub, instantiations, repaired, true, true, false)) {
+                                if (mc.add_instantiation(mct, q, esub, vsub, instantiations, false, true, false)) {
                                     eresult = l_true;
                                 }
                                 mc.set_evaluate_cache_active(false);
@@ -564,33 +647,17 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                             break;
                         }
                     }
-                    if (var_bind_count<q->get_num_decls()) {
+                    m_var_bind_count -= var_to_bind.size();
+                    if (m_var_bind_count<q->get_num_decls()) {
                         en->unnotify_evaluation();
                         for (unsigned j=0; j<var_to_bind.size(); j++) {
-                            if (vars[var_to_bind[j]]) {
-                                vars[var_to_bind[j]]->unnotify_evaluation();
-                            }
+                            set_var_unbound(var_to_bind[j]);
                         }
                     }
                 }
                 else {
                     //just evaluate
-                    //TRACE("eval_check_debug", tout << "Definition is "; mc.display(tout,df); tout << "\n";);
-                    result = df->evaluate(mc, children);
-                    //--------------------test
-                    /*
-                    ptr_buffer<val> vsub;
-                    for (unsigned i=0; i<curr_cond->get_size(); i++) {
-                        if (curr_cond->get_value(i)->is_value()) {
-                            vsub.push_back(to_value(curr_cond->get_value(i))->get_value());
-                        }
-                        else {
-                            vsub.push_back(0);
-                        }
-                    }
-                    result = evaluate(mct, e, vsub, true);
-                    */
-                    //---------------------end test
+                    result = df->evaluate(children, m_ground_partial_evaluation);
                 }
             }
             else {
@@ -608,12 +675,12 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
             if (new_active.empty()) {
                 if (en->get_expr()!=q->get_expr() || m_m.is_false(en->m_value)) {
                     if (active.empty() && en->get_expr()!=q->get_expr()) {
-                        SASSERT(var_bind_count<q->get_num_decls());
+                        SASSERT(m_var_bind_count<q->get_num_decls());
                         TRACE("eval_check_warn", tout << "WARNING: Evaluation finished and not all variables are bound.\n";);
                         return l_false;
                     }
                     else {
-                        eresult = do_eval_check(mc, mct, q, active, vars, vsub, esub, instantiations, var_bind_count, repaired);
+                        eresult = do_eval_check(mc, mct, q, active, vsub, esub, instantiations);
                     }
                 }
             }
@@ -624,7 +691,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                     }
                     );
                 new_active.append(active.size(), active.c_ptr());
-                eresult = do_eval_check(mc, mct, q, new_active, vars, vsub, esub, instantiations, var_bind_count, repaired);
+                eresult = do_eval_check(mc, mct, q, new_active, vsub, esub, instantiations);
             }
             en->m_value = 0;
             en->unnotify_evaluation();
@@ -633,11 +700,12 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
         active.push_back(en);
     }
     else {
-        SASSERT(var_bind_count<q->get_num_decls());
+        SASSERT(m_var_bind_count<q->get_num_decls());
         TRACE("eval_check_warn", tout << "Did not bind all variables in quantifier " << mk_pp(q,m_m) << "\n";
                                  tout << "WARNING: no terms to evaluate.\n";);
         return l_false;
     }
+    m_depth--;
     SASSERT(eresult==l_false || active.size()==prev_size);
     return eresult;
 }

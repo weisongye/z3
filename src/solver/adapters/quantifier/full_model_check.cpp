@@ -409,10 +409,10 @@ lbool full_model_check::run(mc_context & mc, model_constructor * mct, quantifier
                 }
                 if (process) {
                     if (r==0) {
-                        mc.add_instantiation_simple(mct, q, d->get_condition(i), instantiations, !full_model_check && !ci.is_model_checkable());
+                        mc.add_instantiation(mct, q, d->get_condition(i), instantiations, !full_model_check && !ci.is_model_checkable());
                     }
                     else {
-                        mc.add_instantiation_simple(mct, q, d->get_condition(i), instantiations_star, !full_model_check && !ci.is_model_checkable());
+                        mc.add_instantiation(mct, q, d->get_condition(i), instantiations_star, !full_model_check && !ci.is_model_checkable());
                     }
                 }
             }
@@ -449,6 +449,11 @@ def * full_model_check::do_check(mc_context & mc, model_constructor * mct, quant
         value_tuple * vt = mc.mk_value_tuple(v);
         d->append_entry(mc, star, vt);
     }
+    /*
+    else if (is_ground(e)) {
+
+    }
+    */
     else if (is_app(e)) {
         //if it is interpreted, we may need to construct definition in a special way
         if (!is_uninterp(e)) {

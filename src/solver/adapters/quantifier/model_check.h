@@ -61,7 +61,6 @@ class cond;
 
 class def;
 
-
 class model_constructor;
 class eval_check;
 class full_model_check;
@@ -116,28 +115,32 @@ protected: //cached information
 private:
     //evaluate cache
     obj_map< expr, expr * > m_evaluations;
+    obj_map< expr, expr * > m_partial_evaluations;
     //
     bool m_evaluation_cache_active;
     //set evaluation cache active
     void set_evaluate_cache_active(bool v) {
-        if (v) { m_evaluations.reset(); }
+        if (v) { 
+            m_evaluations.reset(); 
+            m_partial_evaluations.reset();
+        }
         m_evaluation_cache_active = v;
     }
 protected: //helper functions
     //repair model
-    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity);
-    bool repair_term(model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v);
+    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity, 
+                        ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason);
+    bool repair_term(model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v, 
+                     ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason);
+    expr * ensure_interpretation(model_constructor * mct, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, 
+                                 quantifier * q_reason = 0, annot_entry * inst_reason = 0);
     //add instantiation
-    bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool & repaired,
+    bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
-    bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & instantiations, bool & repaired,
+    bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
-    bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, expr_ref_buffer & instantiations, bool & repaired,
+    bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
-    bool add_instantiation_simple(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations, bool filterEval = false) {
-        bool repaired;
-        return add_instantiation(mct,q,c,instantiations,repaired, filterEval, false);
-    }
     //evaluate function
     val * evaluate_interp(func_decl * f, ptr_buffer<val> & vals);
     expr * evaluate_interp(func_decl * f, expr_ref_buffer & vals);
@@ -256,9 +259,11 @@ public:
     cond * copy(cond * c);
     //make new def
     def * new_def();
-    //make term condition
+    //make annotated entry
+    annot_entry * mk_annot_entry(expr_ref_buffer & values, expr_ref_buffer & annotations, expr * result);
+    //make annotated entry
     annot_entry * mk_annot_entry(ptr_buffer<expr> & values, ptr_buffer<expr> & annotations, expr * result);
-    //make term condition
+    //make annotated entry
     annot_entry * mk_annot_entry(expr_ref_buffer & values, expr * annotate_t, expr * result);
     //make new def
     simple_def * new_simple_def();
@@ -278,8 +283,8 @@ public: //other helper functions
     //make expression from value
     void get_expr_from_val(val * v, expr_ref & e);
     //evaluate
-    expr * evaluate(model_constructor * mct, expr * e, expr_ref_buffer & vsub, expr * aeens_t = 0, bool add_entries_ensuring_non_star = false);
-    expr * evaluate(model_constructor * mct, expr * e, bool add_entries_ensuring_non_star = false);
+    expr * evaluate(model_constructor * mct, expr * e, expr_ref_buffer & vsub, bool partial = false);
+    expr * evaluate(model_constructor * mct, expr * e, bool partial = false);
 public: //display functions
     //display the expression
     void display(std::ostream & out, expr * e);

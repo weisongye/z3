@@ -60,15 +60,23 @@ private:
     unsigned m_data;
     obj_map< expr, annot_entry_trie  * > m_children;
     bool add(mc_context & mc, annot_entry * c, unsigned index, unsigned data_val);
-    bool evaluate(mc_context & mc, annot_entry * c, unsigned index, unsigned & data_val);
-    bool evaluate(mc_context & mc, expr_ref_buffer & vals, unsigned index, unsigned & data_val);
+    bool evaluate(annot_entry * c, unsigned index, unsigned & data_val);
+    bool evaluate(expr_ref_buffer & vals, unsigned index, unsigned & data_val);
 public:
     annot_entry_trie () : m_data(0) {}
     bool add(mc_context & mc, annot_entry * c, unsigned data_val) { return add(mc, c, 0, data_val); }
-    bool evaluate(mc_context & mc, annot_entry * c, unsigned & data_val) { return evaluate(mc, c, 0, data_val); }
-    bool evaluate(mc_context & mc, expr_ref_buffer & vals, unsigned & data_val) { return evaluate(mc, vals, 0, data_val); }
+    bool evaluate(annot_entry * c, unsigned & data_val) { return evaluate(c, 0, data_val); }
+    bool evaluate(expr_ref_buffer & vals, unsigned & data_val) { return evaluate(vals, 0, data_val); }
 };
 
+
+/*
+class add_inst 
+{
+public:
+
+};
+*/
 
 class simple_def
 {
@@ -81,6 +89,8 @@ protected:
     expr * m_else;
     bool m_sorted;
     unsigned m_num_real_entries;
+    void sort_entries();
+    bool get_index_of(annot_entry * c, unsigned & index);
 public:
     simple_def() : m_else(0), m_sorted(true), m_num_real_entries(0) {}
     unsigned get_num_entries() { return m_unsorted_conds.size(); }
@@ -89,8 +99,11 @@ public:
     void set_else(expr * ee) {m_else = ee; }
     expr * get_else() { return m_else; }
     //evaluate
-    expr * evaluate(mc_context & mc, annot_entry * c, bool ignore_else = false);
-    expr * evaluate(mc_context & mc, expr_ref_buffer & vals, bool ignore_else = false);
+    expr * evaluate(annot_entry * c, bool partial = false);
+    expr * evaluate(expr_ref_buffer & vals, bool partial = false);
+    annot_entry * get_entry(expr_ref_buffer & vals);
+    //is this a repair entry?
+    bool is_repair_entry(annot_entry * c);
     //add entry to the definition
     bool append_entry(mc_context & mc, annot_entry * c);
 };
@@ -107,6 +120,7 @@ private:
     ptr_vector<eval_node> m_children;
     unsigned m_children_eval_count;
     unsigned m_vars_to_bind;
+    unsigned m_q_depth; //depth in quantifier
 public:
     eval_node(expr * e) : m_e(e), m_value(0), m_children_eval_count(0), m_vars_to_bind(0) {}
 
@@ -134,23 +148,37 @@ protected:
     bool m_eval_check_inst_limited;
     // repeat eval check on multiple patterns
     bool m_eval_check_multiple_patterns;
+    // only follow partial evaluation
+    bool m_ground_partial_evaluation;
+protected: //temporary information
     //first time
     bool m_first_time;
     //start indicies
     sbuffer<unsigned> m_start_index;
     //start score
     unsigned m_start_score;
+    //temporary
+    unsigned m_depth;
+    //map from variables to the evaluation nodes that bind them
+    u_map< ptr_vector< eval_node > > m_bind_terms;
+    //variable eval nodes
+    ptr_vector<eval_node> m_vars;
+    //variable bound count
+    unsigned m_var_bind_count;
+protected:
+    void set_var_bind_eval_node(eval_node * en, unsigned vid);
+    void set_var_bound(unsigned vid, ptr_vector<eval_node> & new_active);
+    void set_var_unbound(unsigned vid);
 public:
     eval_check(ast_manager & _m);
 protected:
-    eval_node * mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, obj_map< expr, eval_node *> & evals, expr * parent = 0);
+    eval_node * mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_node> & active, obj_map< expr, eval_node *> & evals, unsigned q_depth = 0);
 
-    lbool do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, ptr_buffer<eval_node> & vars, 
-                        expr_ref_buffer & vsub, expr_ref_buffer & esub, 
-                        expr_ref_buffer & instantiations, unsigned var_bind_count, bool & repaired);
+    lbool do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, 
+                        expr_ref_buffer & vsub, expr_ref_buffer & esub, expr_ref_buffer & instantiations);
 public:
     //eval check
-    lbool run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations, bool & repaired);
+    lbool run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
 };
 
 }
