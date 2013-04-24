@@ -103,6 +103,7 @@ public:
     expr * evaluate(expr_ref_buffer & vals, bool partial = false);
     annot_entry * get_entry(expr_ref_buffer & vals);
     //is this a repair entry?
+    unsigned get_num_repair_entries() { return m_unsorted_repair_conds.size(); }
     bool is_repair_entry(annot_entry * c);
     //add entry to the definition
     bool append_entry(mc_context & mc, annot_entry * c, bool is_repair = false);
@@ -132,6 +133,7 @@ public:
     unsigned get_num_children() { return m_children.size(); }
     eval_node * get_child(unsigned i) { return m_children[i]; }
     void notify_evaluation(ptr_vector<eval_node> & active);
+    void notify_value(expr * ev);
     void unnotify_evaluation();
     expr * get_evaluation() { return m_value; }
     bool can_evaluate() { return is_app(m_e) && (is_ground(m_e) || m_children_eval_count==to_app(m_e)->get_num_args()); }
@@ -165,6 +167,11 @@ protected: //temporary information
     ptr_vector<eval_node> m_vars;
     //variable bound count
     unsigned m_var_bind_count;
+    //store the number of entries for each function we process
+    obj_map< func_decl, unsigned > m_func_num_real_entries;
+    obj_map< func_decl, unsigned > m_func_num_entries;
+    //process repair entries
+    bool m_process_repair_entries;
 protected:
     void set_var_bind_eval_node(eval_node * en, unsigned vid);
     void set_var_bound(unsigned vid, ptr_vector<eval_node> & new_active);
@@ -172,7 +179,7 @@ protected:
 public:
     eval_check(ast_manager & _m);
 protected:
-    eval_node * mk_eval_node(mc_context & mc, expr * e, ptr_vector<eval_node> & active, obj_map< expr, eval_node *> & evals, unsigned q_depth = 0);
+    eval_node * mk_eval_node(mc_context & mc, model_constructor * mct, expr * e, ptr_vector<eval_node> & active, obj_map< expr, eval_node *> & evals, unsigned q_depth = 0);
 
     lbool do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, 
                         expr_ref_buffer & vsub, expr_ref_buffer & esub, expr_ref_buffer & instantiations);

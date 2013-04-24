@@ -117,6 +117,8 @@ private:
     //evaluate cache
     obj_map< expr, expr * > m_evaluations;
     obj_map< expr, expr * > m_partial_evaluations;
+    obj_map< expr, expr * > m_ground_evaluations;
+    obj_map< expr, expr * > m_ground_partial_evaluations;
     //
     bool m_evaluation_cache_active;
     //set evaluation cache active
@@ -142,6 +144,8 @@ protected: //helper functions
     bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
     bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
+                           bool filterEval = false, bool filterRepair = false, bool filterCache = false);
+    bool add_instantiation2(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
     //evaluate function
     val * evaluate_interp(func_decl * f, ptr_buffer<val> & vals);
