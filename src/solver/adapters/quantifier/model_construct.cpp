@@ -573,7 +573,7 @@ void projection::compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_
 }
 
 model_constructor::model_constructor(ast_manager & _m)
-    : m_m(_m), m_au(_m), m_bvu(_m), m_partial_model_terms(_m) {
+    : m_m(_m), m_au(_m), m_bvu(_m), m_partial_model_terms(_m), m_model_repair(_m) {
     m_monotonic_projections = false;
     m_simplification = false;
     m_simple_definitions = true;
@@ -599,9 +599,7 @@ void model_constructor::reset_round(mc_context & mc) {
     m_partial_model_terms.reset();
     m_universe.reset();
 
-    m_repair_quant.reset();
-    m_repair_inst.reset();
-    m_repairs_permanent.reset();
+    m_model_repair.reset_round(mc);
 
     //TODO: make this only when pop happens?
     m_func_to_id.reset();
@@ -610,9 +608,6 @@ void model_constructor::reset_round(mc_context & mc) {
     m_quant_to_id.reset();
     m_quants.reset();
     m_quant_var_proj.reset();
-
-    //stats
-    m_stat_repairs = 0;
 }
 
 void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection> & var_proj, bool hasPolarity, bool polarity) {
@@ -1226,48 +1221,5 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, expr_ref_buffe
         p->get_rep()->get_witness(mc, a, ie, o, q->get_decl_sort((q->get_num_decls()-1)-j), c_found_expr);
         inst.push_back(ie);
         found_expr = found_expr && c_found_expr;
-    }
-}
-
-bool model_constructor::append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c,
-                                                   quantifier * q_repair, annot_entry * inst_repair) {
-    SASSERT(is_uninterp(f));
-    simple_def * sdf  = get_simple_def(mc, f);
-    if (sdf->append_entry(mc, c, true)) {
-        m_was_repaired = true;
-        m_stat_repairs++;
-        TRACE("repair_model_mct", tout << "Added "; mc.display(tout, c); tout << " to " << mk_pp(f, m_m) << "\n";);
-        //make sure it is in relevant domain
-        for (unsigned i=0; i<f->get_arity(); i++) {
-            projection * p = get_projection(mc, f, i);
-            SASSERT(c->get_value(i));
-            val * vi = mc.mk_val(c->get_value(i));
-            if (!p->has_relevant_domain_val(vi)) {
-                expr * ei = c->get_annotation(i);
-                p->add_relevant_domain(ei, vi);
-            }
-        }
-        append_repair(c, q_repair, inst_repair);
-        return true;
-    }
-    return false;
-}
-
-void model_constructor::append_repair(annot_entry * c, quantifier * q_repair, annot_entry * inst_repair) {
-    if (q_repair && inst_repair) {
-        if (m_repair_quant.contains(c)) {
-            ptr_vector<quantifier> & qvec = m_repair_quant.find(c);
-            ptr_vector<annot_entry> & ivec = m_repair_inst.find(c);
-            qvec.push_back(q_repair);
-            ivec.push_back(inst_repair);
-        }
-        else {
-            ptr_vector<quantifier> qvec;
-            ptr_vector<annot_entry> ivec;
-            qvec.push_back(q_repair);
-            ivec.push_back(inst_repair);
-            m_repair_quant.insert(c, qvec);
-            m_repair_inst.insert(c, ivec);
-        }
     }
 }

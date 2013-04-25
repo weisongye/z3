@@ -19,6 +19,7 @@ Author:
 
 #include"model_check.h"
 #include"full_model_check.h"
+#include"model_repair.h"
 
 namespace qsolver
 {
@@ -144,10 +145,8 @@ protected:
     //universe for uninterpreted sorts
     obj_map< sort, ptr_vector<expr> > m_universe;
 
-    //map from repair entries to the repair why they were added
-    ptr_addr_map<annot_entry, ptr_vector<quantifier> > m_repair_quant;
-    ptr_addr_map<annot_entry, ptr_vector<annot_entry> > m_repair_inst;
-    ptr_vector<annot_entry> m_repairs_permanent;
+    //the model repair object
+    model_repair m_model_repair;
 protected:
     //managers for expressions
     ast_manager & m_m;
@@ -209,18 +208,8 @@ public:
     //get term vector to instantiate q with, based on condition c
     void get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr);
     void get_inst(mc_context & mc, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & inst, bool & found_expr);
-public: //for model repair
-    //
-    bool append_entry_to_simple_def(mc_context & mc, func_decl * f, annot_entry * c, 
-                                    quantifier * q_repair = 0, annot_entry * inst_repair = 0);
-    void append_repair(annot_entry * c, quantifier * q_repair, annot_entry * inst_repair);
-    bool m_was_repaired;
-    //stats
-    unsigned m_stat_repairs;
-    //get repair
-    bool is_permanent(annot_entry * c) { return m_repairs_permanent.contains(c); }
-    void push_permanent_repair(annot_entry * c) { m_repairs_permanent.push_back(c); }
-    void pop_permanent_repair() { m_repairs_permanent.pop_back(); }
+    //get model repair object
+    model_repair * get_model_repair() { return &m_model_repair; }
 };
 
 

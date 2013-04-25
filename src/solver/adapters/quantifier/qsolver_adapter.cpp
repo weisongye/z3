@@ -316,7 +316,7 @@ public:
         {
             result = l_true;
             do_continue = false;
-            m_mct.m_was_repaired = false;
+            m_mct.get_model_repair()->m_was_repaired = false;
             unsigned q_start = m_q_next_index;
             //check the relevant quantifiers
             for (unsigned i=0; i<quantifiers.size(); i++) {
@@ -387,7 +387,7 @@ public:
 
             if (do_eval_check && instantiation_lemmas.empty()) {
                 do_continue = true;
-                if (!m_mct.m_was_repaired) {
+                if (!m_mct.get_model_repair()->m_was_repaired) {
                     std::cout << "Try full model-checking...\n";
                     do_eval_check = false;
                 }
@@ -416,7 +416,7 @@ public:
             TRACE("qsolver_inst", tout << "Produced instantiation : " << mk_pp(instantiation_lemmas[i],m_manager) << "\n";);
             assert_expr_core(instantiation_lemmas[i]);
         }
-        std::cout << "...did " << m_mct.m_stat_repairs << " repairs.\n";
+        std::cout << "...did " << m_mct.get_model_repair()->m_stat_repairs << " repairs.\n";
         std::cout << "Produced " << instantiation_lemmas.size() << " lemmas \n";
         m_total_inst += instantiation_lemmas.size();
         if (instantiation_lemmas.empty() || !star_only_if_non_star) {

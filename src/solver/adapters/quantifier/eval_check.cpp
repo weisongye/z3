@@ -326,8 +326,8 @@ void eval_node::unnotify_evaluation() {
 
 
 eval_check::eval_check(ast_manager & _m) : m_m(_m) {
-    m_eval_check_inst_limited = true;    
-    m_eval_check_multiple_patterns = true;//false;
+    m_inst_limited = true;    
+    m_multiple_patterns = true;
     m_ground_partial_evaluation = false;
 }
 
@@ -499,7 +499,7 @@ lbool eval_check::run(mc_context & mc, model_constructor * mct, quantifier * q, 
             */
         }
         //std::cout << "Done." << std::endl;
-    } while (m_eval_check_multiple_patterns);   //&& instantiations.empty()
+    } while (m_multiple_patterns);   //&& instantiations.empty()
 
     return instantiations.empty() ? l_undef : l_false;
 }
@@ -561,7 +561,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                     unsigned score2 = 1 + active[ii]->m_vars_to_bind;
                     if (score>max_score || score2>=max_score2) {
                         expr * e = active[ii]->get_expr();
-                        unsigned score3 = 1;// + (10000-active[ii]->m_q_depth);
+                        unsigned score3 = 1;// + active[ii]->m_q_depth;
                         if (score>max_score || score2>max_score2 || score3>max_score3) {
                             best_index = ii;
                             max_score = score;
@@ -749,7 +749,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                             vsub.set(var_to_bind[j], 0);
                             esub.set((vsub.size()-1)-var_to_bind[j], 0);
                         }
-                        if (!firstTime && eresult==l_true && m_eval_check_inst_limited) {
+                        if (!firstTime && eresult==l_true && m_inst_limited) {
                             SASSERT(!instantiations.empty());
                             break;
                         }

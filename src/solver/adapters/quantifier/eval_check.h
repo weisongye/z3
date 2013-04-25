@@ -27,11 +27,13 @@ namespace qsolver
 class eval_check;
 class mc_context;
 class model_constructor;
+class model_repair;
 
 //term condition (tuple of terms)
 class annot_entry {
-    friend class mc_context;
+    friend class model_repair;
     friend class eval_check;
+    friend class mc_context;
 protected:
     //the data
     unsigned m_size;
@@ -147,9 +149,9 @@ protected:
     //manager
     ast_manager & m_m;
     // do instantiation limiting
-    bool m_eval_check_inst_limited;
+    bool m_inst_limited;
     // repeat eval check on multiple patterns
-    bool m_eval_check_multiple_patterns;
+    bool m_multiple_patterns;
     // only follow partial evaluation
     bool m_ground_partial_evaluation;
 protected: //temporary information

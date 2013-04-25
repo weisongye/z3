@@ -64,17 +64,16 @@ class def;
 class model_constructor;
 class eval_check;
 class full_model_check;
+class model_repair;
 
 class mc_context
 {
     friend class eval_check;
     friend class full_model_check;
+    friend class model_repair;
 protected:
     // do simplification?
     bool m_simplification;
-    // do repair
-    bool m_model_repairing;
-    bool m_model_repairing_recurse;
     //memory manager
     region m_reg;
     //rational manager
@@ -130,22 +129,12 @@ private:
         m_evaluation_cache_active = v;
     }
 protected: //helper functions
-    //repair model
-    bool repair_formula(model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity, 
-                        ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason);
-    bool repair_term(model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v, 
-                     ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason);
-    expr * ensure_interpretation(model_constructor * mct, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, 
-                                 quantifier * q_reason = 0, annot_entry * inst_reason = 0);
-    bool append_entry_to_simple_def(model_constructor * mct, func_decl * f, annot_entry * c, quantifier * q_reason = 0, annot_entry * inst_reason = 0);
     //add instantiation
     bool add_instantiation(model_constructor * mct, quantifier * q, cond * c, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
     bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
     bool add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
-                           bool filterEval = false, bool filterRepair = false, bool filterCache = false);
-    bool add_instantiation2(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, expr_ref_buffer & instantiations,
                            bool filterEval = false, bool filterRepair = false, bool filterCache = false);
     //evaluate function
     val * evaluate_interp(func_decl * f, ptr_buffer<val> & vals);
@@ -284,6 +273,8 @@ public: //other helper functions
     expr * mk_distinguished_constant_expr(sort * s);
     //make some value
     expr * get_some_value(sort * s);
+    //make add
+    expr * mk_simple_add(expr * e, int o);
     //make offset subtract
     void mk_offset_sub(expr * e, expr * o, expr_ref & r);
     //make expression from value
