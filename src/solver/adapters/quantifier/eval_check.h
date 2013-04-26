@@ -124,9 +124,26 @@ private:
     unsigned m_children_eval_count;
     unsigned m_vars_to_bind;
     unsigned m_q_depth; //depth in quantifier
+    
+
+    //for basic trigger hack
+    ptr_vector<expr> m_basic_trigger_terms;
+public:
+    static bool is_basic_trigger( expr * e, ptr_buffer<expr> & vars, ptr_buffer<expr> & terms );
+    bool is_basic_trigger_node() { return !m_basic_trigger_terms.empty(); }
+
 public:
     eval_node(expr * e) : m_e(e), m_value(0), m_children_eval_count(0), m_vars_to_bind(0) {}
 
+    void reset() {
+        m_value = 0;
+        m_parents.reset();
+        m_children.reset();
+        m_children_eval_count = 0;
+        m_vars_to_bind = 0;
+        m_q_depth = 0;
+        m_basic_trigger_terms.reset();
+    }
     expr * get_expr() { return m_e; }
     void add_parent(eval_node * p) { 
         m_parents.push_back(p); 
@@ -138,7 +155,8 @@ public:
     void notify_value(expr * ev);
     void unnotify_evaluation();
     expr * get_evaluation() { return m_value; }
-    bool can_evaluate() { return is_app(m_e) && (is_ground(m_e) || m_children_eval_count==to_app(m_e)->get_num_args()); }
+    bool can_evaluate() { return (is_app(m_e) && (is_ground(m_e) || m_children_eval_count==to_app(m_e)->get_num_args())) || is_basic_trigger_node(); }
+
 };
 
 class model_constructor;
@@ -174,13 +192,17 @@ protected: //temporary information
     obj_map< func_decl, unsigned > m_func_num_entries;
     //process repair entries
     bool m_process_repair_entries;
+protected:  //cached information
+    obj_map< expr, eval_node * > m_eval_nodes;
 protected:
     void set_var_bind_eval_node(eval_node * en, unsigned vid);
     void set_var_bound(unsigned vid, ptr_vector<eval_node> & new_active);
     void set_var_unbound(unsigned vid);
 public:
     eval_check(ast_manager & _m);
+    void reset_round();
 protected:
+    void set_counters(mc_context & mc, model_constructor * mct, func_decl * f);
     eval_node * mk_eval_node(mc_context & mc, model_constructor * mct, expr * e, ptr_vector<eval_node> & active, obj_map< expr, eval_node *> & evals, unsigned q_depth = 0);
 
     lbool do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, 
@@ -188,6 +210,7 @@ protected:
 public:
     //eval check
     lbool run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
+    bool m_filter_inst_cache;
 };
 
 }

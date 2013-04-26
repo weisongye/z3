@@ -21,8 +21,7 @@ Author:
 #include"var_subst.h"
 #include"full_model_check.h"
 
-#define MODEL_CHECK_DEBUG
-#define REPAIR_DEBUG
+//#define MODEL_CHECK_DEBUG
 
 using namespace qsolver;
 
@@ -1678,9 +1677,14 @@ bool mc_context::add_instantiation2(model_constructor * mct, quantifier * q, exp
 bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, 
                                    expr_ref_buffer & instantiations,
                                    bool filterEval, bool filterRepair, bool filterCache) {
+    SASSERT(inst.size()==q->get_num_decls());
     TRACE("inst_debug",tout << "Instantiate " << mk_pp(q,m_m) << " with \n";
                     for (unsigned j=0; j<inst.size(); j++) {
-                            tout << "   " << mk_pp(inst[j],m_m) << ", value : " << mk_pp(vsub[(q->get_num_decls()-1)-j],m_m) << "\n";
+                            tout << "   " << mk_pp(inst[j],m_m);
+                            if (!vsub.empty()) {
+                                tout << ", value : " << mk_pp(vsub[(q->get_num_decls()-1)-j],m_m);
+                            }
+                            tout << "\n";
                     }
                     tout << "\n";
                     //tout << "Filters : " << filterEval << " " << filterRepair << " " << filterCache << "\n";

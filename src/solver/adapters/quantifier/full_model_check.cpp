@@ -408,6 +408,7 @@ lbool full_model_check::run(mc_context & mc, model_constructor * mct, quantifier
                     process = process_star.contains(i);
                 }
                 if (process) {
+                    TRACE("model_check", tout << "Add instantiation for false entry "; mc.display(tout, d->get_condition(i), d->get_value(i)); tout << "\n";);
                     if (r==0) {
                         mc.add_instantiation(mct, q, d->get_condition(i), instantiations, !full_model_check && !ci.is_model_checkable());
                     }

@@ -284,6 +284,7 @@ public:
             //reset the round
             m_mc.reset_round();
             m_mct.reset_round(m_mc);
+            m_ec.reset_round();
 
             //assert the relevant quantifiers
             for (unsigned i=0; i<quantifiers.size(); i++) {
@@ -311,7 +312,7 @@ public:
 
             needs_make_model = false;
         }
-
+        bool continue_once = true;
         do 
         {
             result = l_true;
@@ -385,14 +386,20 @@ public:
                 }
             }
 
-            if (do_eval_check && instantiation_lemmas.empty()) {
-                do_continue = true;
-                if (!m_mct.get_model_repair()->m_was_repaired) {
-                    std::cout << "Try full model-checking...\n";
-                    do_eval_check = false;
+            if (do_eval_check) {
+                if (instantiation_lemmas.empty()) {
+                    do_continue = true;
+                    if (!m_mct.get_model_repair()->m_was_repaired) {
+                        std::cout << "Try full model-checking...\n";
+                        do_eval_check = false;
+                    }
+                    else {
+                        std::cout << "Iterate eval check, currently " << instantiation_lemmas.size() << " lemmas.\n";
+                    }
                 }
                 else {
-                    std::cout << "Iterate eval check, currently " << instantiation_lemmas.size() << " lemmas.\n";
+                    //do_continue = continue_once;
+                    //continue_once = false;
                 }
             }
         }

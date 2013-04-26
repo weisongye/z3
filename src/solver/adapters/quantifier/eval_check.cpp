@@ -321,7 +321,27 @@ void eval_node::unnotify_evaluation() {
 }
 
 
-
+bool eval_node::is_basic_trigger( expr * e, ptr_buffer<expr> & vars, ptr_buffer<expr> & terms ) {
+    if (is_uninterp(e)) {
+        for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
+            expr * ec = to_app(e)->get_arg(i);
+            if (is_var(ec)) {
+                if (!vars.contains(ec)) {
+                    vars.push_back(ec);
+                }
+            }
+            else if (!is_ground(ec)) {
+                if (!is_basic_trigger(ec, vars, terms)) {
+                    return false;
+                }
+            }
+        }
+        terms.push_back(e);
+        return true;
+    }else {
+        return false;
+    }
+}
 
 
 
@@ -331,7 +351,10 @@ eval_check::eval_check(ast_manager & _m) : m_m(_m) {
     m_ground_partial_evaluation = false;
 }
 
-
+void eval_check::reset_round() {
+    m_eval_nodes.reset();
+    m_filter_inst_cache = false;
+}
 
 
 void eval_check::set_var_bind_eval_node(eval_node * en, unsigned vid) {
@@ -380,6 +403,13 @@ void eval_check::set_var_unbound(unsigned vid) {
 }
 
 
+void eval_check::set_counters(mc_context & mc, model_constructor * mct, func_decl * f) {
+    if (!m_func_num_entries.contains(f)) {
+        simple_def * df = mct->get_simple_def(mc,f);
+        m_func_num_entries.insert(f, df->get_num_entries());
+        m_func_num_real_entries.insert(f, df->get_num_entries()-df->get_num_repair_entries());
+    }
+}
 
 eval_node * eval_check::mk_eval_node(mc_context & mc, model_constructor * mct, expr * e, ptr_vector<eval_node> & active, obj_map< expr, eval_node *> & evals, unsigned q_depth) {
     eval_node * ene;
@@ -387,41 +417,60 @@ eval_node * eval_check::mk_eval_node(mc_context & mc, model_constructor * mct, e
         return ene;
     }
     else {
-        void * mem = mc.allocate(sizeof(eval_node));
-        ene = new (mem) eval_node(e);
+        if (!m_eval_nodes.find(e, ene)) {
+            void * mem = mc.allocate(sizeof(eval_node));
+            ene = new (mem) eval_node(e);
+            m_eval_nodes.insert(e, ene);
+        }
+        ene->reset();
         ene->m_q_depth = q_depth;
-        if (!is_ground(e) && is_app(e)) {
-            for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
-                expr * ec = to_app(e)->get_arg(i);
-                if (mc.is_atomic_value(ec)) {
-                    ene->m_children_eval_count++;
-                    ene->m_children.push_back(0);
+        //first check if it is a basic trigger
+        bool initializedNode = false;
+        if (is_uninterp(e)) {
+            ptr_buffer<expr> vars;
+            ptr_buffer<expr> terms;
+            /*
+            if (eval_node::is_basic_trigger(e, vars, terms)) {
+                for (unsigned i=0; i<vars.size(); i++) {
+                    set_var_bind_eval_node(ene, to_var(vars[i])->get_idx());
                 }
-                else if (is_uninterp(e) && is_var(ec)) {
-                    ene->m_children_eval_count++;
-                    ene->m_children.push_back(0);
-                    set_var_bind_eval_node(ene, to_var(ec)->get_idx());
-                }
-                else {
-                    eval_node * enec = mk_eval_node(mc, mct, ec, active, evals, q_depth+1);
-                    enec->add_parent(ene);
+                //store number of entries for function
+                for (unsigned i=0; i<terms.size(); i++) {
+                    set_counters(mc, mct, to_app(terms[i])->get_decl());
                 }
             }
+            */
         }
-        if (is_ground(e) || ene->can_evaluate()) {
-            active.push_back(ene);
-        }
-        if (is_var(e)) {
-            unsigned vid = to_var(e)->get_idx();
-            m_vars[vid] = ene;
-        }
-        if (is_uninterp(e)) {
-            //store number of entries for function
-            func_decl * f = to_app(e)->get_decl();
-            if (!m_func_num_entries.contains(f)) {
-                simple_def * df = mct->get_simple_def(mc,f);
-                m_func_num_entries.insert(f, df->get_num_entries());
-                m_func_num_real_entries.insert(f, df->get_num_entries()-df->get_num_repair_entries());
+        if (!initializedNode) {
+            if (!is_ground(e) && is_app(e)) {
+                for (unsigned i=0; i<to_app(e)->get_num_args(); i++) {
+                    expr * ec = to_app(e)->get_arg(i);
+                    if (mc.is_atomic_value(ec)) {
+                        ene->m_children_eval_count++;
+                        ene->m_children.push_back(0);
+                    }
+                    else if (is_uninterp(e) && is_var(ec)) {
+                        ene->m_children_eval_count++;
+                        ene->m_children.push_back(0);
+                        set_var_bind_eval_node(ene, to_var(ec)->get_idx());
+                    }
+                    else {
+                        eval_node * enec = mk_eval_node(mc, mct, ec, active, evals, q_depth+1);
+                        enec->add_parent(ene);
+                    }
+                }
+            }
+            if (is_ground(e) || ene->can_evaluate()) {
+                active.push_back(ene);
+            }
+            if (is_var(e)) {
+                unsigned vid = to_var(e)->get_idx();
+                m_vars[vid] = ene;
+            }
+            if (is_uninterp(e)) {
+                //store number of entries for function
+                func_decl * f = to_app(e)->get_decl();
+                set_counters(mc, mct, f);
             }
         }
         evals.insert(e, ene);
@@ -538,6 +587,9 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
         if (!active[best_index]->can_evaluate()) {
             return l_false;
         }
+        eval_node * en = active[best_index];
+        active.erase(active.begin()+best_index);
+        expr * e = en->get_expr();
         if (m_first_time) {
             if (m_start_index.contains(best_index) || max_score<m_start_score) {
                 return l_false;
@@ -545,6 +597,14 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
             else {
                 m_start_index.push_back(best_index);
             }
+            TRACE("eval_check_select", tout << "Select " << mk_pp(e,m_m) << " as the best starting pattern.\n";
+                                       if (is_uninterp(en->get_expr())) {
+                                            simple_def * df = mct->get_simple_def(mc,to_app(e)->get_decl());
+                                            //tout << "It has " << df->get_num_entries() << " entries.\n";
+                                            tout << "It's definition is : \n";
+                                            mc.display(tout, df);
+                                            tout << "\n";
+                                       });
             m_first_time = false;
             m_start_score = max_score;
         }
@@ -575,6 +635,9 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
         if (!active[best_index]->can_evaluate()) {
             return l_false;
         }
+        eval_node * en = active[best_index];
+        active.erase(active.begin()+best_index);
+        expr * e = en->get_expr();
         if (m_first_time && active[best_index]->m_vars_to_bind>0) {
             if (m_start_index.contains(best_index) || max_score2<m_start_score) {
                 return l_false;
@@ -587,9 +650,6 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
         }
 #endif
 
-        eval_node * en = active[best_index];
-        active.erase(active.begin()+best_index);
-        expr * e = en->get_expr();
         /*
         std::cout << "Process " << mk_pp(e,m_m) << " at depth " << m_depth << ", qdepth is " << en->m_q_depth << ", vars to bind " << en->m_vars_to_bind << "\n";
         if (is_uninterp(e)) {
@@ -737,7 +797,7 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                                     SASSERT(vsub[k]);
                                     SASSERT(esub[k]);
                                 }
-                                if (mc.add_instantiation(mct, q, esub, vsub, instantiations, false, true, false)) {
+                                if (mc.add_instantiation(mct, q, esub, vsub, instantiations, m_filter_inst_cache, true, false)) {
                                     eresult = l_true;
                                 }
                                 TRACE("eval_check_debug", tout << "Finished instantiation.\n";);
@@ -761,6 +821,11 @@ lbool eval_check::do_eval_check(mc_context & mc, model_constructor * mct, quanti
                         }
                     }
                     m_var_bind_count -= var_to_bind.size();
+
+                    // if no instantiations, now try default
+                    //if (!firstTime && instantiations.empty()) {
+                     //   result = df->get_else();
+                    //}
                 }
                 else {
                     //just evaluate
