@@ -28,19 +28,19 @@ Revision History:
 namespace datalog {
 
     class context;
+    typedef vector<std::pair<func_decl*,relation_fact> > fact_vector;
 
     class rel_context {
-        typedef vector<std::pair<func_decl*,relation_fact> > fact_vector;
-
         context&           m_context;
         ast_manager&       m;
         relation_manager   m_rmanager;
         expr_ref           m_answer;
         relation_base *    m_last_result_relation;
-        decl_set           m_output_preds;
         fact_vector        m_table_facts;
         execution_context  m_ectx;
         instruction_block  m_code;
+
+        class scoped_query;
 
         void reset_negated_tables();
         
@@ -78,13 +78,7 @@ namespace datalog {
 
            The function deallocates unsused relations, it does not deal with rules.
          */
-        void restrict_predicates(const decl_set & res);
-
-        void collect_predicates(decl_set & res);        
-
-        void set_output_predicate(func_decl * pred);
-        bool is_output_predicate(func_decl * pred) { return m_output_preds.contains(pred); }
-        const decl_set & get_output_predicates() const { return m_output_preds; }
+        void restrict_predicates(func_decl_set const& predicates);
 
 
         /**
@@ -92,9 +86,14 @@ namespace datalog {
          */
         bool result_contains_fact(relation_fact const& f);
 
+        /** \brief add facts to relation
+        */
         void add_fact(func_decl* pred, relation_fact const& fact);
-
         void add_fact(func_decl* pred, table_fact const& fact);
+
+        /** \brief check if facts were added to relation
+        */
+        bool has_facts(func_decl * pred) const;
         
         /**
            \brief Store the relation \c rel under the predicate \c pred. The \c context object
@@ -102,10 +101,10 @@ namespace datalog {
         */
         void store_relation(func_decl * pred, relation_base * rel);
 
-        void display_output_facts(std::ostream & out) const;
+        void display_output_facts(rule_set const& rules, std::ostream & out) const;
         void display_facts(std::ostream & out) const;
 
-        void display_profile(std::ostream& out) const;
+        void display_profile(std::ostream& out);
 
         lbool saturate();
 

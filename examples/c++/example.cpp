@@ -906,6 +906,52 @@ void enum_sort_example() {
     std::cout << "2: " << result_goal.as_expr() << std::endl;
 }
 
+void expr_vector_example() {
+    std::cout << "expr_vector example\n";
+    context c;
+    const unsigned N = 10;
+
+    expr_vector x(c);
+
+    for (unsigned i = 0; i < N; i++) { 
+        std::stringstream x_name; 
+        x_name << "x_" << i;
+        x.push_back(c.int_const(x_name.str().c_str()));
+    }
+    
+    solver s(c);
+    for (unsigned i = 0; i < N; i++) {
+        s.add(x[i] >= 1);
+    }
+
+    std::cout << s << "\n" << "solving...\n" << s.check() << "\n";
+    model m = s.get_model();
+    std::cout << "solution\n" << m;
+}
+
+void exists_expr_vector_example() {
+    std::cout << "exists expr_vector example\n";
+    context c;
+    const unsigned N = 10;
+
+    expr_vector xs(c);
+    expr x(c);
+    expr b(c);
+    b = c.bool_val(true); 
+
+    for (unsigned i = 0; i < N; i++) { 
+        std::stringstream x_name; 
+        x_name << "x_" << i;
+        x = c.int_const(x_name.str().c_str());
+        xs.push_back(x);
+        b = b && x >= 0;
+    }
+
+    expr ex(c);
+    ex = exists(xs, b);
+    std::cout << ex << std::endl;
+}
+
 int main() {
     try {
         demorgan(); std::cout << "\n";
@@ -941,6 +987,8 @@ int main() {
 	incremental_example2(); std::cout << "\n";
 	incremental_example3(); std::cout << "\n";
         enum_sort_example(); std::cout << "\n";
+        expr_vector_example(); std::cout << "\n";
+        exists_expr_vector_example(); std::cout << "\n";
         std::cout << "done\n";
     }
     catch (exception & ex) {
