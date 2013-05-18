@@ -177,6 +177,11 @@ class env {
         return false;
     }
 
+    bool mk_not_handled(TreeNode* f, char const* msg) {
+        std::cerr << "Construct " << f->symbol() << " not handled: " << msg << "\n";
+        return false;
+    }
+
     bool mk_input(TreeNode* f, named_formulas& fmls) {
         if (!strcmp(f->symbol(),"annotated_formula")) {
             return mk_annotated_formula(f->child(0), fmls);
@@ -770,6 +775,10 @@ class env {
                 if (terms.size() != 2) return false;
                 r = terms[0] * terms[1];
             }
+            else if (!strcmp(ch,"$quotient")) {
+                if (terms.size() != 2) return false;
+                r = terms[0] / terms[1];
+            }
             else if (!strcmp(ch,"$distinct")) {
                 if (terms.size() != 2) return false;
                 r = terms[0] != terms[1];
@@ -782,10 +791,24 @@ class env {
                 if (terms.size() != 1) return false;
                 r = z3::expr(r.ctx(), Z3_mk_real2int(r.ctx(), terms[0]));
             }
+            else if (!strcmp(ch,"$to_rat") ||
+                     !strcmp(ch,"$is_rat") ||
+                     !strcmp(ch,"$floor") ||
+                     !strcmp(ch,"$ceiling") ||
+                     !strcmp(ch,"$quotient_t") ||
+                     !strcmp(ch,"$quotient_e") ||
+                     !strcmp(ch,"$quotient_r") ||
+                     !strcmp(ch,"$remainder_t") ||
+                     !strcmp(ch,"$remainder_e") ||
+                     !strcmp(ch,"$remainder_r") ||
+                     !strcmp(ch,"$round") ||
+                     !strcmp(ch,"$truncate")) {
+                return mk_not_handled(f, ch);
+            }
             else if (m_decls.find(fn, fun)) {
                 r = fun(terms);
             }
-            else if (true) {
+            else if (false) {
                 z3::func_decl func(m_context);
                 func = m_context.function(fn, sorts, s);
                 r = func(terms);
