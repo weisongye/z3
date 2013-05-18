@@ -3,6 +3,8 @@
 #include <vector>
 #include <set>
 #include <map>
+#include<signal.h>
+#include <time.h>
 #include "z3++.h"
 
 struct region {
@@ -75,6 +77,10 @@ struct named_formulas {
 
     void set_has_conjecture() {
         m_has_conjecture = true;
+    }
+
+    bool has_conjecture() const {
+        return m_has_conjecture;
     }
 };
 
@@ -556,6 +562,7 @@ class env {
             else {
                 s = mk_sort(sname);
                 if (sname == symbol("$rat")) {
+                    std::cerr << "rational sorts are not handled\n";
                     return false;
                 }
                 return mk_error(t, "defined sort");
@@ -1023,25 +1030,588 @@ bool env::parse(const char* filename, named_formulas& fmls) {
     return 0 == result;
 }
 
+class pp_tptp {
+    z3::context& ctx;
+    std::vector<z3::symbol>  names;
+    std::vector<z3::sort>    sorts;
+    std::vector<z3::func_decl> funs;
+    std::vector<z3::expr>    todo;
+    std::set<unsigned>       seen_ids;
+public:
+    pp_tptp(z3::context& ctx): ctx(ctx) {}
 
-void main(int argc, char*const* argv) {
-    if (argc < 2) {
-        std::cout << "usage: convert <filename>\n";
-        return;
+
+    void display_func_decl(std::ostream& out, z3::func_decl& f) {
+        out << "tff(" << f.name() << "_type, type, (\n   " << f.name() << ": ";
+        unsigned na = f.arity();
+        switch(na) {
+        case 0:
+            break;
+        case 1:
+            display_sort(out, f.domain(0));
+            out << " > ";
+            break;
+        default:
+            out << "( ";
+            for (unsigned j = 0; j < na; ++j) {
+                display_sort(out, f.domain(j));
+                if (j + 1 < na) {
+                    out << " * ";
+                }
+            }
+            out << " ) > ";
+        }
+        display_sort(out, f.range());
+        out << ")).\n";
     }
-    char const* filename = argv[1];
-    std::cout << filename << "\n";
+
+    void display_axiom(std::ostream& out, z3::expr& e) {
+        out << "tff(formula, axiom,\n";
+        display(out, e);
+        out << ").\n";
+    }
+
+    void display(std::ostream& out, z3::expr& e) {
+        if (e.is_numeral()) {
+            out << e;
+        }
+        else if (e.is_var()) {
+            unsigned idx = Z3_get_index_value(ctx, e);
+            out << names[names.size()-1-idx];
+        }
+        else if (e.is_const()) {
+            out << e;
+        }
+        else if (e.is_app()) {
+            switch(e.decl().decl_kind()) {
+            case Z3_OP_AND:
+                display_infix(out, "&", e);
+                break;
+            case Z3_OP_OR:
+                display_infix(out, "|", e);
+                break;
+            case Z3_OP_IMPLIES:
+                display_infix(out, "=>", e);
+                break;
+            case Z3_OP_NOT:
+                out << "(~";
+                display(out, e.arg(0));
+                out << ")";
+                break;
+            case Z3_OP_EQ:
+                display_infix(out, "=", e);
+                break;
+            case Z3_OP_IFF:
+                display_infix(out, "<=>", e);
+                break;
+            case Z3_OP_XOR:
+                display_infix(out, "<~>", e);
+                break;
+            case Z3_OP_MUL:  
+                display_prefix(out, "$product", e);
+                break;               
+            case Z3_OP_ADD:
+                display_prefix(out, "$sum", e);
+                break;     
+            case Z3_OP_SUB:
+                display_prefix(out, "$difference", e);
+                break;     
+            case Z3_OP_LE:
+                display_prefix(out, "$lesseq", e);
+                break;     
+            case Z3_OP_GE:
+                display_prefix(out, "$greatereq", e);
+                break;     
+            case Z3_OP_LT:
+                display_prefix(out, "$less", e);
+                break;     
+            case Z3_OP_GT:
+                display_prefix(out, "$greater", e);
+                break;     
+            case Z3_OP_UMINUS:
+                display_prefix(out, "$uminus", e);
+                break;            
+            case Z3_OP_ITE:
+                // TBD
+                display_app(out, e);
+                break;                
+            case Z3_OP_DISTINCT:
+            case Z3_OP_DIV:
+            case Z3_OP_IDIV:
+            case Z3_OP_REM:
+            case Z3_OP_MOD:
+            case Z3_OP_TO_REAL:
+            case Z3_OP_TO_INT:
+            case Z3_OP_IS_INT:
+                // TBD
+                display_app(out, e);
+                break;                
+            default:
+                display_app(out, e);
+                break;
+            }
+        }
+        else if (e.is_quantifier()) {
+            bool is_forall = Z3_is_quantifier_forall(ctx, e);
+            unsigned nb = Z3_get_quantifier_num_bound(ctx, e);
+
+            out << (is_forall?"!":"?") << "[";
+            for (unsigned i = 0; i < nb; ++i) {
+                Z3_symbol n = Z3_get_quantifier_bound_name(ctx, e, i);
+                z3::symbol s(ctx, n);
+                names.push_back(s);
+                z3::sort srt(ctx, Z3_get_quantifier_bound_sort(ctx, e, i));
+                out << s << ": ";
+                display_sort(out, srt);
+                if (i + 1 < nb) {
+                    out << ", ";
+                }
+            }
+            out << "] : ";
+            display(out, e.body());
+            for (unsigned i = 0; i < nb; ++i) {
+                names.pop_back();
+            }
+        }
+    }
+
+    void display_app(std::ostream& out, z3::expr& e) {
+        out << e.decl().name() << "(";
+        unsigned n = e.num_args();
+        for(unsigned i = 0; i < n; ++i) {
+            display(out, e.arg(i));
+            if (i + 1 < n) {
+                out << ", ";
+            }
+        }
+        out << ")";
+    }
+
+    void display_sort(std::ostream& out, z3::sort& s) {
+        if (s.is_int()) {
+            out << "$int";
+        }
+        else if (s.is_real()) {
+            out << "$real";
+        }
+        else if (s.is_bool()) {
+            out << "$o";
+        }
+        else {
+            out << s;
+        }
+    }
+
+    void display_infix(std::ostream& out, char const* conn, z3::expr& e) {
+        out << "(";
+        unsigned sz = e.num_args();
+        for (unsigned i = 0; i < sz; ++i) {
+            display(out, e.arg(i));
+            if (i + 1 < sz) {
+                out << " " << conn << " ";
+            }
+        }
+        out << ")";
+    }
+
+    void display_prefix(std::ostream& out, char const* conn, z3::expr& e) {
+        out << conn << "(";
+        unsigned sz = e.num_args();
+        for (unsigned i = 0; i < sz; ++i) {
+            display(out, e.arg(i));
+            if (i + 1 < sz) {
+                out << ", ";
+            }
+        }
+        out << ")";
+    }
+
+    void display_sort_decls(std::ostream& out) {
+        for (unsigned i = 0; i < sorts.size(); ++i) {
+            display_sort_decl(out, sorts[i]);
+        }
+    }
+    
+    void display_sort_decl(std::ostream& out, z3::sort& s) {
+        out << "tff(" << s << "_type, type, (" << s << ": $tType)).\n";
+    }
+
+
+    void display_func_decls(std::ostream& out) {
+        for (unsigned i = 0; i < funs.size(); ++i) {
+            display_func_decl(out, funs[i]);
+        }
+    }
+
+    bool contains_id(unsigned id) const {
+        return seen_ids.find(id) != seen_ids.end();
+    }
+
+    void collect_decls(z3::expr& e) {
+        todo.push_back(e);
+        while (!todo.empty()) {
+            z3::expr e = todo.back();
+            todo.pop_back();
+            unsigned id = Z3_get_ast_id(ctx, e);
+            if (contains_id(id)) {
+                continue;
+            }
+            seen_ids.insert(id);
+            if (e.is_app()) {
+                collect_fun(e.decl());
+                unsigned sz = e.num_args();
+                for (unsigned i = 0; i < sz; ++i) {
+                    todo.push_back(e.arg(i));
+                }
+            }
+            else if (e.is_quantifier()) {
+                todo.push_back(e.body());
+            }
+            else if (e.is_var()) {
+                collect_sort(e.get_sort());
+            }
+        }
+    }
+
+    void collect_sort(z3::sort& s) {
+        unsigned id = Z3_get_sort_id(ctx, s);
+        if (s.sort_kind() == Z3_UNINTERPRETED_SORT && 
+            contains_id(id)) {
+            seen_ids.insert(id);
+            sorts.push_back(s);
+        }
+    }
+
+    void collect_fun(z3::func_decl& f) {
+        unsigned id = Z3_get_func_decl_id(ctx, f);
+        if (contains_id(id)) {
+            return;
+        }
+        seen_ids.insert(id);
+        if (f.decl_kind() == Z3_OP_UNINTERPRETED) {
+            funs.push_back(f);
+        }
+        for (unsigned i = 0; i < f.arity(); ++i) {
+            collect_sort(f.domain(i));
+        }
+        collect_sort(f.range());
+    }    
+};
+
+static char* output_file = 0;
+static char* filename = 0;
+static bool g_generate_smt2 = false;
+static bool g_generate_model = false;
+static bool g_generate_proof = false;
+static bool g_generate_core = false;
+static bool g_display_statistics = false;
+static bool g_first_interrupt = true;
+static bool g_smt2status = false;
+static double g_start_time = 0;
+static z3::solver*   g_solver = 0;
+static z3::context*  g_context = 0;
+
+
+
+static void display_usage() {
+    unsigned major, minor, build_number, revision_number;
+    Z3_get_version(&major, &minor, &build_number, &revision_number);
+    std::cout << "Z3tptp [" << major << "." << minor << "." << build_number << "." << revision_number << "] (c) 2006-20**. Microsoft Corp.\n";
+    std::cout << "Usage: tptp [options] [-file]file\n";
+    std::cout << "  -h, -?       prints this message.\n";
+    std::cout << "  -smt2        print SMT-LIB2 benchmark.\n";
+    std::cout << "  -m, -model   generate model.\n";
+    std::cout << "  -p, -proof   generate proof.\n";
+    std::cout << "  -c, -core    generate unsat core of named formulas.\n";
+    std::cout << "  -st, -statistics display statistics.\n";
+    std::cout << "  -smt2status  display status in smt2 format instead of SZS.\n";
+    // std::cout << "  -v, -verbose  verbose mode.\n";
+    std::cout << "  -o:<output-file> file to place output in.\n";
+}
+
+
+static void display_statistics() {
+    if (g_solver && g_display_statistics) {
+        std::cout.flush();
+        std::cerr.flush();
+        double end_time = static_cast<double>(clock());
+        z3::stats stats = g_solver->statistics();
+        std::cout << stats << "\n";
+        std::cout << "time:   " << (end_time - g_start_time)/CLOCKS_PER_SEC << " secs\n";
+    }
+}
+
+static void on_ctrl_c(int) {
+    if (g_context && g_first_interrupt) {
+        Z3_interrupt(*g_context);
+        g_first_interrupt = false;
+    }
+    else {
+        signal (SIGINT, SIG_DFL);
+        display_statistics();
+        raise(SIGINT);
+    }
+}
+
+
+void parse_cmd_line_args(int argc, char ** argv) {
+    filename = 0;
+    g_generate_smt2 = false;
+    int i = 1;
+    while (i < argc) {
+        char* arg = argv[i];
+        if (arg[0] == '-' || arg[0] == '/') {
+            ++arg;
+            while (*arg == '-') {
+                ++arg;
+            }
+            char * opt_arg = 0;
+            char * colon = strchr(arg, ':');
+            if (colon) {
+                opt_arg = colon + 1;
+                *colon = 0;
+            }
+            if (!strcmp(arg,"h") || !strcmp(arg,"help") || !strcmp(arg,"?")) {
+                display_usage();
+                exit(0);
+            }
+            if (!strcmp(arg,"p") || !strcmp(arg,"proof")) {
+                g_generate_proof = true;
+            }
+            else if (!strcmp(arg,"m") || !strcmp(arg,"model")) {
+                g_generate_model = true;
+            }
+            else if (!strcmp(arg,"c") || !strcmp(arg,"core")) {
+                g_generate_core = true;
+            }
+            else if (!strcmp(arg,"st") || !strcmp(arg,"statistics")) {
+                g_display_statistics = true;
+            }
+            else if (!strcmp(arg,"smt2status")) {
+                g_smt2status = true;
+            }
+            else if (!strcmp(arg,"o")) {
+                if (opt_arg) {
+                    output_file = opt_arg;
+                }
+                else {
+                    display_usage();
+                    exit(0);
+                }
+            }
+            else if (!strcmp(arg,"smt2")) {
+                g_generate_smt2 = true;
+
+            }
+        }
+        else {
+            filename = arg;
+        }
+        ++i;
+    }
+
+    if (!filename) {
+        display_usage();
+        exit(0);
+    }
+}
+
+static bool is_smt2_file(char const* filename) {
+    size_t len = strlen(filename);
+    return (len > 4 && !strcmp(filename + len - 5,".smt2"));    
+}
+
+static void check_error(z3::context& ctx) {
+    Z3_error_code e = Z3_get_error_code(ctx);
+    if (e != Z3_OK) {
+        std::cout << Z3_get_error_msg_ex(ctx, e) << "\n";
+        exit(1);
+    }
+}
+
+static void display_tptp(std::ostream& out) {
+    // run SMT2 parser, pretty print TFA format.
     z3::context ctx;
+    Z3_ast _fml = Z3_parse_smtlib2_file(ctx, filename, 0, 0, 0, 0, 0, 0);
+    check_error(ctx);
+    z3::expr fml(ctx, _fml);
+
+    pp_tptp pp(ctx);
+
+    pp.collect_decls(fml);
+
+    pp.display_sort_decls(out);
+
+    pp.display_func_decls(out);
+
+    if (fml.decl().decl_kind() == Z3_OP_AND) {
+        for (unsigned i = 0; i < fml.num_args(); ++i) {
+            pp.display_axiom(out, fml.arg(i));
+        }
+    }
+    else {
+        pp.display_axiom(out, fml);
+    }
+}
+
+static void print_model(z3::context& ctx, z3::model& model) {
+    std::cout << model << "\n";
+    return;
+// TODO:
+    unsigned nc = model.num_consts();
+    unsigned nf = model.num_funcs();
+    for (unsigned i = 0; i < nc; ++i) {
+        z3::func_decl f = model.get_const_decl(i);
+        z3::expr e = model.get_const_interp(f);
+    }
+
+    for (unsigned i = 0; i < nf; ++i) {
+        z3::func_decl f = model.get_func_decl(i);
+        z3::func_interp fi = model.get_func_interp(f);
+        std::cout << f << "\n";
+    }
+}
+
+static void generate_smt2() {
+    z3::config config;
+    z3::context ctx(config);
     named_formulas fmls;
     env env(ctx);
     if (!env.parse(filename, fmls)) {
         return;
     }
+
     unsigned num_assumptions = fmls.m_formulas.size();
+
     Z3_ast* assumptions = new Z3_ast[num_assumptions];
     for (unsigned i = 0; i < num_assumptions; ++i) {
         assumptions[i] = fmls.m_formulas[i].first;
     }
-    Z3_string s = Z3_benchmark_to_smtlib_string(ctx, "yes", "logic", "unknown", "", num_assumptions, assumptions, ctx.bool_val(true));
+    Z3_string s = Z3_benchmark_to_smtlib_string(ctx, "yes", "logic", "unknown", "", 
+                                                num_assumptions, assumptions, ctx.bool_val(true));
     std::cout << s << "\n";
+    delete[] assumptions;
 }
+
+static void prove_tptp() {
+    z3::config config;
+    if (g_generate_proof) {
+        config.set("proof", true);
+    }    
+    z3::context ctx(config);
+    z3::solver solver(ctx);
+    g_solver  = &solver;
+    g_context = &ctx;
+
+    named_formulas fmls;
+    env env(ctx);
+    if (!env.parse(filename, fmls)) {
+        std::cout << "SZS status GaveUp\n";
+        return;
+    }
+
+    unsigned num_assumptions = fmls.m_formulas.size();
+
+    z3::check_result result;
+
+    if (g_generate_core) {
+        z3::expr_vector assumptions(ctx);
+        
+        for (unsigned i = 0; i < num_assumptions; ++i) {
+            z3::expr pred = ctx.constant(fmls.m_formulas[i].second, ctx.bool_sort());
+            z3::expr def = fmls.m_formulas[i].first == pred;
+            solver.add(def);
+            assumptions.push_back(pred);
+        }
+        result = solver.check(assumptions);
+    }
+    else {
+        for (unsigned i = 0; i < num_assumptions; ++i) {
+            solver.add(fmls.m_formulas[i].first);
+        }        
+        result = solver.check();
+    }
+
+    switch(result) {
+    case z3::unsat:
+        if (g_smt2status) {
+            std::cout << result << "\n";
+        }
+        else if (fmls.has_conjecture()) {
+            std::cout << "SZS status Theorem\n";
+        }
+        else {
+            std::cout << "SZS status Unsatisfiable\n";
+        }
+        if (g_generate_proof) {
+            // TBD:
+            std::cout << solver.proof() << "\n";
+        }
+        if (g_generate_core) {
+            z3::expr_vector core = solver.unsat_core();
+            std::cout << "SZS core ";
+            for (unsigned i = 0; i < core.size(); ++i) {
+                std::cout << core[i] << " ";
+            }
+            std::cout << "\n";
+        }
+        break;
+    case z3::sat:
+        if (g_smt2status) {
+            std::cout << result << "\n";
+        }
+        else if (fmls.has_conjecture()) {
+            std::cout << "SZS status CounterSatisfiable\n";            
+        }
+        else {
+            std::cout << "SZS status Satisfiable\n";
+        }
+        if (g_generate_model) {
+            print_model(ctx, solver.get_model());
+        }
+        break;
+    case z3::unknown:
+        if (g_smt2status) {
+            std::cout << result << "\n";
+        }
+        else if (!g_first_interrupt) {
+            std::cout << "SZS status Interrupted\n";
+        }
+        else {
+            std::cout << "SZS status GaveUp\n";
+            std::string reason = solver.reason_unknown();
+            std::cout << "SZS reason " << reason << "\n";
+        }
+        break;
+    }    
+    display_statistics();
+}
+
+void main(int argc, char** argv) {
+
+    g_start_time = static_cast<double>(clock());
+    signal(SIGINT, on_ctrl_c);
+
+    parse_cmd_line_args(argc, argv);
+
+    if (is_smt2_file(filename)) {
+        display_tptp(std::cout);
+    }
+    else if (g_generate_smt2) {
+        generate_smt2();
+    }
+    else {
+        prove_tptp();
+    }
+}
+
+
+/**
+TODOs:
+   - model printing
+   - proof printing
+   - port Z3 parameters into engine
+   - ite
+   - verbose mode
+   - timeout
+ */
