@@ -3,7 +3,7 @@
 #include <vector>
 #include <set>
 #include <map>
-#include<signal.h>
+#include <signal.h>
 #include <time.h>
 #include "z3++.h"
 
@@ -1298,8 +1298,8 @@ public:
     }    
 };
 
-static char* output_file = 0;
-static char* filename = 0;
+static char* g_output_file = 0;
+static char* g_input_file = 0;
 static bool g_generate_smt2 = false;
 static bool g_generate_model = false;
 static bool g_generate_proof = false;
@@ -1355,7 +1355,7 @@ static void on_ctrl_c(int) {
 
 
 void parse_cmd_line_args(int argc, char ** argv) {
-    filename = 0;
+    g_input_file = 0;
     g_generate_smt2 = false;
     int i = 1;
     while (i < argc) {
@@ -1392,7 +1392,7 @@ void parse_cmd_line_args(int argc, char ** argv) {
             }
             else if (!strcmp(arg,"o")) {
                 if (opt_arg) {
-                    output_file = opt_arg;
+                    g_output_file = opt_arg;
                 }
                 else {
                     display_usage();
@@ -1403,14 +1403,17 @@ void parse_cmd_line_args(int argc, char ** argv) {
                 g_generate_smt2 = true;
 
             }
+            else if (!strcmp(arg, "file")) {
+                g_input_file = opt_arg;
+            }
         }
         else {
-            filename = arg;
+            g_input_file = arg;
         }
         ++i;
     }
 
-    if (!filename) {
+    if (!g_input_file) {
         display_usage();
         exit(0);
     }
@@ -1432,7 +1435,7 @@ static void check_error(z3::context& ctx) {
 static void display_tptp(std::ostream& out) {
     // run SMT2 parser, pretty print TFA format.
     z3::context ctx;
-    Z3_ast _fml = Z3_parse_smtlib2_file(ctx, filename, 0, 0, 0, 0, 0, 0);
+    Z3_ast _fml = Z3_parse_smtlib2_file(ctx, g_input_file, 0, 0, 0, 0, 0, 0);
     check_error(ctx);
     z3::expr fml(ctx, _fml);
 
@@ -1477,7 +1480,7 @@ static void generate_smt2() {
     z3::context ctx(config);
     named_formulas fmls;
     env env(ctx);
-    if (!env.parse(filename, fmls)) {
+    if (!env.parse(g_input_file, fmls)) {
         return;
     }
 
@@ -1505,7 +1508,7 @@ static void prove_tptp() {
 
     named_formulas fmls;
     env env(ctx);
-    if (!env.parse(filename, fmls)) {
+    if (!env.parse(g_input_file, fmls)) {
         std::cout << "SZS status GaveUp\n";
         return;
     }
@@ -1594,7 +1597,7 @@ void main(int argc, char** argv) {
 
     parse_cmd_line_args(argc, argv);
 
-    if (is_smt2_file(filename)) {
+    if (is_smt2_file(g_input_file)) {
         display_tptp(std::cout);
     }
     else if (g_generate_smt2) {
