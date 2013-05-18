@@ -5,6 +5,8 @@
 #include <map>
 #include <signal.h>
 #include <time.h>
+#include <iostream>
+#include <fstream>
 #include "z3++.h"
 
 struct region {
@@ -772,6 +774,14 @@ class env {
                 if (terms.size() != 2) return false;
                 r = terms[0] != terms[1];
             }
+            else if (!strcmp(ch,"$to_int")) {
+                if (terms.size() != 1) return false;
+                r = z3::expr(r.ctx(), Z3_mk_int2real(r.ctx(), terms[0]));
+            }
+            else if (!strcmp(ch,"$to_real")) {
+                if (terms.size() != 1) return false;
+                r = z3::expr(r.ctx(), Z3_mk_real2int(r.ctx(), terms[0]));
+            }
             else if (m_decls.find(fn, fun)) {
                 r = fun(terms);
             }
@@ -1079,11 +1089,14 @@ public:
             unsigned idx = Z3_get_index_value(ctx, e);
             out << names[names.size()-1-idx];
         }
-        else if (e.is_const()) {
-            out << e;
-        }
         else if (e.is_app()) {
             switch(e.decl().decl_kind()) {
+            case Z3_OP_TRUE:
+                out << "$true";
+                break;
+            case Z3_OP_FALSE:
+                out << "$false";
+                break;
             case Z3_OP_AND:
                 display_infix(out, "&", e);
                 break;
@@ -1108,13 +1121,13 @@ public:
                 display_infix(out, "<~>", e);
                 break;
             case Z3_OP_MUL:  
-                display_prefix(out, "$product", e);
+                display_prefix(out, "$product", e); // TBD binary
                 break;               
             case Z3_OP_ADD:
-                display_prefix(out, "$sum", e);
+                display_prefix(out, "$sum", e); // TBD binary 
                 break;     
             case Z3_OP_SUB:
-                display_prefix(out, "$difference", e);
+                display_prefix(out, "$difference", e); 
                 break;     
             case Z3_OP_LE:
                 display_prefix(out, "$lesseq", e);
@@ -1131,21 +1144,30 @@ public:
             case Z3_OP_UMINUS:
                 display_prefix(out, "$uminus", e);
                 break;            
-            case Z3_OP_ITE:
-                // TBD
-                display_app(out, e);
-                break;                
-            case Z3_OP_DISTINCT:
             case Z3_OP_DIV:
-            case Z3_OP_IDIV:
-            case Z3_OP_REM:
-            case Z3_OP_MOD:
-            case Z3_OP_TO_REAL:
-            case Z3_OP_TO_INT:
+                display_prefix(out, "$quotient", e);
+                break;
             case Z3_OP_IS_INT:
+                display_prefix(out, "$is_int", e);
+                break;
+            case Z3_OP_TO_REAL:
+                display_prefix(out, "$to_real", e);
+                break;
+            case Z3_OP_TO_INT:
+                display_prefix(out, "$to_int", e);
+                break;
+            case Z3_OP_IDIV:
+                display_prefix(out, "$quotient_e", e);
+                break;
+            case Z3_OP_MOD:
+                display_prefix(out, "$remainder_e", e);
+                break;                
+            case Z3_OP_ITE:
+            case Z3_OP_DISTINCT:
+            case Z3_OP_REM:
                 // TBD
                 display_app(out, e);
-                break;                
+                break;
             default:
                 display_app(out, e);
                 break;
@@ -1176,6 +1198,10 @@ public:
     }
 
     void display_app(std::ostream& out, z3::expr& e) {
+        if (e.is_const()) {
+            out << e;
+            return;
+        }
         out << e.decl().name() << "(";
         unsigned n = e.num_args();
         for(unsigned i = 0; i < n; ++i) {
@@ -1298,9 +1324,8 @@ public:
     }    
 };
 
-static char* g_output_file = 0;
 static char* g_input_file = 0;
-static bool g_generate_smt2 = false;
+static bool g_display_smt2 = false;
 static bool g_generate_model = false;
 static bool g_generate_proof = false;
 static bool g_generate_core = false;
@@ -1310,6 +1335,7 @@ static bool g_smt2status = false;
 static double g_start_time = 0;
 static z3::solver*   g_solver = 0;
 static z3::context*  g_context = 0;
+static std::ostream* g_out = &std::cout;
 
 
 
@@ -1356,7 +1382,7 @@ static void on_ctrl_c(int) {
 
 void parse_cmd_line_args(int argc, char ** argv) {
     g_input_file = 0;
-    g_generate_smt2 = false;
+    g_display_smt2 = false;
     int i = 1;
     while (i < argc) {
         char* arg = argv[i];
@@ -1392,7 +1418,11 @@ void parse_cmd_line_args(int argc, char ** argv) {
             }
             else if (!strcmp(arg,"o")) {
                 if (opt_arg) {
-                    g_output_file = opt_arg;
+                    g_out = new std::ofstream(opt_arg);
+                    if (g_out->bad() || g_out->fail()) {
+                        std::cout << "Could not open file of output: " << opt_arg << "\n";
+                        exit(0);
+                    }
                 }
                 else {
                     display_usage();
@@ -1400,7 +1430,7 @@ void parse_cmd_line_args(int argc, char ** argv) {
                 }
             }
             else if (!strcmp(arg,"smt2")) {
-                g_generate_smt2 = true;
+                g_display_smt2 = true;
 
             }
             else if (!strcmp(arg, "file")) {
@@ -1475,7 +1505,7 @@ static void print_model(z3::context& ctx, z3::model& model) {
     }
 }
 
-static void generate_smt2() {
+static void display_smt2(std::ostream& out) {
     z3::config config;
     z3::context ctx(config);
     named_formulas fmls;
@@ -1492,7 +1522,7 @@ static void generate_smt2() {
     }
     Z3_string s = Z3_benchmark_to_smtlib_string(ctx, "yes", "logic", "unknown", "", 
                                                 num_assumptions, assumptions, ctx.bool_val(true));
-    std::cout << s << "\n";
+    out << s << "\n";
     delete[] assumptions;
 }
 
@@ -1592,16 +1622,17 @@ static void prove_tptp() {
 
 void main(int argc, char** argv) {
 
+    std::ostream* out = &std::cout;
     g_start_time = static_cast<double>(clock());
     signal(SIGINT, on_ctrl_c);
 
     parse_cmd_line_args(argc, argv);
-
+    
     if (is_smt2_file(g_input_file)) {
-        display_tptp(std::cout);
+        display_tptp(*g_out);
     }
-    else if (g_generate_smt2) {
-        generate_smt2();
+    else if (g_display_smt2) {
+        display_smt2(*g_out);
     }
     else {
         prove_tptp();
