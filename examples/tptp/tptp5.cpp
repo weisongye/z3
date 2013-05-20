@@ -94,6 +94,11 @@ inline void operator delete(void *, region & ) { /* do nothing */ }
 
 inline void operator delete[](void *, region & ) { /* do nothing */ }
 
+struct failure_ex {
+    std::string msg;
+    failure_ex(char* m):msg(m) {}
+    failure_ex(std::string& m):msg(m) {}
+};
 
 
 extern char* tptp_lval[];
@@ -156,7 +161,6 @@ class env {
     z3::expr_vector               m_bound;  // vector of bound constants.
     z3::sort                       m_univ;
     symbol_table<z3::func_decl>    m_decls;
-    symbol_table<z3::func_decl>    m_decls2;
     symbol_table<z3::sort>         m_defined_sorts;
     static std::vector<TreeNode*>*  m_nodes;    
     static region*                m_region;
@@ -171,68 +175,79 @@ class env {
         TILDE_VLINE        
     };
 
-    bool mk_error(TreeNode* f, char const* msg) {
-        std::cerr << "expected: " << msg << "\n";
-        std::cerr << "got: " << f->symbol() << "\n";
-        return false;
+    void mk_error(TreeNode* f, char const* msg) {
+        std::ostringstream strm;
+        strm << "expected: " << msg << "\n";
+        strm << "got: " << f->symbol();
+        throw failure_ex(strm.str());
     }
 
-    bool mk_not_handled(TreeNode* f, char const* msg) {
-        std::cerr << "Construct " << f->symbol() << " not handled: " << msg << "\n";
-        return false;
+    void mk_not_handled(TreeNode* f, char const* msg) {
+        std::ostringstream strm;
+        strm << "Construct " << f->symbol() << " not handled: " << msg;
+        throw failure_ex(strm.str());
     }
 
-    bool mk_input(TreeNode* f, named_formulas& fmls) {
+    void mk_input(TreeNode* f, named_formulas& fmls) {
         if (!strcmp(f->symbol(),"annotated_formula")) {
-            return mk_annotated_formula(f->child(0), fmls);
+            mk_annotated_formula(f->child(0), fmls);
         }
-        if (!strcmp(f->symbol(),"include")) {
-            return mk_include(f->child(2), f->child(3), fmls);
+        else if (!strcmp(f->symbol(),"include")) {
+            mk_include(f->child(2), f->child(3), fmls);
         }
-        return mk_error(f, "annotated formula or include");
+        else {
+            mk_error(f, "annotated formula or include");
+        }
     }
 
-    bool mk_annotated_formula(TreeNode* f, named_formulas& fmls) {
+    void mk_annotated_formula(TreeNode* f, named_formulas& fmls) {
         if (!strcmp(f->symbol(),"fof_annotated")) {
-            return fof_annotated(f->child(2), f->child(4), f->child(6), f->child(7), fmls);            
+            fof_annotated(f->child(2), f->child(4), f->child(6), f->child(7), fmls);            
         }
-        if (!strcmp(f->symbol(),"tff_annotated")) {
-            return fof_annotated(f->child(2), f->child(4), f->child(6), f->child(7), fmls);            
+        else if (!strcmp(f->symbol(),"tff_annotated")) {
+            fof_annotated(f->child(2), f->child(4), f->child(6), f->child(7), fmls);            
         }
-        if (!strcmp(f->symbol(),"cnf_annotated")) {
-            return cnf_annotated(f->child(2), f->child(4), f->child(6), f->child(7), fmls);
+        else if (!strcmp(f->symbol(),"cnf_annotated")) {
+            cnf_annotated(f->child(2), f->child(4), f->child(6), f->child(7), fmls);
         }
-        if (!strcmp(f->symbol(),"thf_annotated")) {
-            return mk_error(f, "annotated formula (not thf)");
+        else if (!strcmp(f->symbol(),"thf_annotated")) {
+            mk_error(f, "annotated formula (not thf)");
         }
-        return mk_error(f, "annotated formula");
+        else {
+            mk_error(f, "annotated formula");
+        }
     }
 
-    bool mk_include(TreeNode* file_name, TreeNode* formula_selection, named_formulas& fmls) {
+    void check_arity(unsigned num_args, unsigned arity) {
+        if (num_args != arity) {
+            throw failure_ex("arity missmatch");
+        }
+    }
+
+    void mk_include(TreeNode* file_name, TreeNode* formula_selection, named_formulas& fmls) {
         char const* fn = file_name->child(0)->symbol();
         TreeNode* name_list = formula_selection->child(2);
-        if (name_list && !strcmp("null",name_list->symbol())) {
-            
+        if (name_list && !strcmp("null",name_list->symbol())) {            
             name_list = 0;
         }
         std::string inc_name;
         bool f_exists = false;
         for (unsigned i = 1; !f_exists && i <= 3; ++i) {
+            inc_name.clear();
             f_exists = mk_filename(fn, i, inc_name);
+            
         }
         if (!f_exists) {
+            inc_name.clear();
             f_exists = mk_env_filename(fn, inc_name);            
         }
         
-        if (!parse(inc_name.c_str(), fmls)) {
-            return false;
-        }
+        parse(inc_name.c_str(), fmls);
         while (name_list) {
             return mk_error(name_list, "name list (not handled)");
             char const* name = name_list->child(0)->symbol();
             name_list = name_list->child(2);            
         }
-        return true;
     }
 
 #define CHECK(_node_) if (0 != strcmp(_node_->symbol(),#_node_)) return mk_error(_node_,#_node_); 
@@ -254,85 +269,78 @@ class env {
         delete[] vars;
         return z3::expr(m_context, r);
     }
-
-    bool cnf_annotated(TreeNode* name, TreeNode* formula_role, TreeNode* formula, TreeNode* annotations, named_formulas& fmls) {
+    
+    void cnf_annotated(TreeNode* name, TreeNode* formula_role, TreeNode* formula, TreeNode* annotations, named_formulas& fmls) {
         symbol_set st;
         get_cnf_variables(formula, st);
         symbol_set::iterator it = st.begin(), end = st.end();
         std::vector<z3::symbol>  names;
+        m_bound.resize(0);
         for(; it != end; ++it) {
             names.push_back(*it);
             m_bound.push_back(m_context.constant(names.back(), m_univ));
         }
         z3::expr r(m_context);
-        bool ok = cnf_formula(formula, r);
-        if (ok && !m_bound.empty()) {
+        cnf_formula(formula, r);
+        if (!m_bound.empty()) {
             r = mk_forall(m_bound, r);
         }
         char const* role = formula_role->child(0)->symbol();
-        if (ok && !strcmp(role,"conjecture")) {
+        if (!strcmp(role,"conjecture")) {
             fmls.set_has_conjecture();
             r = !r;
         }
-        if (ok) {
-            fmls.push_back(r, get_name(name));
-        }
+        fmls.push_back(r, get_name(name));
         m_bound.resize(0);
-        return ok;        
     }
 
-    bool cnf_formula(TreeNode* formula, z3::expr& r) {
+    void cnf_formula(TreeNode* formula, z3::expr& r) {
         std::vector<z3::expr> disj;
-        bool ok = true;
         if (formula->child(1)) {
-            ok = disjunction(formula->child(1), disj);
+            disjunction(formula->child(1), disj);
         }
         else {
-            ok = disjunction(formula->child(0), disj);
+            disjunction(formula->child(0), disj);
         }
-        if (ok) {
-            if (disj.size() > 0) {
-                r = disj[0];
-            }
-            else {
-                r = m_context.bool_val(false);
-            }
-            for (unsigned i = 1; i < disj.size(); ++i) {
-                r = r || disj[i];
-            }
+        if (disj.size() > 0) {
+            r = disj[0];
         }
-        return ok;
+        else {
+            r = m_context.bool_val(false);
+        }
+        for (unsigned i = 1; i < disj.size(); ++i) {
+            r = r || disj[i];
+        }
     }
 
-    bool disjunction(TreeNode* d, std::vector<z3::expr>& r) {
+    void disjunction(TreeNode* d, std::vector<z3::expr>& r) {
         z3::expr lit(m_context);
         if (d->child(2)) {
-            if(!disjunction(d->child(0), r)) return false;
-            if(!literal(d->child(2), lit)) return false;
+            disjunction(d->child(0), r);
+            literal(d->child(2), lit);
             r.push_back(lit);
-            return true;            
         }
-        if(!literal(d->child(0), lit)) return false;
-        r.push_back(lit);
-        return true;
+        else {
+            literal(d->child(0), lit);
+            r.push_back(lit);
+        }
     }
 
-    bool literal(TreeNode* l, z3::expr& lit) {
+    void literal(TreeNode* l, z3::expr& lit) {
         if (!strcmp(l->child(0)->symbol(),"~")) {
-            if (!fof_formula(l->child(1), lit)) return false;
+            fof_formula(l->child(1), lit);
             lit = !lit;
-            return true;
         }
-        return fof_formula(l->child(0), lit);
+        else {
+            fof_formula(l->child(0), lit);
+        }
     }
 
-    bool fof_annotated(TreeNode* name, TreeNode* formula_role, TreeNode* formula, TreeNode* annotations, named_formulas& fmls) {
+    void fof_annotated(TreeNode* name, TreeNode* formula_role, TreeNode* formula, TreeNode* annotations, named_formulas& fmls) {
         z3::expr fml(m_context);
         //CHECK(fof_formula);
         CHECK(formula_role);
-        if (!fof_formula(formula->child(0), fml)) {
-            return false;
-        }
+        fof_formula(formula->child(0), fml);
         char const* role = formula_role->child(0)->symbol();
         if (!strcmp(role,"conjecture")) {
             fmls.set_has_conjecture();
@@ -343,10 +351,9 @@ class env {
         else {
             fmls.push_back(fml, get_name(name));
         }
-        return true;
     }
 
-    bool fof_formula(TreeNode* f, z3::expr& fml) {
+    void fof_formula(TreeNode* f, z3::expr& fml) {
         z3::expr f1(m_context);
         char const* name = f->symbol();
         if (!strcmp(name,"fof_logic_formula") ||
@@ -357,134 +364,129 @@ class env {
             !strcmp(name,"tff_binary_formula") ||
             !strcmp(name,"atomic_formula") ||
             !strcmp(name,"defined_atomic_formula")) {
-            return fof_formula(f->child(0), fml);
+            fof_formula(f->child(0), fml);
         }
-        if (!strcmp(name, "fof_sequent") ||
+        else if (!strcmp(name, "fof_sequent") ||
             !strcmp(name, "tff_sequent")) {
-            if (!fof_formula(f->child(0), f1)) return false;
-            if (!fof_formula(f->child(2), fml)) return false;
+            fof_formula(f->child(0), f1);
+            fof_formula(f->child(2), fml);
             fml = implies(f1, fml);
-            return true;
         }
-        if (!strcmp(name, "fof_binary_nonassoc") ||
+        else if (!strcmp(name, "fof_binary_nonassoc") ||
             !strcmp(name, "tff_binary_nonassoc")) {
-            if (!fof_formula(f->child(0), f1)) return false;
-            if (!fof_formula(f->child(2), fml)) return false;   
+            fof_formula(f->child(0), f1);
+            fof_formula(f->child(2), fml);
             //SASSERT(!strcmp("binary_connective",f->child(1)->symbol()));
             char const* conn = f->child(1)->child(0)->symbol();
             if (!strcmp(conn, "<=>")) {
                 fml = (f1 == fml);
-                return true;
             }
-            if (!strcmp(conn, "=>")) {
+            else if (!strcmp(conn, "=>")) {
                 fml = implies(f1, fml);
-                return true;
             }
-            if (!strcmp(conn, "<=")) {
+            else if (!strcmp(conn, "<=")) {
                 fml = implies(fml, f1);
-                return true;
             }
-            if (!strcmp(conn, "<~>")) {
+            else if (!strcmp(conn, "<~>")) {
                 fml = ! (f1 == fml);
-                return true;
             }
-            if (!strcmp(conn, "~|")) {
+            else if (!strcmp(conn, "~|")) {
                 fml = !(f1 || fml);
-                return true;
             }
-            if (!strcmp(conn, "~&")) {
+            else if (!strcmp(conn, "~&")) {
                 fml = ! (f1 && fml);
-                return true;
             }
-            return mk_error(f->child(1)->child(0), "connective");            
+            else {
+                mk_error(f->child(1)->child(0), "connective");            
+            }
         }
-        if (!strcmp(name,"fof_or_formula") ||
+        else if (!strcmp(name,"fof_or_formula") ||
             !strcmp(name,"tff_or_formula")) {
-            if (!fof_formula(f->child(0), f1)) return false;
-            if (!fof_formula(f->child(2), fml)) return false;   
+            fof_formula(f->child(0), f1);
+            fof_formula(f->child(2), fml);
             fml = f1 || fml;
-            return true;
         }
-        if (!strcmp(name,"fof_and_formula") ||
+        else if (!strcmp(name,"fof_and_formula") ||
             !strcmp(name,"tff_and_formula")) {
-            if (!fof_formula(f->child(0), f1)) return false;
-            if (!fof_formula(f->child(2), fml)) return false;   
+            fof_formula(f->child(0), f1);
+            fof_formula(f->child(2), fml);
             fml = f1 && fml;
-            return true;
         }
-        if (!strcmp(name,"fof_unitary_formula") ||
+        else if (!strcmp(name,"fof_unitary_formula") ||
             !strcmp(name,"tff_unitary_formula")) {
             if (f->child(1)) {
                 // parenthesis
-                return fof_formula(f->child(1), fml);
+                fof_formula(f->child(1), fml);
             }
-            return fof_formula(f->child(0), fml);
+            else {
+                fof_formula(f->child(0), fml);
+            }
         }
-        if (!strcmp(name,"fof_quantified_formula") ||
+        else if (!strcmp(name,"fof_quantified_formula") ||
             !strcmp(name,"tff_quantified_formula")) {
-            return fof_quantified_formula(f->child(0), f->child(2), f->child(5), fml);
+            fof_quantified_formula(f->child(0), f->child(2), f->child(5), fml);
         }
-
-        if (!strcmp(name,"fof_unary_formula") ||
+        else if (!strcmp(name,"fof_unary_formula") ||
             !strcmp(name,"tff_unary_formula")) {
             if (!f->child(1)) {
-                return fof_formula(f->child(0), fml);
+                fof_formula(f->child(0), fml);
             }
-            if (!fof_formula(f->child(1), fml)) return false;
-            char const* conn = f->child(0)->child(0)->symbol();
-            if (!strcmp(conn,"~")) {
-                fml = !fml;
-                return true;
+            else {
+                fof_formula(f->child(1), fml);
+                char const* conn = f->child(0)->child(0)->symbol();
+                if (!strcmp(conn,"~")) {
+                    fml = !fml;
+                }
+                else {
+                    mk_error(f->child(0)->child(0), "fof_unary_formula");
+                }
             }
-            return mk_error(f->child(0)->child(0), "fof_unary_formula");
         }
-        if (!strcmp(name,"fof_let")) {
-            return mk_let(f->child(2), f->child(5), fml);
+        else if (!strcmp(name,"fof_let")) {
+            mk_let(f->child(2), f->child(5), fml);
         }
-        if (!strcmp(name,"variable")) {
+        else if (!strcmp(name,"variable")) {
             char const* v  = f->child(0)->symbol();
-            if (find_bound(v, fml)) {
-                return true;
+            if (!find_bound(v, fml)) {
+                mk_error(f->child(0), "variable");
             }
-            return mk_error(f->child(0), "variable");
         }
-        if (!strcmp(name,"fof_conditional")) {
+        else if (!strcmp(name,"fof_conditional")) {
             z3::expr f2(m_context);
-            if (!fof_formula(f->child(2), f1)) return false;
-            if (!fof_formula(f->child(4), f2)) return false;
-            if (!fof_formula(f->child(6), fml)) return false;
+            fof_formula(f->child(2), f1);
+            fof_formula(f->child(4), f2);
+            fof_formula(f->child(6), fml);
             fml = ite(f1, f2, fml);
-            return true;
         }
-        if (!strcmp(name,"plain_atomic_formula") ||             
+        else if (!strcmp(name,"plain_atomic_formula") ||             
             !strcmp(name,"defined_plain_formula") ||
             !strcmp(name,"system_atomic_formula")) {
-            return term(f->child(0), m_context.bool_sort(), fml);
+            term(f->child(0), m_context.bool_sort(), fml);
         }
-        if (!strcmp(name,"defined_infix_formula") ||
+        else if (!strcmp(name,"defined_infix_formula") ||
             !strcmp(name,"fol_infix_unary")) {
             z3::expr t1(m_context), t2(m_context);
-            if (!term(f->child(0), m_univ, t1)) return false;
-            if (!term(f->child(2), m_univ, t2)) return false;
+            term(f->child(0), m_univ, t1);
+            term(f->child(2), m_univ, t2);
             TreeNode* inf = f->child(1);
             while (inf && strcmp(inf->symbol(),"=") && strcmp(inf->symbol(),"!=")) {
                 inf = inf->child(0);
             }
             if (!inf) {
-                return mk_error(f->child(1), "defined_infix_formula");
+                mk_error(f->child(1), "defined_infix_formula");
             }
             char const* conn = inf->symbol();
             if (!strcmp(conn,"=")) {
                 fml = t1 == t2;
-                return true;
             }
-            if (!strcmp(conn,"!=")) {
+            else if (!strcmp(conn,"!=")) {
                 fml = ! (t1 == t2);
-                return true;
             }
-            return mk_error(inf, "defined_infix_formula");
+            else {
+                mk_error(inf, "defined_infix_formula");
+            }
         }
-        if (!strcmp(name, "tff_typed_atom")) {
+        else if (!strcmp(name, "tff_typed_atom")) {
             while (!strcmp(f->child(0)->symbol(),"(")) {
                 f = f->child(1);
             }
@@ -492,20 +494,20 @@ class env {
             z3::sort s(m_context);
             z3::sort_vector sorts(m_context);
 
-            if (!mk_id(f->child(0), id)) {
-                return false;
-            }
+            mk_id(f->child(0), id);
             if (is_ttype(f->child(2))) {
-                mk_sort(id);
+                s = mk_sort(id);
                 m_defined_sorts.insert(symbol(id), s);
-                return true;
             }
-            if (!mk_mapping_sort(f->child(2), sorts, s)) return false;
-            z3::func_decl fd(m_context.function(id, sorts, s));
-            m_decls.insert(symbol(id), fd);
-            return true;
+            else {
+                mk_mapping_sort(f->child(2), sorts, s);
+                z3::func_decl fd(m_context.function(id, sorts, s));
+                m_decls.insert(symbol(id), fd);
+            }
         }
-        return mk_error(f, "fof_formula");
+        else {
+            mk_error(f, "fof_formula");
+        }
     }
 
     bool is_ttype(TreeNode* t) {
@@ -516,10 +518,10 @@ class env {
         return false;
     }
 
-    bool fof_quantified_formula(TreeNode* fol_quantifier, TreeNode* vl, TreeNode* formula, z3::expr& fml) {
+    void fof_quantified_formula(TreeNode* fol_quantifier, TreeNode* vl, TreeNode* formula, z3::expr& fml) {
         unsigned l = m_bound.size();       
-        if (!mk_variable_list(vl)) return false;
-        if (!fof_formula(formula, fml)) return false;
+        mk_variable_list(vl);
+        fof_formula(formula, fml);
         bool is_forall = !strcmp(fol_quantifier->child(0)->symbol(),"!");
         z3::expr_vector bound(m_context);
         for (unsigned i = l; i < m_bound.size(); ++i) {
@@ -527,10 +529,9 @@ class env {
         }
         fml = mk_quantifier(is_forall, bound, fml);
         m_bound.resize(l);
-        return true;
     }
 
-    bool mk_variable_list(TreeNode* variable_list) {
+    void mk_variable_list(TreeNode* variable_list) {
         while (variable_list) {
             TreeNode* var = variable_list->child(0);
             if (!strcmp(var->symbol(),"tff_variable")) {
@@ -543,106 +544,114 @@ class env {
             else if (!strcmp(var->symbol(),"tff_typed_variable")) {
                 z3::sort s(m_context);
                 char const* name = var->child(0)->child(0)->symbol();
-                if (!mk_sort(var->child(2), s)) return false;
+                mk_sort(var->child(2), s);
                 m_bound.push_back(m_context.constant(name, s));
             }
             else {
-                return mk_error(var, "variable_list");
+                mk_error(var, "variable_list");
             }
             variable_list = variable_list->child(2);
         }
-        return true;
     }
 
-    bool mk_sort(TreeNode* t, z3::sort& s) {
+    void mk_sort(TreeNode* t, z3::sort& s) {
         char const* name = t->symbol();
         if (!strcmp(name, "tff_atomic_type") ||
             !strcmp(name, "defined_type")) {
-            return mk_sort(t->child(0), s);
+            mk_sort(t->child(0), s);
         }
-        if (!strcmp(name, "atomic_defined_word")) {
+        else if (!strcmp(name, "atomic_defined_word")) {
             z3::symbol sname = symbol(t->child(0)->symbol());
             z3::sort srt(m_context);
-            if (m_defined_sorts.find(sname, srt)) {
+            if (!strcmp("$tType", t->child(0)->symbol())) {
+                char const* id = 0;
+                s = mk_sort(id);
+                m_defined_sorts.insert(symbol(id), s);
+            }
+            else if (m_defined_sorts.find(sname, srt)) {
                 s = srt;
             }
             else {
                 s = mk_sort(sname);
                 if (sname == symbol("$rat")) {
-                    std::cerr << "rational sorts are not handled\n";
-                    return false;
-                }
-                return mk_error(t, "defined sort");
+                    throw failure_ex("rational sorts are not handled\n");
+                }                
+                mk_error(t, sname.str().c_str());
             }
-            return true;
         }
-        if (!strcmp(name,"atomic_word")) {
+        else if (!strcmp(name,"atomic_word")) {
             name = t->child(0)->symbol();
             s = mk_sort(symbol(name));
-            return true;
         }
-        return mk_error(t, "sort");
+        else {
+            mk_error(t, "sort");
+        }
     }
 
-    bool mk_mapping_sort(TreeNode* t, z3::sort_vector& domain, z3::sort& s) {
+    void mk_mapping_sort(TreeNode* t, z3::sort_vector& domain, z3::sort& s) {
         char const* name = t->symbol();
+        char const* id = 0;
         if (!strcmp(name,"tff_top_level_type")) {
-            return mk_mapping_sort(t->child(0), domain, s);
+            mk_mapping_sort(t->child(0), domain, s);
         }
-        if (!strcmp(name,"tff_atomic_type")) {
-            return mk_sort(t->child(0), s);
-        }
-            
-        if (!strcmp(name,"tff_mapping_type")) {
+        else if (!strcmp(name,"tff_atomic_type")) {
+            mk_sort(t->child(0), s);
+        }            
+        else if (!strcmp(name,"tff_mapping_type")) {
             TreeNode* t1 = t->child(0);
             if (t1->child(1)) {
-                if (!mk_xprod_sort(t1->child(1), domain)) return false;
+                mk_xprod_sort(t1->child(1), domain);
             }
             else {
-                if (!mk_sort(t1->child(0), s)) return false;
+                mk_sort(t1->child(0), s);
                 domain.push_back(s);
             }
-            if (!mk_sort(t->child(2), s)) return false;
-            return true;
+            mk_sort(t->child(2), s);
         }
-        return mk_error(t, "mapping sort");
+        else {
+            mk_error(t, "mapping sort");
+        }
     }
 
-    bool mk_xprod_sort(TreeNode* t, z3::sort_vector& sorts) {        
+    void  mk_xprod_sort(TreeNode* t, z3::sort_vector& sorts) {        
         char const* name = t->symbol();
         z3::sort s1(m_context), s2(m_context);
         if (!strcmp(name, "tff_atomic_type")) {
-            if (!mk_sort(t->child(0), s1)) return false;
+            mk_sort(t->child(0), s1);
             sorts.push_back(s1);
-            return true;
         }
-
-        if (!strcmp(name, "tff_xprod_type")) {
+        else if (!strcmp(name, "tff_xprod_type")) {
             name = t->child(0)->symbol();
             if (!strcmp(name, "tff_atomic_type") ||
                 !strcmp(name, "tff_xprod_type")) {
-                if (!mk_xprod_sort(t->child(0), sorts)) return false;
-                if (!mk_xprod_sort(t->child(2), sorts)) return false;
-                return true;
+                mk_xprod_sort(t->child(0), sorts);
+                mk_xprod_sort(t->child(2), sorts);
             }
-            if (t->child(1)) {
-                return mk_xprod_sort(t->child(1), sorts);
+            else if (t->child(1)) {
+                mk_xprod_sort(t->child(1), sorts);
+            }
+            else {
+                mk_error(t, "xprod sort");
             }
         }
-        return mk_error(t, "xprod sort");
+        else {
+            mk_error(t, "xprod sort");
+        }
     }
 
-    bool term(TreeNode* t, z3::sort& s, z3::expr& r) {
+    void term(TreeNode* t, z3::sort& s, z3::expr& r) {
         char const* name = t->symbol();
         if (!strcmp(name, "defined_plain_term") ||
             !strcmp(name, "system_term") ||
             !strcmp(name, "plain_term")) {
             if (!t->child(1)) {
-                return term(t->child(0), s, r);
+                term(t->child(0), s, r);
             }
-            return apply_term(t->child(0), t->child(2), s, r);
+            else {
+                apply_term(t->child(0), t->child(2), s, r);
+            }
         }
-        if (!strcmp(name, "constant") ||
+        else if (!strcmp(name, "constant") ||
             !strcmp(name, "functor") ||
             !strcmp(name, "defined_plain_formula") ||
             !strcmp(name, "defined_functor") ||
@@ -653,11 +662,11 @@ class env {
             !strcmp(name, "function_term") ||
             !strcmp(name, "term") ||
             !strcmp(name, "defined_term")) {
-            return term(t->child(0), s, r);
+            term(t->child(0), s, r);
         }
 
 
-        if (!strcmp(name, "defined_atom")) {
+        else if (!strcmp(name, "defined_atom")) {
             char const* name0 = t->child(0)->symbol();
             if (!strcmp(name0,"number")) {
                 name0 = t->child(0)->child(0)->symbol();
@@ -676,14 +685,15 @@ class env {
                     z3::expr y = m_context.real_val(per-name0);
                     r = r/y;
                 }
-                return true;
             }
-            if (!strcmp(name0, "distinct_object")) {
-                return false;
+            else if (!strcmp(name0, "distinct_object")) {
+                throw failure_ex("distinct object not handled");
             }
-            return mk_error(t->child(0), "number or distinct object");
+            else {
+                mk_error(t->child(0), "number or distinct object");
+            }
         }
-        if (!strcmp(name, "atomic_defined_word")) {
+        else if (!strcmp(name, "atomic_defined_word")) {
             char const* ch = t->child(0)->symbol();
             z3::symbol s = symbol(ch);
             z3::func_decl fd(m_context);
@@ -695,11 +705,12 @@ class env {
             }
             else if (m_decls.find(s, fd)) {
                 r = fd(0,0);
-                return true;
             }
-            return mk_error(t->child(0), "atomic_defined_word");
+            else {
+                mk_error(t->child(0), "atomic_defined_word");
+            }
         }
-        if (!strcmp(name, "atomic_word")) {
+        else if (!strcmp(name, "atomic_word")) {
             z3::func_decl f(m_context);
             z3::symbol sym = symbol(t->child(0)->symbol());
             if (m_decls.find(sym, f)) {
@@ -708,22 +719,22 @@ class env {
             else {
                 r = m_context.constant(sym, s);
             }
-            return true;
         }
-        if (!strcmp(name, "variable")) {
+        else if (!strcmp(name, "variable")) {
             char const* v = t->child(0)->symbol();
-            if (find_bound(v, r)) {
-                return true;
+            if (!find_bound(v, r)) {
+                mk_error(t->child(0), "variable not bound");
             }
-            return mk_error(t->child(0), "variable not bound");
         }
-        return mk_error(t, "term not recognized");
+        else {
+            mk_error(t, "term not recognized");
+        }
     }
 
-    bool apply_term(TreeNode* f, TreeNode* args, z3::sort& s, z3::expr& r) {
+    void apply_term(TreeNode* f, TreeNode* args, z3::sort& s, z3::expr& r) {
         z3::expr_vector terms(m_context);
         z3::sort_vector sorts(m_context);
-        if (!mk_args(args, terms)) return false;
+        mk_args(args, terms);
         for (unsigned i = 0; i < terms.size(); ++i) {
             sorts.push_back(terms[i].get_sort());
         }
@@ -740,56 +751,66 @@ class env {
             z3::symbol fn = symbol(ch);   
             z3::func_decl fun(m_context);
             if (!strcmp(ch,"$less")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] < terms[1]; 
             }
             else if (!strcmp(ch,"$lesseq")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] <= terms[1];
             }
             else if (!strcmp(ch,"$greater")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] > terms[1];
             }
             else if (!strcmp(ch,"$greatereq")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] >= terms[1];
             }
             else if (!strcmp(ch,"$uminus")) {
-                if (terms.size() != 1) return false;
+                check_arity(terms.size(), 1);
                 r = -terms[0];
             }
             else if (!strcmp(ch,"$sum")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] + terms[1];
             }
             else if (!strcmp(ch,"$plus")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] + terms[1];
             }
             else if (!strcmp(ch,"$difference")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] - terms[1];
             }
             else if (!strcmp(ch,"$product")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] * terms[1];
             }
             else if (!strcmp(ch,"$quotient")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] / terms[1];
             }
             else if (!strcmp(ch,"$distinct")) {
-                if (terms.size() != 2) return false;
+                check_arity(terms.size(), 2);
                 r = terms[0] != terms[1];
             }
             else if (!strcmp(ch,"$to_int")) {
-                if (terms.size() != 1) return false;
+                check_arity(terms.size(), 1);
                 r = z3::expr(r.ctx(), Z3_mk_int2real(r.ctx(), terms[0]));
             }
             else if (!strcmp(ch,"$to_real")) {
-                if (terms.size() != 1) return false;
+                check_arity(terms.size(), 1);
                 r = z3::expr(r.ctx(), Z3_mk_real2int(r.ctx(), terms[0]));
+            }
+            else if (!strcmp(ch,"$is_int")) {
+                check_arity(terms.size(), 1);
+                r = z3::expr(r.ctx(), Z3_mk_is_int(r.ctx(), terms[0]));
+            }            
+            else if (!strcmp(ch,"$true")) {
+                r = r.ctx().bool_val(true);
+            }
+            else if (!strcmp(ch,"$false")) {
+                r = r.ctx().bool_val(false);
             }
             else if (!strcmp(ch,"$to_rat") ||
                      !strcmp(ch,"$is_rat") ||
@@ -803,22 +824,22 @@ class env {
                      !strcmp(ch,"$remainder_r") ||
                      !strcmp(ch,"$round") ||
                      !strcmp(ch,"$truncate")) {
-                return mk_not_handled(f, ch);
+                mk_not_handled(f, ch);
             }
             else if (m_decls.find(fn, fun)) {
                 r = fun(terms);
             }
-            else if (false) {
+            else if (true) {
                 z3::func_decl func(m_context);
                 func = m_context.function(fn, sorts, s);
                 r = func(terms);
             }
             else {
-                return mk_error(f->child(0), "atomic, defined or system word");
-            }                
-            return true;
+                mk_error(f->child(0), "atomic, defined or system word");
+            }      
+            return;
         }
-        return mk_error(f, "function");
+        mk_error(f, "function");
     }
 
     bool check_app(z3::func_decl& f, unsigned num, z3::expr const* args) {
@@ -835,14 +856,13 @@ class env {
         }
     }
 
-    bool mk_args(TreeNode* args, z3::expr_vector& result) {
+    void mk_args(TreeNode* args, z3::expr_vector& result) {
         z3::expr t(m_context);
         while (args) {
-            if (!term(args->child(0), m_univ, t)) return false;
+            term(args->child(0), m_univ, t);
             result.push_back(t);
             args = args->child(2);
         }
-        return true;
     }
 
 
@@ -857,24 +877,24 @@ class env {
         return false;
     }
 
-    bool mk_id(TreeNode* f, char const*& sym) {
+    void mk_id(TreeNode* f, char const*& sym) {
         char const* name = f->symbol();
         if (!strcmp(name, "tff_untyped_atom") ||
             !strcmp(name, "functor") ||
             !strcmp(name, "system_functor")) {
-            return mk_id(f->child(0), sym);
+             mk_id(f->child(0), sym);
         }
-        if (!strcmp(name, "atomic_word") ||
+        else if (!strcmp(name, "atomic_word") ||
             !strcmp(name, "atomic_system_word")) {
             sym = f->child(0)->symbol();
-            return true;
         }
-        return mk_error(f, "atom");
+        else {
+            mk_error(f, "atom");
+        }
     }
 
-    bool mk_let(TreeNode* let_vars, TreeNode* f, z3::expr& fml) {
-
-        return mk_error(f, "let construct is not handled");
+    void mk_let(TreeNode* let_vars, TreeNode* f, z3::expr& fml) {        
+        mk_error(f, "let construct is not handled");
     }
 
     FILE* open_file(char const* filename) {
@@ -1017,7 +1037,7 @@ public:
         delete m_region;
         m_region = 0;        
     }
-    bool parse(const char* filename, named_formulas& fmls);
+    void parse(const char* filename, named_formulas& fmls);
     static void register_node(TreeNode* t) { m_nodes->push_back(t); }
     static region& r() { return *m_region; }
 };    
@@ -1039,28 +1059,32 @@ region* env::m_region = 0;
 extern FILE* yyin;
 
     
-bool env::parse(const char* filename, named_formulas& fmls) {
+void env::parse(const char* filename, named_formulas& fmls) {
     std::vector<TreeNode*> nodes;
     flet<char const*> fn(m_filename, filename);
     flet<std::vector<TreeNode*>*> fnds(m_nodes, &nodes);
 
     FILE* fp = open_file(filename);
     if (!fp) {
-        std::cout << "Could not open file " << filename << "\n";
-        return false;
+        std::stringstream strm;
+        strm << "Could not open file " << filename << "\n";
+        throw failure_ex(strm.str());
     }
     yyin = fp;
     int result = yyparse();
     fclose(fp);
 
+    if (result != 0) {
+        throw failure_ex("could not parse input");
+    }
+
     for (unsigned i = 0; i < nodes.size(); ++i) {
         TreeNode* cl = nodes[i];
-        if (cl && !mk_input(cl, fmls)) {
-            return false;
+        if (cl) {
+            mk_input(cl, fmls);
         }
     }
 
-    return 0 == result;
 }
 
 class pp_tptp {
@@ -1355,6 +1379,7 @@ static bool g_generate_core = false;
 static bool g_display_statistics = false;
 static bool g_first_interrupt = true;
 static bool g_smt2status = false;
+static int g_timeout = 0;
 static double g_start_time = 0;
 static z3::solver*   g_solver = 0;
 static z3::context*  g_context = 0;
@@ -1373,6 +1398,7 @@ static void display_usage() {
     std::cout << "  -p, -proof   generate proof.\n";
     std::cout << "  -c, -core    generate unsat core of named formulas.\n";
     std::cout << "  -st, -statistics display statistics.\n";
+    std::cout << "  -t:timeout   set timeout (in second).\n";
     std::cout << "  -smt2status  display status in smt2 format instead of SZS.\n";
     // std::cout << "  -v, -verbose  verbose mode.\n";
     std::cout << "  -o:<output-file> file to place output in.\n";
@@ -1435,6 +1461,13 @@ void parse_cmd_line_args(int argc, char ** argv) {
             }
             else if (!strcmp(arg,"st") || !strcmp(arg,"statistics")) {
                 g_display_statistics = true;
+            }
+            else if (!strcmp(arg,"t") || !strcmp(arg,"timeout")) {
+                if (!opt_arg) {
+                    display_usage();
+                    exit(0);
+                }
+                g_timeout = atoi(opt_arg);
             }
             else if (!strcmp(arg,"smt2status")) {
                 g_smt2status = true;
@@ -1533,7 +1566,11 @@ static void display_smt2(std::ostream& out) {
     z3::context ctx(config);
     named_formulas fmls;
     env env(ctx);
-    if (!env.parse(g_input_file, fmls)) {
+    try {
+        env.parse(g_input_file, fmls);
+    }
+    catch (failure_ex& ex) {
+        std::cerr << ex.msg << "\n";
         return;
     }
 
@@ -1553,15 +1590,28 @@ static void prove_tptp() {
     z3::config config;
     if (g_generate_proof) {
         config.set("proof", true);
+        z3::set_param("proof", true);
     }    
     z3::context ctx(config);
     z3::solver solver(ctx);
     g_solver  = &solver;
     g_context = &ctx;
+    if (g_timeout) {
+        // TBD overflow check
+        z3::set_param("timeout", g_timeout*1000);
+        z3::params params(ctx);
+        params.set("timeout", static_cast<unsigned>(g_timeout*1000));
+        solver.set(params);
+    }
+    
 
     named_formulas fmls;
     env env(ctx);
-    if (!env.parse(g_input_file, fmls)) {
+    try {
+        env.parse(g_input_file, fmls);
+    }
+    catch (failure_ex& ex) {
+        std::cerr << ex.msg << "\n";
         std::cout << "SZS status GaveUp\n";
         return;
     }
