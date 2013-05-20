@@ -1338,6 +1338,11 @@ public:
                 }
             }
             else if (e.is_quantifier()) {
+                unsigned nb = Z3_get_quantifier_num_bound(e.ctx(), e);
+                for (unsigned i = 0; i < nb; ++i) {
+                    z3::sort srt(ctx, Z3_get_quantifier_bound_sort(e.ctx(), e, i));
+                    collect_sort(srt);
+                }
                 todo.push_back(e.body());
             }
             else if (e.is_var()) {
