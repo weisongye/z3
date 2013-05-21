@@ -577,6 +577,9 @@ namespace smt {
 
         virtual void set_cancel(bool f) {
             m_cancel = f;
+            if (m_model_checker) {
+                m_model_checker->set_cancel(f);
+            }
         }
 
         virtual final_check_status final_check_eh(bool full) {

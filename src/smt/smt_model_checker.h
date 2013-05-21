@@ -90,6 +90,7 @@ namespace smt {
 
         void init_search_eh();
         void restart_eh();
+        void set_cancel(bool f);
 
         void reset();
     };

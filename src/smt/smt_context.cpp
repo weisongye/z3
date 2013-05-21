@@ -3988,6 +3988,7 @@ namespace smt {
     void context::set_cancel_flag(bool f) {
         m_cancel_flag = f;
         m_asserted_formulas.set_cancel_flag(f);
+        // nested critical sections: m_qmanager->set_cancel(f);
     }
 
 };
