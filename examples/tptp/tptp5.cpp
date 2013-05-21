@@ -59,22 +59,25 @@ struct symbol_table {
             val = it->second;
             return true;
         }
-    }
-    
+    }    
 };
-
 
 
 typedef std::set<z3::symbol, symbol_compare> symbol_set;
 
+
 struct named_formulas {
-    std::vector<std::pair<z3::expr, char const *> > m_formulas;
-    bool m_has_conjecture;
+    std::vector<z3::expr>    m_formulas;
+    std::vector<std::string> m_names;
+    std::vector<std::string> m_files;
+    bool                     m_has_conjecture;
 
     named_formulas(): m_has_conjecture(false) {}
 
-    void push_back(z3::expr& fml, char const * name) {
-        m_formulas.push_back(std::make_pair(fml, name));
+    void push_back(z3::expr& fml, char const * name, char const* file) {
+        m_formulas.push_back(fml);
+        m_names.push_back(name);
+        m_files.push_back(file);
     }
 
     void set_has_conjecture() {
@@ -253,6 +256,12 @@ class env {
 #define CHECK(_node_) if (0 != strcmp(_node_->symbol(),#_node_)) return mk_error(_node_,#_node_); 
 
     const char* get_name(TreeNode* name) {
+        if (!name->child(0)) {
+            mk_error(name, "node with a child");
+        }
+        if (!name->child(0)->child(0)) {
+            return name->child(0)->symbol();
+        }
         return name->child(0)->child(0)->symbol();        
     }
 
@@ -290,7 +299,7 @@ class env {
             fmls.set_has_conjecture();
             r = !r;
         }
-        fmls.push_back(r, get_name(name));
+        fmls.push_back(r, get_name(name), m_filename);
         m_bound.resize(0);
     }
 
@@ -344,12 +353,12 @@ class env {
         char const* role = formula_role->child(0)->symbol();
         if (!strcmp(role,"conjecture")) {
             fmls.set_has_conjecture();
-            fmls.push_back(!fml, get_name(name));
+            fmls.push_back(!fml, get_name(name), m_filename);
         }
         else if (!strcmp(role,"type")) {
         }
         else {
-            fmls.push_back(fml, get_name(name));
+            fmls.push_back(fml, get_name(name), m_filename);
         }
     }
 
@@ -790,6 +799,10 @@ class env {
                 check_arity(terms.size(), 2);
                 r = terms[0] / terms[1];
             }
+            else if (!strcmp(ch,"$quotient_e")) {
+                check_arity(terms.size(), 2);
+                r = terms[0] / terms[1];
+            }
             else if (!strcmp(ch,"$distinct")) {
                 check_arity(terms.size(), 2);
                 r = terms[0] != terms[1];
@@ -817,7 +830,6 @@ class env {
                      !strcmp(ch,"$floor") ||
                      !strcmp(ch,"$ceiling") ||
                      !strcmp(ch,"$quotient_t") ||
-                     !strcmp(ch,"$quotient_e") ||
                      !strcmp(ch,"$quotient_r") ||
                      !strcmp(ch,"$remainder_t") ||
                      !strcmp(ch,"$remainder_e") ||
@@ -1096,8 +1108,10 @@ class pp_tptp {
     std::set<unsigned>         seen_ids;
     unsigned                   m_formula_id;
     unsigned                   m_node_number;
-    std::map<unsigned, unsigned> m_proof_ids;
+    std::map<unsigned, unsigned>            m_proof_ids;
     std::map<unsigned, std::set<unsigned> > m_proof_hypotheses;
+    std::map<unsigned, unsigned>            m_axiom_ids;
+    named_formulas*                         m_named_formulas;
 
 public:
     pp_tptp(z3::context& ctx): ctx(ctx), m_formula_id(0) {}
@@ -1129,7 +1143,7 @@ public:
     }
 
     void display_axiom(std::ostream& out, z3::expr& e) {
-        out << "tff(formula" << (++m_formula_id) << ", axiom,\n";
+        out << "tff(formula" << (++m_formula_id) << ", axiom,\n    ";
         display(out, e);
         out << ").\n";
     }
@@ -1329,10 +1343,22 @@ public:
         }
     }
 
-    void display_proof(std::ostream& out, z3::expr& proof) {
+    void collect_axiom_ids(named_formulas& axioms) {
+        m_named_formulas = &axioms;
+        m_axiom_ids.clear();
+        for (unsigned i = 0; i < axioms.m_formulas.size(); ++i) {
+            z3::expr& e = axioms.m_formulas[i];
+            unsigned id = Z3_get_ast_id(ctx, e);
+            m_axiom_ids.insert(std::make_pair(id, i));
+        }
+    }
+
+    void display_proof(std::ostream& out, named_formulas& fmls, z3::solver& solver) {
         m_node_number = 0;
         m_proof_ids.clear();
-        m_proof_hypotheses.clear();
+        m_proof_hypotheses.clear();        
+        z3::expr& proof = solver.proof();
+        collect_axiom_ids(fmls);
         collect_decls(proof);
         collect_hypotheses(proof);
         display_sort_decls(out);
@@ -1369,14 +1395,19 @@ public:
             }
             todo.pop_back();
             std::set<unsigned> hyps;
-            for (unsigned i = 0; i < p.num_args(); ++i) {
-                z3::expr arg = p.arg(i);
-                if (arg.get_sort() == proof_sort) {
-                    unsigned arg_id = Z3_get_ast_id(ctx,arg);
-                    std::set<unsigned> const& arg_hyps = m_proof_hypotheses.find(arg_id)->second;
-                    std::set<unsigned>::iterator it = arg_hyps.begin(), end = arg_hyps.end();
-                    for (; it != end; ++it) {
-                        hyps.insert(*it);
+            if (p.decl().decl_kind() == Z3_OP_PR_LEMMA) {
+                // we assume here that all hypotheses get consumed in lemmas.
+            }
+            else {
+                for (unsigned i = 0; i < p.num_args(); ++i) {
+                    z3::expr arg = p.arg(i);
+                    if (arg.get_sort() == proof_sort) {
+                        unsigned arg_id = Z3_get_ast_id(ctx,arg);
+                        std::set<unsigned> const& arg_hyps = m_proof_hypotheses.find(arg_id)->second;
+                        std::set<unsigned>::iterator it = arg_hyps.begin(), end = arg_hyps.end();
+                        for (; it != end; ++it) {
+                            hyps.insert(*it);
+                        }
                     }
                 }
             }
@@ -1426,11 +1457,27 @@ public:
             m_proof_ids.insert(std::make_pair(id, num));
             
             switch (p.decl().decl_kind()) {
-            case Z3_OP_PR_ASSERTED: 
+            case Z3_OP_PR_ASSERTED: {
+                std::string formula_name;
+                std::string formula_file;
+                unsigned id = Z3_get_ast_id(ctx, p.arg(0));
+                std::map<unsigned, unsigned>::iterator it = m_axiom_ids.find(id);
+                if (it != m_axiom_ids.end()) {                    
+                    formula_name = m_named_formulas->m_names[it->second];
+                    formula_file = m_named_formulas->m_files[it->second];
+                }
+                else {
+                    std::ostringstream str;
+                    str << "axiom_" << id;
+                    formula_name = str.str();
+                    formula_file = "unknown";
+                }
                 out << "tff(" << m_node_number << ",axiom,(";
                 display(out, get_proof_formula(p));
-                out << "), asserted).\n";
-                break;                
+                out << "), file('" << formula_file << "','";
+                out << formula_name << "')).\n";
+                break;               
+            } 
             case Z3_OP_PR_UNDEF:
                 throw failure_ex("undef rule not handled");
             case Z3_OP_PR_TRUE:
@@ -1488,11 +1535,22 @@ public:
                 display_inference(out, "quant_inst", "thm", p);
                 break;
             case Z3_OP_PR_HYPOTHESIS: 
-                display_inference(out, "hyplemma", "thm", p);
-                break;
-            case Z3_OP_PR_LEMMA: 
-                display_inference(out, "lemma", "thm", p);
+                out << "tff(" << m_node_number << ",assumption,(";
+                display(out, get_proof_formula(p));
+                out << "), introduced(assumption)).\n";
                 break;                
+            case Z3_OP_PR_LEMMA: {
+                out << "tff(" << m_node_number << ",plain,(";
+                display(out, get_proof_formula(p));
+                out << "), inference(lemma,lemma(discharge,";
+                unsigned parent_id = Z3_get_ast_id(ctx, p.arg(0));
+                std::set<unsigned> const& hyps = m_proof_hypotheses.find(parent_id)->second;
+                print_hypotheses(out, hyps);
+                out << ").\n";
+                break;                
+                display_inference(out, "lemma", "thm", p);
+                break;           
+            }     
             case Z3_OP_PR_UNIT_RESOLUTION:                                 
                 display_inference(out, "unit_resolution", "thm", p);
                 break;                
@@ -1592,11 +1650,33 @@ public:
 
 
     void display_inference(std::ostream& out, char const* name, char const* status, z3::expr& p) {
-        out << "tff(" << m_node_number << ",plain,(\n    ";
+        unsigned id = Z3_get_ast_id(ctx, p);
+        std::set<unsigned> const& hyps = m_proof_hypotheses.find(id)->second;
+        out << "tff(" << m_node_number << ",plain,\n    (";
         display(out, get_proof_formula(p));
-        out << "),\n    inference(" << name << ",[status(" << status << ")],";
+        out << "),\n    inference(" << name << ",[status(" << status << ")";
+        if (!hyps.empty()) {
+            out << ", assumptions(";
+            print_hypotheses(out, hyps);
+            out << ")";
+        }
+        out << "],";
         display_hypotheses(out, p);
         out << ")).\n";
+    }
+
+    void print_hypotheses(std::ostream& out, std::set<unsigned> const& hyps) {
+        std::set<unsigned>::iterator it = hyps.begin(), end = hyps.end();
+        bool first = true;
+        out << "[";
+        for (; it != end; ++it) {
+            if (!first) {
+                out << ", ";
+            }
+            first = false;
+            out << m_proof_ids.find(*it)->second;
+        }
+        out << "]";
     }
 
     unsigned display_hyp_inference(std::ostream& out, char const* name, char const* status, z3::expr& conclusion, unsigned hyp1, unsigned hyp2 = 0) {
@@ -1686,8 +1766,6 @@ public:
         }
         out << "]";
     }
-
-
 
     void display_sort_decls(std::ostream& out) {
         for (unsigned i = 0; i < sorts.size(); ++i) {
@@ -1844,7 +1922,7 @@ static void display_usage() {
     std::cout << "  -st, -statistics display statistics.\n";
     std::cout << "  -t:timeout   set timeout (in second).\n";
     std::cout << "  -smt2status  display status in smt2 format instead of SZS.\n";
-    // std::cout << "  -v, -verbose  verbose mode.\n";
+    std::cout << "  -<param>=<value> configuration parameter and value.\n";
     std::cout << "  -o:<output-file> file to place output in.\n";
 }
 
@@ -1879,12 +1957,13 @@ void parse_cmd_line_args(int argc, char ** argv) {
     int i = 1;
     while (i < argc) {
         char* arg = argv[i];
+        char * eq = 0;
+        char * opt_arg = 0;
         if (arg[0] == '-' || arg[0] == '/') {
             ++arg;
             while (*arg == '-') {
                 ++arg;
             }
-            char * opt_arg = 0;
             char * colon = strchr(arg, ':');
             if (colon) {
                 opt_arg = colon + 1;
@@ -1936,6 +2015,21 @@ void parse_cmd_line_args(int argc, char ** argv) {
             else if (!strcmp(arg, "file")) {
                 g_input_file = opt_arg;
             }
+            else if (!opt_arg && (eq = strchr(arg,'='))) {
+                opt_arg = eq + 1;
+                *eq = 0;
+                Z3_global_param_set(arg, opt_arg);
+            }
+            else {
+                std::cerr << "parameter " << arg << " was not recognized\n";
+                display_usage();
+                exit(0);
+            }
+        }
+        else if ((eq = strchr(arg,'=')) && arg[0] != '\'' ) {
+            opt_arg = eq + 1;
+            *eq = 0;
+            Z3_global_param_set(arg, opt_arg);            
         }
         else {
             g_input_file = arg;
@@ -1984,10 +2078,9 @@ static void display_tptp(std::ostream& out) {
     }
 }
 
-static void display_proof(z3::context& ctx, z3::expr& proof) {
-    std::cout << proof << "\n";
-    pp_tptp pp(ctx);
-    pp.display_proof(std::cout, proof);
+static void display_proof(z3::context& ctx, named_formulas& fmls, z3::solver& solver) {
+    pp_tptp pp(ctx);    
+    pp.display_proof(std::cout, fmls, solver);
 }
 
 static void display_model(z3::context& ctx, z3::model& model) {
@@ -2011,24 +2104,35 @@ static void display_model(z3::context& ctx, z3::model& model) {
             z3::symbol sym(ctx, Z3_mk_string_symbol(ctx, str.str().c_str()));
             args.push_back(ctx.constant(sym, f.domain(j)));
         }
-        // assume model completion:
-        z3::expr els = fi.else_value();
         unsigned ne = fi.num_entries();
         Z3_ast* conds = new Z3_ast[arity];
-        for (unsigned k = ne; k > 0;) {
-            --k;
+        Z3_ast* conds_match = new Z3_ast[ne];
+        z3::expr_vector conds_matchv(ctx);
+        for (unsigned k = 0; k < ne; ++k) {
             z3::func_entry e = fi.entry(k);
-            z3::expr_vector condv(ctx);
+            z3::expr_vector condv(ctx), args_e(ctx);
             for (unsigned j = 0; j < arity; ++j) {
+                args_e.push_back(e.arg(j));
                 condv.push_back(e.arg(j) == args[j]);
                 conds[j] = condv.back();
             }
             z3::expr cond(ctx, Z3_mk_and(ctx, arity, conds));
-            els = ite(cond, e.value(), els);
+            conds_matchv.push_back(cond);
+            conds_match[k] = cond;
+            fmls.push_back(f(args_e) == e.value());
+        }
+        z3::expr els = fi.else_value();
+        if (els) {
+            els = f(args) == els;
+            switch (ne) {
+            case 0: els = forall(args, els); break;
+            case 1: els = forall(args, implies(!z3::expr(ctx, conds_match[0]), els)); break;
+            default: els = forall(args, implies(!z3::expr(ctx, Z3_mk_or(ctx, ne, conds_match)), els)); break;
+            }
+            fmls.push_back(els);
         }
         delete[] conds;
-        els = forall(args, f(args) == els);
-        fmls.push_back(els);
+        delete[] conds_match;
     }
 
     pp_tptp pp(ctx);
@@ -2039,8 +2143,7 @@ static void display_model(z3::context& ctx, z3::model& model) {
     pp.display_func_decls(std::cout);
     for (unsigned i = 0; i < fmls.size(); ++i) {
         pp.display_axiom(std::cout, fmls[i]);
-    }
-    
+    }   
 }
 
 static void display_smt2(std::ostream& out) {
@@ -2060,7 +2163,7 @@ static void display_smt2(std::ostream& out) {
 
     Z3_ast* assumptions = new Z3_ast[num_assumptions];
     for (unsigned i = 0; i < num_assumptions; ++i) {
-        assumptions[i] = fmls.m_formulas[i].first;
+        assumptions[i] = fmls.m_formulas[i];
     }
     Z3_string s = 
         Z3_benchmark_to_smtlib_string(
@@ -2115,8 +2218,8 @@ static void prove_tptp() {
         z3::expr_vector assumptions(ctx);
         
         for (unsigned i = 0; i < num_assumptions; ++i) {
-            z3::expr pred = ctx.constant(fmls.m_formulas[i].second, ctx.bool_sort());
-            z3::expr def = fmls.m_formulas[i].first == pred;
+            z3::expr pred = ctx.constant(fmls.m_names[i].c_str(), ctx.bool_sort());
+            z3::expr def = fmls.m_formulas[i] == pred;
             solver.add(def);
             assumptions.push_back(pred);
         }
@@ -2124,7 +2227,7 @@ static void prove_tptp() {
     }
     else {
         for (unsigned i = 0; i < num_assumptions; ++i) {
-            solver.add(fmls.m_formulas[i].first);
+            solver.add(fmls.m_formulas[i]);
         }        
         result = solver.check();
     }
@@ -2141,7 +2244,7 @@ static void prove_tptp() {
             std::cout << "SZS status Unsatisfiable\n";
         }
         if (g_generate_proof) {
-            display_proof(ctx, solver.proof());            
+            display_proof(ctx, fmls, solver);
         }
         if (g_generate_core) {
             z3::expr_vector core = solver.unsat_core();
@@ -2201,12 +2304,3 @@ void main(int argc, char** argv) {
         prove_tptp();
     }
 }
-
-
-/**
-TODOs:
-   - model printing
-   - proof printing
-   - port Z3 parameters into engine
-   - verbose mode
- */
