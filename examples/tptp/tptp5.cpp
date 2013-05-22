@@ -7,6 +7,7 @@
 #include <time.h>
 #include <iostream>
 #include <fstream>
+#include <limits>
 #include "z3++.h"
 
 struct region {
@@ -759,6 +760,7 @@ class env {
             char const* ch = f->child(0)->symbol();
             z3::symbol fn = symbol(ch);   
             z3::func_decl fun(m_context);
+            z3::context& ctx = r.ctx();
             if (!strcmp(ch,"$less")) {
                 check_arity(terms.size(), 2);
                 r = terms[0] < terms[1]; 
@@ -807,35 +809,73 @@ class env {
                 check_arity(terms.size(), 2);
                 r = terms[0] != terms[1];
             }
-            else if (!strcmp(ch,"$to_int")) {
+            else if (!strcmp(ch,"$floor") || !strcmp(ch,"$to_int")) {
                 check_arity(terms.size(), 1);
-                r = z3::expr(r.ctx(), Z3_mk_int2real(r.ctx(), terms[0]));
+                r = to_int(terms[0]);
             }
             else if (!strcmp(ch,"$to_real")) {
                 check_arity(terms.size(), 1);
-                r = z3::expr(r.ctx(), Z3_mk_real2int(r.ctx(), terms[0]));
+                r = z3::expr(ctx, Z3_mk_int2real(ctx, terms[0]));
             }
             else if (!strcmp(ch,"$is_int")) {
                 check_arity(terms.size(), 1);
-                r = z3::expr(r.ctx(), Z3_mk_is_int(r.ctx(), terms[0]));
+                r = z3::expr(ctx, Z3_mk_is_int(ctx, terms[0]));
             }            
             else if (!strcmp(ch,"$true")) {
-                r = r.ctx().bool_val(true);
+                r = ctx.bool_val(true);
             }
             else if (!strcmp(ch,"$false")) {
-                r = r.ctx().bool_val(false);
+                r = ctx.bool_val(false);
+            }
+            // ceiling(x) = -floor(-x)
+            else if (!strcmp(ch,"$ceiling")) {
+                check_arity(terms.size(), 1);
+                r = ceiling(terms[0]);
+            }
+            // truncate - The nearest integral value with magnitude not greater than the absolute value of the argument. 
+            // if x >= 0 floor(x) else ceiling(x)
+            else if (!strcmp(ch,"$truncate")) {
+                check_arity(terms.size(), 1);    
+                r = truncate(terms[0]);
+            }
+            //  The nearest integral number to the argument. When the argument 
+            // is halfway between two integral numbers, the nearest even integral number to the argument.  
+            else if (!strcmp(ch,"$round")) {
+                check_arity(terms.size(), 1); 
+                z3::expr t = terms[0];
+                z3::expr i = to_int(t);
+                z3::expr i2 = i + ctx.real_val(1,2);
+                r = ite(t > i2, i + 1, ite(t == i2, ite(is_even(i), i, i+1), i));
+            }
+            // $quotient_e(N,D) - the Euclidean quotient, which has a non-negative remainder. 
+            // If D is positive then $quotient_e(N,D) is the floor (in the type of N and D) of 
+            // the real division N/D, and if D is negative then $quotient_e(N,D) is the ceiling of N/D.
+
+            // $quotient_t(N,D) - the truncation of the real division N/D. 
+            else if (!strcmp(ch,"$quotient_t")) {
+                check_arity(terms.size(), 2); 
+                r = truncate(terms[0] / terms[1]);
+            }
+            // $quotient_f(N,D) - the floor of the real division N/D. 
+            else if (!strcmp(ch,"$quotient_f")) {
+                check_arity(terms.size(), 2); 
+                r = to_int(terms[0] / terms[1]);
+            }
+            // For t in {$int,$rat, $real}, x in {e, t,f}, $quotient_x and $remainder_x are related by
+            // ! [N:t,D:t] : $sum($product($quotient_x(N,D),D),$remainder_x(N,D)) = N 
+            // For zero divisors the result is not specified. 
+            else if (!strcmp(ch,"$remainder_t")) {
+                mk_not_handled(f, ch);
+            }
+            else if (!strcmp(ch,"$remainder_e")) {
+                check_arity(terms.size(), 2); 
+                r = z3::expr(ctx, Z3_mk_mod(ctx, terms[0], terms[1]));
+            }
+            else if (!strcmp(ch,"$remainder_r")) {
+                mk_not_handled(f, ch);
             }
             else if (!strcmp(ch,"$to_rat") ||
-                     !strcmp(ch,"$is_rat") ||
-                     !strcmp(ch,"$floor") ||
-                     !strcmp(ch,"$ceiling") ||
-                     !strcmp(ch,"$quotient_t") ||
-                     !strcmp(ch,"$quotient_r") ||
-                     !strcmp(ch,"$remainder_t") ||
-                     !strcmp(ch,"$remainder_e") ||
-                     !strcmp(ch,"$remainder_r") ||
-                     !strcmp(ch,"$round") ||
-                     !strcmp(ch,"$truncate")) {
+                     !strcmp(ch,"$is_rat")) {
                 mk_not_handled(f, ch);
             }
             else if (m_decls.find(fn, fun)) {
@@ -852,6 +892,25 @@ class env {
             return;
         }
         mk_error(f, "function");
+    }
+
+    z3::expr to_int(z3::expr& e) {
+        return z3::expr(e.ctx(), Z3_mk_real2int(e.ctx(), e));
+    }
+
+    z3::expr ceiling(z3::expr& e) {
+        return -to_int(-e);
+    }
+
+    z3::expr is_even(z3::expr& e) {
+        z3::context& ctx = e.ctx();
+        z3::expr two = ctx.int_val(2);
+        z3::expr m = z3::expr(ctx, Z3_mk_mod(ctx, e, two));
+        return m == 0;
+    }
+
+    z3::expr truncate(z3::expr& e) {
+        return ite(e >= 0, to_int(e), ceiling(e));
     }
 
     bool check_app(z3::func_decl& f, unsigned num, z3::expr const* args) {
@@ -1150,6 +1209,14 @@ public:
 
     void display(std::ostream& out, z3::expr& e) {
         if (e.is_numeral()) {
+            __int64 num, den;
+            if (Z3_get_numeral_small(ctx, e, &num, &den)) {
+                if (num < 0 && den == 1 && num != std::numeric_limits<__int64>::min()) {
+                    out << "-" << (-num);
+                    return;
+                }
+            }
+            // potential incompatibility: prints negative numbers with a space.
             out << e;
         }
         else if (e.is_var()) {
@@ -1179,7 +1246,12 @@ public:
                 out << ")";
                 break;
             case Z3_OP_EQ:
-                display_infix(out, "=", e);
+                if (e.arg(0).is_bool()) {
+                    display_infix(out, "<=>", e);
+                }
+                else {
+                    display_infix(out, "=", e);
+                }
                 break;
             case Z3_OP_IFF:
                 display_infix(out, "<=>", e);
@@ -2108,9 +2180,14 @@ static void display_model(z3::context& ctx, z3::model& model) {
         Z3_ast* conds = new Z3_ast[arity];
         Z3_ast* conds_match = new Z3_ast[ne];
         z3::expr_vector conds_matchv(ctx);
+        z3::expr els = fi.else_value();
+        unsigned num_cases = 0;
         for (unsigned k = 0; k < ne; ++k) {
             z3::func_entry e = fi.entry(k);
             z3::expr_vector condv(ctx), args_e(ctx);
+            if (Z3_get_ast_id(ctx, els) == Z3_get_ast_id(ctx, e.value())) {
+                continue;
+            }
             for (unsigned j = 0; j < arity; ++j) {
                 args_e.push_back(e.arg(j));
                 condv.push_back(e.arg(j) == args[j]);
@@ -2118,16 +2195,16 @@ static void display_model(z3::context& ctx, z3::model& model) {
             }
             z3::expr cond(ctx, Z3_mk_and(ctx, arity, conds));
             conds_matchv.push_back(cond);
-            conds_match[k] = cond;
+            conds_match[num_cases] = cond;
             fmls.push_back(f(args_e) == e.value());
+            ++num_cases;
         }
-        z3::expr els = fi.else_value();
         if (els) {
             els = f(args) == els;
-            switch (ne) {
+            switch (num_cases) {
             case 0: els = forall(args, els); break;
             case 1: els = forall(args, implies(!z3::expr(ctx, conds_match[0]), els)); break;
-            default: els = forall(args, implies(!z3::expr(ctx, Z3_mk_or(ctx, ne, conds_match)), els)); break;
+            default: els = forall(args, implies(!z3::expr(ctx, Z3_mk_or(ctx, num_cases, conds_match)), els)); break;
             }
             fmls.push_back(els);
         }
