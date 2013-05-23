@@ -1714,6 +1714,8 @@ public:
             }
             return hyp;
         }
+        case Z3_OP_PR_MONOTONICITY: 
+            throw failure_ex("monotonicity rule is not handled");            
         default: 
             unsigned hyp2 = 0;
             if (p.num_args() == 2) {
@@ -2330,7 +2332,12 @@ static void prove_tptp() {
             std::cout << "SZS status Unsatisfiable\n";
         }
         if (g_generate_proof) {
-            display_proof(ctx, fmls, solver);
+            try {
+                display_proof(ctx, fmls, solver);
+            }
+            catch (failure_ex& ex) {
+                std::cerr << "Proof display could not be completed: " << ex.msg << "\n";
+            }
         }
         if (g_generate_core) {
             z3::expr_vector core = solver.unsat_core();
