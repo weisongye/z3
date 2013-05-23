@@ -2109,7 +2109,7 @@ void parse_cmd_line_args(int argc, char ** argv) {
                 exit(0);
             }
         }
-        else if ((eq = strchr(arg,'=')) && arg[0] != '\'' ) {
+        else if ((eq = strchr(arg,'=')) && arg[0] != '\'' && arg[0] != '\"' ) {
             opt_arg = eq + 1;
             *eq = 0;
             Z3_global_param_set(arg, opt_arg);            
