@@ -811,11 +811,11 @@ class env {
             }
             else if (!strcmp(ch,"$floor") || !strcmp(ch,"$to_int")) {
                 check_arity(terms.size(), 1);
-                r = to_int(terms[0]);
+                r = to_real(to_int(terms[0]));
             }
             else if (!strcmp(ch,"$to_real")) {
                 check_arity(terms.size(), 1);
-                r = z3::expr(ctx, Z3_mk_int2real(ctx, terms[0]));
+                r = to_real(terms[0]);
             }
             else if (!strcmp(ch,"$is_int")) {
                 check_arity(terms.size(), 1);
@@ -859,7 +859,7 @@ class env {
             // $quotient_f(N,D) - the floor of the real division N/D. 
             else if (!strcmp(ch,"$quotient_f")) {
                 check_arity(terms.size(), 2); 
-                r = to_int(terms[0] / terms[1]);
+                r = to_real(to_int(terms[0] / terms[1]));
             }
             // For t in {$int,$rat, $real}, x in {e, t,f}, $quotient_x and $remainder_x are related by
             // ! [N:t,D:t] : $sum($product($quotient_x(N,D),D),$remainder_x(N,D)) = N 
@@ -898,8 +898,12 @@ class env {
         return z3::expr(e.ctx(), Z3_mk_real2int(e.ctx(), e));
     }
 
+    z3::expr to_real(z3::expr& e) {
+        return z3::expr(e.ctx(), Z3_mk_int2real(e.ctx(), e));
+    }
+
     z3::expr ceiling(z3::expr& e) {
-        return -to_int(-e);
+        return -to_real(to_int(-e));
     }
 
     z3::expr is_even(z3::expr& e) {
@@ -2185,7 +2189,7 @@ static void display_model(z3::context& ctx, z3::model& model) {
         for (unsigned k = 0; k < ne; ++k) {
             z3::func_entry e = fi.entry(k);
             z3::expr_vector condv(ctx), args_e(ctx);
-            if (Z3_get_ast_id(ctx, els) == Z3_get_ast_id(ctx, e.value())) {
+            if (((Z3_ast)els) && (Z3_get_ast_id(ctx, els) == Z3_get_ast_id(ctx, e.value()))) {
                 continue;
             }
             for (unsigned j = 0; j < arity; ++j) {
