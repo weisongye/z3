@@ -1704,6 +1704,11 @@ public:
         case Z3_OP_PR_TRANSITIVITY_STAR: {
             unsigned na = p.num_args();
             for (unsigned i = 0; i + 1 < na; ++i) {
+                if (p.arg(i).num_args() != 2) {
+                    // cop-out: Z3 produces transitivity proofs that are not a chain of equivalences/equi-sats.
+                    // the generated proof is (most likely) not going to be checkable.
+                    continue;
+                }
                 z3::expr conclusion = p.arg(i).arg(1);
                 hyp = display_hyp_inference(out, "transitivity", "sab", conclusion, hyp);
             }
