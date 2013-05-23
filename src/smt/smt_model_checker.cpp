@@ -364,6 +364,12 @@ namespace smt {
         reset_new_instances();
     }
 
+    void model_checker::set_cancel(bool f) {
+        if (m_aux_context) {
+            m_aux_context->set_cancel_flag(f);
+        }
+    }
+
     bool model_checker::has_new_instances() {
         return !m_new_instances.empty();
     }

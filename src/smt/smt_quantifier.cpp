@@ -403,12 +403,14 @@ namespace smt {
         scoped_ptr<model_checker>   m_model_checker;
         unsigned                    m_new_enode_qhead;
         unsigned                    m_lazy_matching_idx;
+        volatile bool               m_cancel;
     public:
         default_qm_plugin():
             m_qm(0), 
             m_context(0), 
             m_new_enode_qhead(0), 
-            m_lazy_matching_idx(0) {
+            m_lazy_matching_idx(0),
+            m_cancel(false) {
         }
         
         virtual ~default_qm_plugin() {
@@ -548,7 +550,7 @@ namespace smt {
                 if (sz > m_new_enode_qhead) {
                     m_context->push_trail(value_trail<context, unsigned>(m_new_enode_qhead));
                     it += m_new_enode_qhead;
-                    while (m_new_enode_qhead < sz) {
+                    while (!m_cancel && m_new_enode_qhead < sz) {
                         enode * e = *it;
                         m_mam->relevant_eh(e, false);
                         m_lazy_mam->relevant_eh(e, true);
@@ -574,7 +576,10 @@ namespace smt {
         }
 
         virtual void set_cancel(bool f) {
-            // TODO: interrupt MAM and MBQI
+            m_cancel = f;
+            if (m_model_checker) {
+                m_model_checker->set_cancel(f);
+            }
         }
 
         virtual final_check_status final_check_eh(bool full) {
