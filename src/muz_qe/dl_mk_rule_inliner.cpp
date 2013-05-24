@@ -877,11 +877,11 @@ namespace datalog {
         else {
             res = alloc(rule_set, source);
         }
-
+        TRACE("dl", res->display(tout << "before linear inlining\n"););
         if (m_context.get_params().inline_linear() && inline_linear(res)) {
             something_done = true;
         }
-
+        TRACE("dl", res->display(tout << "after linear inlining\n"););
         if (!something_done) {
             res = 0;
         }
