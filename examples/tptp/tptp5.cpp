@@ -2098,7 +2098,7 @@ void parse_cmd_line_args(int argc, char ** argv) {
             else if (!strcmp(arg, "file")) {
                 g_input_file = opt_arg;
             }
-            else if (!opt_arg && (eq = strchr(arg,'='))) {
+            else if (!opt_arg && (eq = strchr(arg,'=')) && arg[0] != '"') {
                 opt_arg = eq + 1;
                 *eq = 0;
                 Z3_global_param_set(arg, opt_arg);
@@ -2109,7 +2109,7 @@ void parse_cmd_line_args(int argc, char ** argv) {
                 exit(0);
             }
         }
-        else if ((eq = strchr(arg,'=')) && arg[0] != '\'' && arg[0] != '\"' ) {
+        else if ((eq = strchr(arg,'=')) && arg[0] != '\'' && arg[0] != '"' ) {
             opt_arg = eq + 1;
             *eq = 0;
             Z3_global_param_set(arg, opt_arg);            
