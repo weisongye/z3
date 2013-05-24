@@ -245,6 +245,9 @@ class env {
             inc_name.clear();
             f_exists = mk_env_filename(fn, inc_name);            
         }
+        if (!f_exists) {
+            inc_name = fn;
+        }
         
         parse(inc_name.c_str(), fmls);
         while (name_list) {
