@@ -1,4 +1,5 @@
 #include <string>
+#include <cstring>
 #include <list>
 #include <vector>
 #include <set>
@@ -8,6 +9,7 @@
 #include <iostream>
 #include <fstream>
 #include <limits>
+#include <string.h>
 #include "z3++.h"
 
 struct region {
@@ -48,7 +50,7 @@ struct symbol_table {
     std::map<z3::symbol, T> m_map;
 
     void insert(z3::symbol const& s, T& val) {
-        m_map.insert(std::pair<z3::symbol const, T>(s, val));
+        m_map.insert(std::pair<z3::symbol, T>(s, val));
     }
 
     bool find(z3::symbol const& s, T& val) { 
@@ -2382,7 +2384,7 @@ static void prove_tptp() {
     display_statistics();
 }
 
-void main(int argc, char** argv) {
+int main(int argc, char** argv) {
 
     std::ostream* out = &std::cout;
     g_start_time = static_cast<double>(clock());
@@ -2399,4 +2401,5 @@ void main(int argc, char** argv) {
     else {
         prove_tptp();
     }
+    return 0;
 }
