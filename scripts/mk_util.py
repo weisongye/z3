@@ -1228,7 +1228,7 @@ class CppExampleComponent(ExampleComponent):
             out.write(' ')
             out.write(os.path.join(self.to_ex_dir, cppfile))
         out.write('\n')
-        out.write('\t%s $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % (self.compiler(), exefile))
+        out.write('\t%s $(OS_DEFINES) $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % (self.compiler(), exefile))
         # Add include dir components
         out.write(' -I%s' % get_component(API_COMPONENT).to_src_dir)
         out.write(' -I%s' % get_component(CPP_COMPONENT).to_src_dir)
@@ -1400,7 +1400,8 @@ def mk_config():
             'LINK_OUT_FLAG=/Fe\n'
             'SO_EXT=.dll\n'
             'SLINK=cl\n'
-            'SLINK_OUT_FLAG=/Fe\n')
+            'SLINK_OUT_FLAG=/Fe\n'
+            'OS_DEFINES=/D _WINDOWS\n')
         extra_opt = ''
         if GIT_HASH:
             extra_opt = '%s /D Z3GITHASH=%s' % (extra_opt, GIT_HASH)
@@ -1535,6 +1536,7 @@ def mk_config():
         config.write('SLINK_FLAGS=%s\n' % SLIBFLAGS)
         config.write('SLINK_EXTRA_FLAGS=%s\n' % SLIBEXTRAFLAGS)
         config.write('SLINK_OUT_FLAG=-o \n')
+        config.write('OS_DEFINES=\n')
         if is_verbose():
             print('Host platform:  %s' % sysname)
             print('C++ Compiler:   %s' % CXX)

@@ -47,14 +47,15 @@ struct symbol_compare {
 
 template <typename T>
 struct symbol_table {
-    std::map<z3::symbol, T> m_map;
+    typedef std::map<z3::symbol, T> map;
+    map m_map;
 
-    void insert(z3::symbol const& s, T& val) {
+    void insert(z3::symbol s, T val) {
         m_map.insert(std::pair<z3::symbol, T>(s, val));
     }
 
-    bool find(z3::symbol const& s, T& val) { 
-        std::map<z3::symbol, T>::iterator it = m_map.find(s);
+    bool find(z3::symbol const& s, T val) { 
+        typename map::iterator it = m_map.find(s);
         if (it == m_map.end()) {
             return false;
         }
@@ -595,7 +596,8 @@ class env {
         }
         else if (!strcmp(name,"atomic_word")) {
             name = t->child(0)->symbol();
-            s = mk_sort(symbol(name));
+            z3::symbol symname = symbol(name);
+            s = mk_sort(symname);
         }
         else {
             mk_error(t, "sort");
@@ -1090,7 +1092,8 @@ class env {
     }
 
     z3::sort mk_sort(char const* s) {
-        return mk_sort(symbol(s));
+        z3::symbol sym = symbol(s);
+        return mk_sort(sym);
     }
 
     z3::sort mk_sort(z3::symbol& s) {
@@ -1209,13 +1212,13 @@ public:
         out << ")).\n";
     }
 
-    void display_axiom(std::ostream& out, z3::expr& e) {
+    void display_axiom(std::ostream& out, z3::expr e) {
         out << "tff(formula" << (++m_formula_id) << ", axiom,\n    ";
         display(out, e);
         out << ").\n";
     }
 
-    void display(std::ostream& out, z3::expr& e) {
+    void display(std::ostream& out, z3::expr e) {
         if (e.is_numeral()) {
             __int64 num, den;
             if (Z3_get_numeral_small(ctx, e, &num, &den)) {
@@ -1327,7 +1330,7 @@ public:
             }
         }
         else if (e.is_quantifier()) {
-            bool is_forall = Z3_is_quantifier_forall(ctx, e);
+            Z3_bool is_forall = Z3_is_quantifier_forall(ctx, e);
             unsigned nb = Z3_get_quantifier_num_bound(ctx, e);
 
             out << (is_forall?"!":"?") << "[";
@@ -1349,7 +1352,7 @@ public:
         }
     }
 
-    void display_app(std::ostream& out, z3::expr& e) {
+    void display_app(std::ostream& out, z3::expr e) {
         if (e.is_const()) {
             out << e;
             return;
@@ -1365,7 +1368,7 @@ public:
         out << ")";
     }
 
-    void display_sort(std::ostream& out, z3::sort& s) {
+    void display_sort(std::ostream& out, z3::sort s) {
         if (s.is_int()) {
             out << "$int";
         }
@@ -1437,7 +1440,7 @@ public:
         m_node_number = 0;
         m_proof_ids.clear();
         m_proof_hypotheses.clear();        
-        z3::expr& proof = solver.proof();
+        z3::expr proof = solver.proof();
         collect_axiom_ids(fmls);
         collect_decls(proof);
         collect_hypotheses(proof);
@@ -1496,7 +1499,7 @@ public:
         
     }
 
-    unsigned display_proof_rec(std::ostream& out, z3::expr& proof) {
+    unsigned display_proof_rec(std::ostream& out, z3::expr proof) {
         Z3_sort proof_sort = proof.get_sort();
         size_t todo_size = todo.size();
         todo.push_back(proof);
@@ -1687,7 +1690,7 @@ public:
         return m_proof_ids.find(Z3_get_ast_id(ctx, proof))->second;
     }
 
-    unsigned display_proof_hyp(std::ostream& out, unsigned hyp, z3::expr& p) {
+    unsigned display_proof_hyp(std::ostream& out, unsigned hyp, z3::expr p) {
         z3::expr fml = p.arg(p.num_args()-1);
         z3::expr conclusion = fml.arg(1);        
         switch (p.decl().decl_kind()) {
@@ -1736,7 +1739,7 @@ public:
     }
 
 
-    void display_inference(std::ostream& out, char const* name, char const* status, z3::expr& p) {
+    void display_inference(std::ostream& out, char const* name, char const* status, z3::expr p) {
         unsigned id = Z3_get_ast_id(ctx, p);
         std::set<unsigned> const& hyps = m_proof_hypotheses.find(id)->second;
         out << "tff(" << m_node_number << ",plain,\n    (";
@@ -1766,7 +1769,7 @@ public:
         out << "]";
     }
 
-    unsigned display_hyp_inference(std::ostream& out, char const* name, char const* status, z3::expr& conclusion, unsigned hyp1, unsigned hyp2 = 0) {
+    unsigned display_hyp_inference(std::ostream& out, char const* name, char const* status, z3::expr conclusion, unsigned hyp1, unsigned hyp2 = 0) {
         ++m_node_number;
         out << "tff(" << m_node_number << ",plain,(\n    ";
         display(out, conclusion);
@@ -1820,7 +1823,7 @@ public:
         }        
     }
 
-    z3::expr get_proof_formula(z3::expr& proof) {
+    z3::expr get_proof_formula(z3::expr proof) {
         unsigned na = proof.num_args();
         z3::expr result = proof.arg(proof.num_args()-1);
         std::vector<z3::sort> vars;
@@ -1836,13 +1839,13 @@ public:
             sorts[vars.size()-i-1] = vars[i];
             names[vars.size()-i-1] = Z3_mk_string_symbol(ctx, str.str().c_str());
         }
-        result = z3::expr(ctx, Z3_mk_forall(ctx, 1, 0, 0, vars.size(), sorts, names, result));
+        result = z3::expr(ctx, Z3_mk_forall(ctx, 1, 0, 0, static_cast<unsigned>(vars.size()), sorts, names, result));
         delete[] sorts;
         delete[] names;
         return result;
     }
 
-    void display_hypotheses(std::ostream& out, z3::expr& p) {
+    void display_hypotheses(std::ostream& out, z3::expr p) {
         unsigned na = p.num_args();
         out << "[";
         for (unsigned i = 0; i + 1 < na; ++i) {
@@ -1866,7 +1869,7 @@ public:
 
 
     void display_func_decls(std::ostream& out) {
-        for (unsigned i = 0; i < funs.size(); ++i) {
+        for (size_t i = 0; i < funs.size(); ++i) {
             display_func_decl(out, funs[i]);
         }
     }
@@ -1875,7 +1878,7 @@ public:
         return seen_ids.find(id) != seen_ids.end();
     }
 
-    void collect_decls(z3::expr& e) {
+    void collect_decls(z3::expr e) {
         todo.push_back(e);
         while (!todo.empty()) {
             z3::expr e = todo.back();
@@ -1906,7 +1909,7 @@ public:
         }
     }
 
-    void collect_sort(z3::sort& s) {
+    void collect_sort(z3::sort s) {
         unsigned id = Z3_get_sort_id(ctx, s);
         if (s.sort_kind() == Z3_UNINTERPRETED_SORT && 
             contains_id(id)) {
@@ -1915,7 +1918,7 @@ public:
         }
     }
 
-    void collect_fun(z3::func_decl& f) {
+    void collect_fun(z3::func_decl f) {
         unsigned id = Z3_get_func_decl_id(ctx, f);
         if (contains_id(id)) {
             return;
@@ -1957,8 +1960,8 @@ public:
             return str.str();
         }
         std::string s = sym.str();
-        unsigned sz = s.size();
-        for (unsigned i = 0; i < sz; ++i) {
+        size_t sz = s.size();
+        for (size_t i = 0; i < sz; ++i) {
             char ch = s[i];
             if ('a' <= ch && ch <= 'z') {
                 str << ch;
@@ -2000,7 +2003,7 @@ static void display_usage() {
     unsigned major, minor, build_number, revision_number;
     Z3_get_version(&major, &minor, &build_number, &revision_number);
     std::cout << "Z3tptp [" << major << "." << minor << "." << build_number << "." << revision_number << "] (c) 2006-20**. Microsoft Corp.\n";
-    std::cout << "Usage: tptp [options] [-file]file\n";
+    std::cout << "Usage: tptp [options] [-file:]file\n";
     std::cout << "  -h, -?       prints this message.\n";
     std::cout << "  -smt2        print SMT-LIB2 benchmark.\n";
     std::cout << "  -m, -model   generate model.\n";
@@ -2170,7 +2173,7 @@ static void display_proof(z3::context& ctx, named_formulas& fmls, z3::solver& so
     pp.display_proof(std::cout, fmls, solver);
 }
 
-static void display_model(z3::context& ctx, z3::model& model) {
+static void display_model(z3::context& ctx, z3::model model) {
     unsigned nc = model.num_consts();
     unsigned nf = model.num_funcs();
     z3::expr_vector fmls(ctx);
@@ -2251,10 +2254,10 @@ static void display_smt2(std::ostream& out) {
         return;
     }
 
-    unsigned num_assumptions = fmls.m_formulas.size();
+    size_t num_assumptions = fmls.m_formulas.size();
 
     Z3_ast* assumptions = new Z3_ast[num_assumptions];
-    for (unsigned i = 0; i < num_assumptions; ++i) {
+    for (size_t i = 0; i < num_assumptions; ++i) {
         assumptions[i] = fmls.m_formulas[i];
     }
     Z3_string s = 
@@ -2264,7 +2267,7 @@ static void display_smt2(std::ostream& out) {
             0,         // no logic is set
             "unknown", // no status annotation
             "",        // attributes
-            num_assumptions, 
+            static_cast<unsigned>(num_assumptions), 
             assumptions, 
             ctx.bool_val(true));
 
@@ -2302,14 +2305,14 @@ static void prove_tptp() {
         return;
     }
 
-    unsigned num_assumptions = fmls.m_formulas.size();
+    size_t num_assumptions = fmls.m_formulas.size();
 
     z3::check_result result;
 
     if (g_generate_core) {
         z3::expr_vector assumptions(ctx);
         
-        for (unsigned i = 0; i < num_assumptions; ++i) {
+        for (size_t i = 0; i < num_assumptions; ++i) {
             z3::expr pred = ctx.constant(fmls.m_names[i].c_str(), ctx.bool_sort());
             z3::expr def = fmls.m_formulas[i] == pred;
             solver.add(def);
@@ -2402,3 +2405,4 @@ int main(int argc, char** argv) {
     }
     return 0;
 }
+

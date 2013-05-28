@@ -654,8 +654,7 @@ char *yytext_ptr;
 #include <stdlib.h>
 #include <stdio.h>
 
-#if 1
-// WINDOWS
+#if _WINDOWS
    #include <io.h>
    #define isatty _isatty
 #else
