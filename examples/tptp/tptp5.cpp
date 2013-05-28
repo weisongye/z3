@@ -13,16 +13,16 @@
 #include "z3++.h"
 
 struct region {
-    std::list<void*> m_alloc;
+    std::list<char*> m_alloc;
 
     void * allocate(size_t s) {
-        void * res = new char[s];
+        char * res = new char[s];
         m_alloc.push_back(res);
         return res;
     }
 
     ~region() {
-        std::list<void*>::iterator it = m_alloc.begin(), end = m_alloc.end();
+        std::list<char*>::iterator it = m_alloc.begin(), end = m_alloc.end();
         for (; it != end; ++it) {
             delete *it;
         }
@@ -77,7 +77,7 @@ struct named_formulas {
 
     named_formulas(): m_has_conjecture(false) {}
 
-    void push_back(z3::expr& fml, char const * name, char const* file) {
+    void push_back(z3::expr fml, char const * name, char const* file) {
         m_formulas.push_back(fml);
         m_names.push_back(name);
         m_files.push_back(file);
@@ -102,8 +102,7 @@ inline void operator delete[](void *, region & ) { /* do nothing */ }
 
 struct failure_ex {
     std::string msg;
-    failure_ex(char* m):msg(m) {}
-    failure_ex(std::string& m):msg(m) {}
+    failure_ex(char const* m):msg(m) {}
 };
 
 
@@ -185,13 +184,13 @@ class env {
         std::ostringstream strm;
         strm << "expected: " << msg << "\n";
         strm << "got: " << f->symbol();
-        throw failure_ex(strm.str());
+        throw failure_ex(strm.str().c_str());
     }
 
     void mk_not_handled(TreeNode* f, char const* msg) {
         std::ostringstream strm;
         strm << "Construct " << f->symbol() << " not handled: " << msg;
-        throw failure_ex(strm.str());
+        throw failure_ex(strm.str().c_str());
     }
 
     void mk_input(TreeNode* f, named_formulas& fmls) {
@@ -654,7 +653,7 @@ class env {
         }
     }
 
-    void term(TreeNode* t, z3::sort& s, z3::expr& r) {
+    void term(TreeNode* t, z3::sort s, z3::expr r) {
         char const* name = t->symbol();
         if (!strcmp(name, "defined_plain_term") ||
             !strcmp(name, "system_term") ||
@@ -899,26 +898,26 @@ class env {
         mk_error(f, "function");
     }
 
-    z3::expr to_int(z3::expr& e) {
+    z3::expr to_int(z3::expr e) {
         return z3::expr(e.ctx(), Z3_mk_real2int(e.ctx(), e));
     }
 
-    z3::expr to_real(z3::expr& e) {
+    z3::expr to_real(z3::expr e) {
         return z3::expr(e.ctx(), Z3_mk_int2real(e.ctx(), e));
     }
 
-    z3::expr ceiling(z3::expr& e) {
+    z3::expr ceiling(z3::expr e) {
         return -to_real(to_int(-e));
     }
 
-    z3::expr is_even(z3::expr& e) {
+    z3::expr is_even(z3::expr e) {
         z3::context& ctx = e.ctx();
         z3::expr two = ctx.int_val(2);
         z3::expr m = z3::expr(ctx, Z3_mk_mod(ctx, e, two));
         return m == 0;
     }
 
-    z3::expr truncate(z3::expr& e) {
+    z3::expr truncate(z3::expr e) {
         return ite(e >= 0, to_int(e), ceiling(e));
     }
 
@@ -1148,7 +1147,7 @@ void env::parse(const char* filename, named_formulas& fmls) {
     if (!fp) {
         std::stringstream strm;
         strm << "Could not open file " << filename << "\n";
-        throw failure_ex(strm.str());
+        throw failure_ex(strm.str().c_str());
     }
     yyin = fp;
     int result = yyparse();
