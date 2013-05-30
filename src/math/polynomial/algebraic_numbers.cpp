@@ -61,6 +61,7 @@ namespace algebraic_numbers {
         algebraic_params::collect_param_descrs(r);
     }
 
+
     struct manager::imp {
         manager &                m_wrapper;
         small_object_allocator & m_allocator;
@@ -566,6 +567,41 @@ namespace algebraic_numbers {
             }
         };
 
+        // Save the isolating interval of an algebraic cell.
+        struct save_intervals {
+            imp &             m_owner;
+            numeral const &   m_num;
+            mpbqi             m_old_interval;
+            bool              m_restore_invoked; // true if restore_if_too_small was invoked
+            
+            save_intervals(imp & o, numeral const & num):
+                m_owner(o),
+                m_num(num),
+                m_restore_invoked(false) {
+                SASSERT(!num.is_basic());
+                m_owner.bqim().set(m_old_interval, num.to_algebraic()->m_interval);
+            }
+            
+            ~save_intervals() {
+                if (!m_restore_invoked)
+                    restore_if_too_small();
+                m_owner.bqim().del(m_old_interval);
+            }
+            
+            // Restore the intervals of m_cell, if its current magnitude is too small
+            void restore_if_too_small() {
+                m_restore_invoked = true;
+                if (m_num.is_basic())
+                    return; // m_num is not algebraic anymore
+                algebraic_cell * cell = m_num.to_algebraic();
+                if (m_owner.magnitude(cell) < m_owner.m_min_magnitude) {
+                    // restore old interval
+                    m_owner.bqim().swap(cell->m_interval, m_old_interval);
+                }
+            }
+        };
+
+
         void sort_roots(numeral_vector & r) {
             std::sort(r.begin(), r.end(), lt_proc(m_wrapper));
         }
@@ -896,40 +932,6 @@ namespace algebraic_numbers {
             void operator()(numeral & a, numeral & b, numeral & c) const { return m.mul(a, b, c); }
         };
 
-        // Save the isolating interval of an algebraic cell.
-        struct save_intervals {
-            imp &             m_owner;
-            numeral const &   m_num;
-            mpbqi             m_old_interval;
-            bool              m_restore_invoked; // true if restore_if_too_small was invoked
-
-            save_intervals(imp & o, numeral const & num):
-                m_owner(o),
-                m_num(num),
-                m_restore_invoked(false) {
-                SASSERT(!num.is_basic());
-                m_owner.bqim().set(m_old_interval, num.to_algebraic()->m_interval);
-            }
-            
-            ~save_intervals() {
-                if (!m_restore_invoked)
-                    restore_if_too_small();
-                m_owner.bqim().del(m_old_interval);
-            }
-            
-            // Restore the intervals of m_cell, if its current magnitude is too small
-            void restore_if_too_small() {
-                m_restore_invoked = true;
-                if (m_num.is_basic())
-                    return; // m_num is not algebraic anymore
-                algebraic_cell * cell = m_num.to_algebraic();
-                if (m_owner.magnitude(cell) < m_owner.m_min_magnitude) {
-                    // restore old interval
-                    m_owner.bqim().swap(cell->m_interval, m_old_interval);
-                }
-            }
-        };
-
         /**
            \brief Set c with the algebraic number associated with polynomial p and isolating interval r_i == (l, u).
            The isolating interval is not normalized, that is, it may contain zero.
@@ -1017,10 +1019,10 @@ namespace algebraic_numbers {
             factors fs(upm());
             bool full_fact  = factor(p, fs);
             unsigned num_fs = fs.distinct_factors();
-            scoped_ptr_vector<typename upolynomial::scoped_upolynomial_sequence> seqs;
+            scoped_ptr_vector<upolynomial::scoped_upolynomial_sequence> seqs;
             for (unsigned i = 0; i < num_fs; i++) {
                 TRACE("anum_mk_binary", tout << "factor " << i << "\n"; upm().display(tout, fs[i]); tout << "\n";);
-                typename upolynomial::scoped_upolynomial_sequence * seq = alloc(typename upolynomial::scoped_upolynomial_sequence, upm());
+                upolynomial::scoped_upolynomial_sequence * seq = alloc(upolynomial::scoped_upolynomial_sequence, upm());
                 upm().sturm_seq(fs[i].size(), fs[i].c_ptr(), *seq);
                 seqs.push_back(seq);
             }
@@ -1098,9 +1100,9 @@ namespace algebraic_numbers {
             factors fs(upm());
             bool full_fact  = factor(p, fs);
             unsigned num_fs = fs.distinct_factors();
-            scoped_ptr_vector<typename upolynomial::scoped_upolynomial_sequence> seqs;
+            scoped_ptr_vector<upolynomial::scoped_upolynomial_sequence> seqs;
             for (unsigned i = 0; i < num_fs; i++) {
-                typename upolynomial::scoped_upolynomial_sequence * seq = alloc(typename upolynomial::scoped_upolynomial_sequence, upm());
+                upolynomial::scoped_upolynomial_sequence * seq = alloc(upolynomial::scoped_upolynomial_sequence, upm());
                 upm().sturm_seq(fs[i].size(), fs[i].c_ptr(), *seq);
                 seqs.push_back(seq);
             }
