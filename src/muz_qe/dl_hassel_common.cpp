@@ -20,20 +20,20 @@ Revision History:
 
 namespace datalog {
 
-    static void formula_to_dnf_aux(app *and, unsigned idx, std::set<expr*>& conjexpr, std::set<expr*>& toplevel, ast_manager& m) {
-        if (idx == and->get_num_args()) {
+    static void formula_to_dnf_aux(app *_and, unsigned idx, std::set<expr*>& conjexpr, std::set<expr*>& toplevel, ast_manager& m) {
+        if (idx == _and->get_num_args()) {
             std::vector<expr*> v(conjexpr.begin(), conjexpr.end());
             toplevel.insert(m.mk_and((unsigned)v.size(), &v[0]));
             return;
         }
 
-        expr *e = and->get_arg(idx);
+        expr *e = __and->get_arg(idx);
         if (is_app(e) && to_app(e)->get_decl_kind() == OP_OR) {
             app *or = to_app(e);
             // quick subsumption test: if any of the elements of the OR is already ANDed, then we skip this OR
             for (unsigned i = 0; i < or->get_num_args(); ++i) {
                 if (conjexpr.count(or->get_arg(i))) {
-                    formula_to_dnf_aux(and, idx+1, conjexpr, toplevel, m);
+                    formula_to_dnf_aux(_and, idx+1, conjexpr, toplevel, m);
                     return;
                 }
             }
@@ -41,11 +41,11 @@ namespace datalog {
             for (unsigned i = 0; i < or->get_num_args(); ++i) {
                 std::set<expr*> conjexpr2(conjexpr);
                 conjexpr2.insert(or->get_arg(i));
-                formula_to_dnf_aux(and, idx+1, conjexpr2, toplevel, m);
+                formula_to_dnf_aux(_and, idx+1, conjexpr2, toplevel, m);
             }
         } else {
             conjexpr.insert(e);
-            formula_to_dnf_aux(and, idx+1, conjexpr, toplevel, m);
+            formula_to_dnf_aux(_and, idx+1, conjexpr, toplevel, m);
         }
     }
 

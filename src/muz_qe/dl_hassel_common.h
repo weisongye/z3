@@ -126,7 +126,7 @@ namespace datalog {
         void append_number(uint64 n, unsigned num_bits);
         void mk_idx_eq(unsigned idx, ternary_bitvector& val);
 
-        ternary_bitvector and(const ternary_bitvector& other) const;
+        ternary_bitvector conj(const ternary_bitvector& other) const;
         void neg(union_ternary_bitvector<ternary_bitvector>& result) const;
 
         void join(const ternary_bitvector& other, const unsigned_vector& cols1,
@@ -171,7 +171,7 @@ namespace datalog {
                 mk_full();
         }
 
-        union_ternary_bitvector and(const union_ternary_bitvector & Other) const {
+        union_ternary_bitvector conj(const union_ternary_bitvector & Other) const {
             if (empty())
                 return *this;
             if (Other.empty())
@@ -181,7 +181,7 @@ namespace datalog {
 
             for (const_iterator I = begin(), E = end(); I != E; ++I) {
                 for (const_iterator II = Other.begin(), EE = Other.end(); II != EE; ++II) {
-                    T row(I->and(*II));
+                    T row(I->conj(*II));
                     if (!row.is_empty())
                         Ret.add_fact(row);
                 }
@@ -189,7 +189,7 @@ namespace datalog {
             return Ret;
         }
 
-        union_ternary_bitvector or(const union_ternary_bitvector & Other) const {
+        union_ternary_bitvector disj(const union_ternary_bitvector & Other) const {
             if (empty())
                 return Other;
             if (Other.empty())
@@ -208,14 +208,14 @@ namespace datalog {
             for (const_iterator I = begin(), E = end(); I != E; ++I) {
                 negated.reset();
                 I->neg(negated);
-                Ret.swap(Ret.and(negated));
+                Ret.swap(Ret.conj(negated));
             }
             return Ret;
         }
 
         void subtract(const union_ternary_bitvector& other) {
             if (!T::has_subtract()) {
-                swap(this->and(other.neg()));
+                swap(this->conj(other.neg()));
                 return;
             }
 

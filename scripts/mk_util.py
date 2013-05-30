@@ -1222,15 +1222,13 @@ class CppExampleComponent(ExampleComponent):
     def src_files(self):
         return get_cpp_files(self.ex_dir)
 
-    def mk_makefile(self, out):
-	if build_static_lib():
-	    self.mk_makefile_static(out)
-	else:
-	    self.mk_makefile_dll(out)
 	    
-    def mk_makefile_dll(self, out):
+    def mk_makefile(self, out):
         dll_name = get_component(Z3_DLL_COMPONENT).dll_name
-        dll = '%s$(SO_EXT)' % dll_name
+	if build_static_lib():
+           dll = '%s$(LIB_EXT)' % dll_name
+        else:
+	   dll = '%s$(SO_EXT)' % dll_name
         exefile = '%s$(EXE_EXT)' % self.name
         out.write('%s: %s' % (exefile, dll))
         for cppfile in self.src_files():
@@ -1245,34 +1243,12 @@ class CppExampleComponent(ExampleComponent):
             out.write(' ')
             out.write(os.path.join(self.to_ex_dir, cppfile))
         out.write(' ')
-        if IS_WINDOWS:
+        if IS_WINDOWS and not build_static_lib():
             out.write('%s.lib' % dll_name)
         else:
             out.write(dll)
         out.write(' $(LINK_EXTRA_FLAGS)\n')
         out.write('_ex_%s: %s\n\n' % (self.name, exefile))
-
-    def mk_makefile_static(self, out):
-        dll_name = get_component(Z3_DLL_COMPONENT).dll_name
-        lib = '%s$(LIB_EXT)' % dll_name
-        exefile = '%s$(EXE_EXT)' % self.name
-        out.write('%s: %s' % (exefile, lib))
-        for cppfile in self.src_files():
-            out.write(' ')
-            out.write(os.path.join(self.to_ex_dir, cppfile))
-        out.write('\n')
-        out.write('\t%s $(OS_DEFINES) $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % (self.compiler(), exefile))
-        # Add include dir components
-        out.write(' -I%s' % get_component(API_COMPONENT).to_src_dir)
-        out.write(' -I%s' % get_component(CPP_COMPONENT).to_src_dir)
-        for cppfile in self.src_files():
-            out.write(' ')
-            out.write(os.path.join(self.to_ex_dir, cppfile))
-        out.write(' ')
-	out.write(lib)
-        out.write(' $(LINK_EXTRA_FLAGS)\n')
-        out.write('_ex_%s: %s\n\n' % (self.name, exefile))
-
 
 class CExampleComponent(CppExampleComponent):
     def __init__(self, name, path):
