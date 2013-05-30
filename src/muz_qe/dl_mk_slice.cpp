@@ -738,7 +738,6 @@ namespace datalog {
         // disable slicing if the output predicates don't occur in rules.
         if (!has_output) {
             m_predicates.reset();
-            
         }
     }
 
