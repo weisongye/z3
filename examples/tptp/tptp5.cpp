@@ -13,7 +13,7 @@
 #include <cstdlib>
 #include "z3++.h"
 
-struct region {
+struct alloc_region {
     std::list<char*> m_alloc;
 
     void * allocate(size_t s) {
@@ -22,7 +22,7 @@ struct region {
         return res;
     }
 
-    ~region() {
+    ~alloc_region() {
         std::list<char*>::iterator it = m_alloc.begin(), end = m_alloc.end();
         for (; it != end; ++it) {
             delete *it;
@@ -94,13 +94,13 @@ struct named_formulas {
     }
 };
 
-inline void * operator new(size_t s, region & r) { return r.allocate(s); }
+inline void * operator new(size_t s, alloc_region & r) { return r.allocate(s); }
 
-inline void * operator new[](size_t s, region & r) { return r.allocate(s); }
+inline void * operator new[](size_t s, alloc_region & r) { return r.allocate(s); }
 
-inline void operator delete(void *, region & ) { /* do nothing */ }
+inline void operator delete(void *, alloc_region & ) { /* do nothing */ }
 
-inline void operator delete[](void *, region & ) { /* do nothing */ }
+inline void operator delete[](void *, alloc_region & ) { /* do nothing */ }
 
 struct failure_ex {
     std::string msg;
@@ -111,7 +111,7 @@ struct failure_ex {
 extern char* tptp_lval[];
 extern int yylex();
 
-static char* strdup(region& r, char const* s) {
+static char* strdup(alloc_region& r, char const* s) {
     size_t l = strlen(s) + 1;
     char* result = new (r) char[l];
     memcpy(result, s, l);
@@ -124,7 +124,7 @@ class TreeNode {
     TreeNode**  m_children;
     
 public:
-    TreeNode(region& r, char const* sym, 
+    TreeNode(alloc_region& r, char const* sym, 
              TreeNode* A, TreeNode* B, TreeNode* C, TreeNode* D, TreeNode* E,
              TreeNode* F, TreeNode* G, TreeNode* H, TreeNode* I, TreeNode* J):
         m_symbol(strdup(r, sym)),
@@ -151,7 +151,7 @@ public:
     void set_index(int idx) { m_symbol_index = idx; }
 };
 
-TreeNode* MkToken(region& r, char* token, int symbolIndex) { 
+TreeNode* MkToken(alloc_region& r, char* token, int symbolIndex) { 
     TreeNode* ss;
     char* symbol = tptp_lval[symbolIndex];
     ss = new (r) TreeNode(r, symbol, NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
@@ -170,7 +170,7 @@ class env {
     symbol_table<z3::func_decl>    m_decls;
     symbol_table<z3::sort>         m_defined_sorts;
     static std::vector<TreeNode*>*  m_nodes;    
-    static region*                m_region;
+    static alloc_region*                m_region;
     char const*                   m_filename;
 
 
@@ -1108,7 +1108,7 @@ public:
         m_univ(mk_sort("$i")),
         m_filename(0) {
         m_nodes = 0;
-        m_region = new region();
+        m_region = new alloc_region();
         m_defined_sorts.insert(symbol("$i"),    m_univ);
         m_defined_sorts.insert(symbol("$o"),    m_context.bool_sort());
         m_defined_sorts.insert(symbol("$real"), m_context.real_sort());
@@ -1122,11 +1122,11 @@ public:
     }
     void parse(const char* filename, named_formulas& fmls);
     static void register_node(TreeNode* t) { m_nodes->push_back(t); }
-    static region& r() { return *m_region; }
+    static alloc_region& r() { return *m_region; }
 };    
 
 std::vector<TreeNode*>* env::m_nodes = 0;
-region* env::m_region = 0;
+alloc_region* env::m_region = 0;
 
 #  define P_USERPROC
 #  define P_ACT(ss) if(verbose)printf("%7d %s\n",yylineno,ss);

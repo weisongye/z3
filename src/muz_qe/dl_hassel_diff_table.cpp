@@ -41,9 +41,10 @@ namespace datalog {
         return m_neg.contains(m_pos);
     }
 
-    ternary_diff_bitvector ternary_diff_bitvector::and(const ternary_diff_bitvector& other) const {
-        ternary_diff_bitvector result(m_pos.and(other.m_pos));
-        result.m_neg.swap(m_neg.or(other.m_neg));
+    ternary_diff_bitvector ternary_diff_bitvector::_and(const ternary_diff_bitvector& other) const {
+        ternary_diff_bitvector result(m_pos._and(other.m_pos));
+        union_ternary_bitvector<ternary_bitvector> newv = m_neg._or(other.m_neg);
+        result.m_neg.swap(newv);
         return result;
     }
 

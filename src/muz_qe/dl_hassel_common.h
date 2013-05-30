@@ -126,7 +126,7 @@ namespace datalog {
         void append_number(uint64 n, unsigned num_bits);
         void mk_idx_eq(unsigned idx, ternary_bitvector& val);
 
-        ternary_bitvector conj(const ternary_bitvector& other) const;
+        ternary_bitvector _and(const ternary_bitvector& other) const;
         void neg(union_ternary_bitvector<ternary_bitvector>& result) const;
 
         void join(const ternary_bitvector& other, const unsigned_vector& cols1,
@@ -171,7 +171,7 @@ namespace datalog {
                 mk_full();
         }
 
-        union_ternary_bitvector conj(const union_ternary_bitvector & Other) const {
+        union_ternary_bitvector _and(const union_ternary_bitvector & Other) const {
             if (empty())
                 return *this;
             if (Other.empty())
@@ -181,7 +181,7 @@ namespace datalog {
 
             for (const_iterator I = begin(), E = end(); I != E; ++I) {
                 for (const_iterator II = Other.begin(), EE = Other.end(); II != EE; ++II) {
-                    T row(I->conj(*II));
+                    T row(I->_and(*II));
                     if (!row.is_empty())
                         Ret.add_fact(row);
                 }
@@ -189,7 +189,7 @@ namespace datalog {
             return Ret;
         }
 
-        union_ternary_bitvector disj(const union_ternary_bitvector & Other) const {
+        union_ternary_bitvector _or(const union_ternary_bitvector & Other) const {
             if (empty())
                 return Other;
             if (Other.empty())
@@ -208,14 +208,16 @@ namespace datalog {
             for (const_iterator I = begin(), E = end(); I != E; ++I) {
                 negated.reset();
                 I->neg(negated);
-                Ret.swap(Ret.conj(negated));
+                union_ternary_bitvector newv(Ret._and(negated));
+                Ret.swap(newv);
             }
             return Ret;
         }
 
         void subtract(const union_ternary_bitvector& other) {
             if (!T::has_subtract()) {
-                swap(this->conj(other.neg()));
+                union_ternary_bitvector newv = this->_and(other.neg());
+                swap(newv);
                 return;
             }
 
@@ -319,7 +321,9 @@ namespace datalog {
         void fix_eq_bits(unsigned idx1, const T *BV, unsigned idx2, unsigned length,
                          subset_ints& equalities, const bit_vector& discard_cols) {
             for (unsigned i = 0; i < length; ++i) {
-                for (union_t::iterator I = m_bitvectors.begin(), E = m_bitvectors.end(); I != E; ) {
+                typename union_t::iterator I = m_bitvectors.begin();
+                typename union_t::iterator E = m_bitvectors.end();
+                for (; I != E; ) {
                     T *eqBV = BV ? const_cast<T*>(BV) : &*I;
                     bool discard_col = discard_cols.get(idx1+i) || (!BV && discard_cols.get(idx2+i));
 
@@ -614,7 +618,7 @@ next_iter:      ;
     template<class T>
 	class common_hassel_table_plugin : public table_plugin {
     public:
-        common_hassel_table_plugin(symbol &s, relation_manager & manager) :
+        common_hassel_table_plugin(symbol s, relation_manager & manager) :
             table_plugin(s, manager) { }
 
         virtual table_base * mk_empty(const table_signature & s) {
@@ -754,7 +758,8 @@ next_iter:      ;
 
             virtual void operator()(table_base & tb) {
                 T & t = static_cast<T &>(tb);
-                t.m_bitsets.swap(m_filter.and(t.m_bitsets));
+                typename T::bitset_t newv(m_filter._and(t.m_bitsets));
+                t.m_bitsets.swap(newv);
                 TRACE("dl_hassel", tout << "final size: " << t.get_size_estimate_rows() << '\n';);
             }
         };
@@ -866,7 +871,8 @@ next_iter:      ;
             virtual void operator()(table_base & tb) {
                 T & t = static_cast<T &>(tb);
                 // first apply guard and then run the interpreter on the leftover
-                t.m_bitsets.swap(m_filter.and(t.m_bitsets));
+                typename T::bitset_t newv(m_filter._and(t.m_bitsets));
+                t.m_bitsets.swap(newv);
                 if (m_condition)
                     t.m_bitsets.filter(m_condition, m_empty_bv, t);
                 TRACE("dl_hassel", tout << "final size: " << t.get_size_estimate_rows() << '\n';);
@@ -909,7 +915,8 @@ next_iter:      ;
                 const T & t = static_cast<const T &>(tb);
                 // first apply guard and then run the interpreter on the leftover
                 typename T::bitset_t filtered(t.get_num_bits());
-                filtered.swap(m_filter.and(t.m_bitsets));
+                typename T::bitset_t newv(m_filter._and(t.m_bitsets));
+                filtered.swap(newv);
                 if (m_condition)
                     filtered.filter(m_condition, m_col_list, t);
 
@@ -953,7 +960,8 @@ next_iter:      ;
                 return get_plugin().mk_full(p, get_signature());
 
             common_hassel_table *res = static_cast<common_hassel_table*>(get_plugin().mk_empty(get_signature()));
-            res->m_bitsets.swap(m_bitsets.neg());
+            T bitsets_neg(m_bitsets.neg());
+            res->m_bitsets.swap(bitsets_neg);
             return res;
         }
 

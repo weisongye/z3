@@ -27,20 +27,20 @@ namespace datalog {
             return;
         }
 
-        expr *e = __and->get_arg(idx);
+        expr *e = _and->get_arg(idx);
         if (is_app(e) && to_app(e)->get_decl_kind() == OP_OR) {
-            app *or = to_app(e);
+            app *_or = to_app(e);
             // quick subsumption test: if any of the elements of the OR is already ANDed, then we skip this OR
-            for (unsigned i = 0; i < or->get_num_args(); ++i) {
-                if (conjexpr.count(or->get_arg(i))) {
+            for (unsigned i = 0; i < _or->get_num_args(); ++i) {
+                if (conjexpr.count(_or->get_arg(i))) {
                     formula_to_dnf_aux(_and, idx+1, conjexpr, toplevel, m);
                     return;
                 }
             }
 
-            for (unsigned i = 0; i < or->get_num_args(); ++i) {
+            for (unsigned i = 0; i < _or->get_num_args(); ++i) {
                 std::set<expr*> conjexpr2(conjexpr);
-                conjexpr2.insert(or->get_arg(i));
+                conjexpr2.insert(_or->get_arg(i));
                 formula_to_dnf_aux(_and, idx+1, conjexpr2, toplevel, m);
             }
         } else {
@@ -259,7 +259,7 @@ namespace datalog {
         }
     }
 
-    ternary_bitvector ternary_bitvector::and(const ternary_bitvector& other) const{
+    ternary_bitvector ternary_bitvector::_and(const ternary_bitvector& other) const{
         ternary_bitvector result(*this);
         result &= other;
         return result;

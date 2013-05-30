@@ -37,7 +37,7 @@ namespace datalog {
         bool contains(const ternary_diff_bitvector & other) const;
         bool is_empty() const;
 
-        ternary_diff_bitvector and(const ternary_diff_bitvector& other) const;
+        ternary_diff_bitvector _and(const ternary_diff_bitvector& other) const;
         void neg(union_ternary_bitvector<ternary_diff_bitvector>& result) const;
 
         static bool has_subtract() { return true; }
