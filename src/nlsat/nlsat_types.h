@@ -75,6 +75,7 @@ namespace nlsat {
         friend class solver;
         kind     m_kind;
         unsigned m_ref_count;
+    public:
         bool_var m_bool_var;
         var      m_max_var;
     public:
@@ -94,12 +95,13 @@ namespace nlsat {
     typedef ptr_vector<atom> atom_vector;
 
     class ineq_atom : public atom {
+    protected:
         friend class solver;
         unsigned     m_size;
         poly *       m_ps[0];
+    public:
         ineq_atom(kind k, unsigned sz, poly * const * ps, bool const * is_even, var max_var);
         static unsigned get_obj_size(unsigned sz) { return sizeof(ineq_atom) + sizeof(poly*)*sz; }
-    public:
         unsigned size() const { return m_size; }
         poly * p(unsigned i) const { SASSERT(i < size()); return UNTAG(poly*, m_ps[i]); }
         // Return true if i-th factor has odd degree
@@ -112,10 +114,12 @@ namespace nlsat {
     };
 
     class root_atom : public atom {
+    protected:
         friend class solver;
         var      m_x;
         unsigned m_i;
         poly *   m_p;
+    public:
         root_atom(kind k, var x, unsigned i, poly * p);
     public:
         var x() const { return m_x; }

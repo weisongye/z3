@@ -152,13 +152,15 @@ namespace datalog {
     class equivalence_table;
 
     class equivalence_table_plugin : public table_plugin {
+    protected:
+        friend class equivalence_table;
+        bool is_equivalence_table(table_base const& tbl) const;
+
+    public:
         class union_fn;
         class select_equal_and_project_fn;
         class join_project_fn;
 
-        bool is_equivalence_table(table_base const& tbl) const;
-
-    public:
         typedef equivalence_table table;
 
         equivalence_table_plugin(relation_manager & manager) 
@@ -195,6 +197,9 @@ namespace datalog {
 
     class equivalence_table : public table_base {
         friend class equivalence_table_plugin;
+        friend class equivalence_table_plugin::union_fn;
+        friend class equivalence_table_plugin::select_equal_and_project_fn;
+        friend class equivalence_table_plugin::join_project_fn;
 
         class eq_iterator;
         union_find_default_ctx m_ctx;

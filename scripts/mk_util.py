@@ -931,6 +931,9 @@ class ExtraExeComponent(ExeComponent):
     def main_component(self):
         return False
 
+    def require_mem_initializer(self):
+        return False
+
 def get_so_ext():
     sysname = os.uname()[0]
     if sysname == 'Darwin':
@@ -1243,6 +1246,46 @@ class CppExampleComponent(ExampleComponent):
         out.write(' $(LINK_EXTRA_FLAGS)\n')
         out.write('_ex_%s: %s\n\n' % (self.name, exefile))
 
+class CppExampleComponentStaticLib(ExampleComponent):
+    def __init__(self, name, path):
+        ExampleComponent.__init__(self, name, path)
+        self.exe_name = name
+
+    def compiler(self):
+        return "$(CXX)"
+
+    def src_files(self):
+        return get_cpp_files(self.ex_dir)
+
+    def mk_makefile(self, out):
+        # ExampleComponent.mk_makefile(self, out)
+        # generate rule for exe
+
+        exefile = '%s$(EXE_EXT)' % self.exe_name
+        out.write('%s:' % exefile)
+        deps = sort_components(self.deps)
+        objs = []
+        for cppfile in get_cpp_files(self.ex_dir):
+            objfile = '%s$(OBJ_EXT)' % os.path.join(self.build_dir, os.path.splitext(cppfile)[0])
+            objs.append(objfile)
+        for obj in objs:
+            out.write(' ')
+            out.write(obj)
+        for dep in deps:
+            c_dep = get_component(dep)
+            out.write(' %s$(LIB_EXT)' % os.path.join(c_dep.build_dir, c_dep.name))
+        out.write('\n')
+        out.write('\t$(LINK) $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % exefile)
+        for obj in objs:
+            out.write(' ')
+            out.write(obj)
+        for dep in deps:
+            c_dep = get_component(dep)
+            out.write(' %s$(LIB_EXT)' % os.path.join(c_dep.build_dir, c_dep.name))
+        out.write(' $(LINK_EXTRA_FLAGS)\n')
+        out.write('%s: %s\n\n' % (self.name, exefile))
+
+
 class CExampleComponent(CppExampleComponent):
     def __init__(self, name, path):
         CppExampleComponent.__init__(self, name, path)
@@ -1363,6 +1406,10 @@ def add_java_dll(name, deps=[], path=None, dll_name=None, package_name=None, man
 
 def add_cpp_example(name, path=None):
     c = CppExampleComponent(name, path)
+    reg_component(name, c)
+
+def add_cpp_example_static_lib(name, path=None):
+    c = CppExampleComponentStaticLib(name, path)
     reg_component(name, c)
 
 def add_c_example(name, path=None):

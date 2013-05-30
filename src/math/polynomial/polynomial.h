@@ -109,6 +109,7 @@ namespace polynomial {
 
     class manager {
     public:
+        struct imp;
         typedef unsynch_mpz_manager                     numeral_manager;
         typedef numeral_manager::numeral                numeral;
         typedef svector<numeral>                        numeral_vector;
@@ -226,7 +227,10 @@ namespace polynomial {
            \brief Abstract event handler.
         */
         class del_eh {
+        protected:
             friend class manager;
+            friend class manager::imp;
+            friend class polynomial;
             del_eh * m_next;
         public:
             del_eh():m_next(0) {}

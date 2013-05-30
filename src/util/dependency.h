@@ -34,14 +34,15 @@ public:
         unsigned  m_mark:1;
         unsigned  m_leaf:1;
         friend class dependency_manager;
+        bool is_marked() const { return m_mark == 1; }
+        void mark() { m_mark = true; }
+        void unmark() { m_mark = false; }
+    protected:
         dependency(bool leaf):
             m_ref_count(0),
             m_mark(false),
             m_leaf(leaf) {
         }
-        bool is_marked() const { return m_mark == 1; }
-        void mark() { m_mark = true; }
-        void unmark() { m_mark = false; }
     public:
         unsigned get_ref_count() const { return m_ref_count; }
         bool is_leaf() const { return m_leaf == 1; }

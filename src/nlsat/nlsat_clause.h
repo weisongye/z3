@@ -33,6 +33,7 @@ namespace nlsat {
         unsigned         m_activity;
         assumption_set   m_assumptions;
         literal          m_lits[0];
+    public:
         static size_t get_obj_size(unsigned num_lits) { return sizeof(clause) + num_lits * sizeof(literal); }
         size_t get_size() const { return get_obj_size(m_capacity); }
         clause(unsigned id, unsigned sz, literal const * lits, bool learned, assumption_set as);

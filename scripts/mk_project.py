@@ -64,6 +64,7 @@ def init_project_def():
             includes2install=['z3.h', 'z3_v1.h', 'z3_macros.h'] + API_files)
     add_exe('shell', ['api', 'sat', 'extra_cmds'], exe_name='z3')
     add_exe('test', ['api', 'fuzzing'], exe_name='test-z3', install=False)
+
     add_dll('api_dll', ['api', 'sat', 'extra_cmds'], 'api/dll', 
             reexports=['api'], 
             dll_name='libz3', 
@@ -75,7 +76,7 @@ def init_project_def():
     set_z3py_dir('api/python')
     # Examples
     add_cpp_example('cpp_example', 'c++') 
-    add_cpp_example('tptp', 'tptp') 
+    add_cpp_example_static_lib('z3_tptp', 'tptp') 
     add_c_example('c_example', 'c')
     add_c_example('maxsat')
     add_dotnet_example('dotnet_example', 'dotnet')

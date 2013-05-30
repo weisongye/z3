@@ -93,14 +93,15 @@ namespace datalog {
         table_base* m_checker;
         table_base* m_tocheck;
             
+    protected:
+        virtual ~check_table();
+
+
+    public:
+
         check_table(check_table_plugin & p, const table_signature & sig);
         check_table(check_table_plugin & p, const table_signature & sig, table_base* tocheck, table_base* checker);
 
-        virtual ~check_table();
-
-        bool well_formed() const;
-
-    public:
 
         check_table_plugin & get_plugin() const { 
             return static_cast<check_table_plugin &>(table_base::get_plugin()); 
@@ -118,6 +119,9 @@ namespace datalog {
 
         virtual unsigned get_size_estimate_rows() const { return m_tocheck->get_size_estimate_rows(); }
         virtual unsigned get_size_estimate_bytes() const { return m_tocheck->get_size_estimate_bytes(); }
+
+        bool well_formed() const;
+
     };
 
  };

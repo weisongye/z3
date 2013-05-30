@@ -318,9 +318,11 @@ namespace datalog {
 
 
 
-    class karr_relation : public relation_base {              
+    class karr_relation : public relation_base {        
+    protected:      
         friend class karr_relation_plugin;
         friend class karr_relation_plugin::filter_equal_fn;
+        friend class karr_relation_plugin::filter_identical_fn;
 
         karr_relation_plugin& m_plugin;
         ast_manager&          m;
