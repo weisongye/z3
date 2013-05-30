@@ -187,7 +187,6 @@ namespace polynomial {
             }
         };
         
-        struct imp;
     private:
         imp * m_imp;
     public:
@@ -229,7 +228,7 @@ namespace polynomial {
         class del_eh {
         protected:
             friend class manager;
-            friend class manager::imp;
+            friend struct manager::imp;
             friend class polynomial;
             del_eh * m_next;
         public:

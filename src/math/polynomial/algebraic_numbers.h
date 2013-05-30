@@ -365,9 +365,10 @@ namespace algebraic_numbers {
 
     enum anum_kind { BASIC = 0, ROOT };
 
-    struct anum {
+    class anum {
         friend struct manager::imp;
         friend class manager;
+    public:
         void * m_cell;
         anum(basic_cell * cell):m_cell(TAG(void*, cell, BASIC)) {}
         anum(algebraic_cell * cell):m_cell(TAG(void*, cell, ROOT)) {}

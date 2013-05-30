@@ -1223,6 +1223,12 @@ class CppExampleComponent(ExampleComponent):
         return get_cpp_files(self.ex_dir)
 
     def mk_makefile(self, out):
+	if build_static_lib():
+	    mk_makefile_static(self, out)
+	else:
+	    mk_makefile_dll(self, out)
+	    
+    def mk_makefile_dll(self, out):
         dll_name = get_component(Z3_DLL_COMPONENT).dll_name
         dll = '%s$(SO_EXT)' % dll_name
         exefile = '%s$(EXE_EXT)' % self.name
@@ -1246,44 +1252,26 @@ class CppExampleComponent(ExampleComponent):
         out.write(' $(LINK_EXTRA_FLAGS)\n')
         out.write('_ex_%s: %s\n\n' % (self.name, exefile))
 
-class CppExampleComponentStaticLib(ExampleComponent):
-    def __init__(self, name, path):
-        ExampleComponent.__init__(self, name, path)
-        self.exe_name = name
-
-    def compiler(self):
-        return "$(CXX)"
-
-    def src_files(self):
-        return get_cpp_files(self.ex_dir)
-
-    def mk_makefile(self, out):
-        # ExampleComponent.mk_makefile(self, out)
-        # generate rule for exe
-
-        exefile = '%s$(EXE_EXT)' % self.exe_name
-        out.write('%s:' % exefile)
-        deps = sort_components(self.deps)
-        objs = []
-        for cppfile in get_cpp_files(self.ex_dir):
-            objfile = '%s$(OBJ_EXT)' % os.path.join(self.build_dir, os.path.splitext(cppfile)[0])
-            objs.append(objfile)
-        for obj in objs:
+    def mk_makefile_static(self, out):
+        dll_name = get_component(Z3_DLL_COMPONENT).dll_name
+        lib = '%s$(LIB_EXT)' % dll_name
+        exefile = '%s$(EXE_EXT)' % self.name
+        out.write('%s: %s' % (exefile, lib))
+        for cppfile in self.src_files():
             out.write(' ')
-            out.write(obj)
-        for dep in deps:
-            c_dep = get_component(dep)
-            out.write(' %s$(LIB_EXT)' % os.path.join(c_dep.build_dir, c_dep.name))
+            out.write(os.path.join(self.to_ex_dir, cppfile))
         out.write('\n')
-        out.write('\t$(LINK) $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % exefile)
-        for obj in objs:
+        out.write('\t%s $(OS_DEFINES) $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % (self.compiler(), exefile))
+        # Add include dir components
+        out.write(' -I%s' % get_component(API_COMPONENT).to_src_dir)
+        out.write(' -I%s' % get_component(CPP_COMPONENT).to_src_dir)
+        for cppfile in self.src_files():
             out.write(' ')
-            out.write(obj)
-        for dep in deps:
-            c_dep = get_component(dep)
-            out.write(' %s$(LIB_EXT)' % os.path.join(c_dep.build_dir, c_dep.name))
+            out.write(os.path.join(self.to_ex_dir, cppfile))
+        out.write(' ')
+	out.write(dll)
         out.write(' $(LINK_EXTRA_FLAGS)\n')
-        out.write('%s: %s\n\n' % (self.name, exefile))
+        out.write('_ex_%s: %s\n\n' % (self.name, exefile))
 
 
 class CExampleComponent(CppExampleComponent):
@@ -1406,10 +1394,6 @@ def add_java_dll(name, deps=[], path=None, dll_name=None, package_name=None, man
 
 def add_cpp_example(name, path=None):
     c = CppExampleComponent(name, path)
-    reg_component(name, c)
-
-def add_cpp_example_static_lib(name, path=None):
-    c = CppExampleComponentStaticLib(name, path)
     reg_component(name, c)
 
 def add_c_example(name, path=None):
