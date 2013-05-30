@@ -10,6 +10,7 @@
 #include <fstream>
 #include <limits>
 #include <string.h>
+#include <cstdlib>
 #include "z3++.h"
 
 struct region {
@@ -280,7 +281,7 @@ class env {
         for (unsigned i = 0; i < bound.size(); ++i) {
             vars[i] = (Z3_app) bound[i];
         }
-        Z3_ast r = Z3_mk_quantifier_const(m_context, true, 1, bound.size(), vars, 0, 0, body);
+        Z3_ast r = Z3_mk_quantifier_const(m_context, is_forall, 1, bound.size(), vars, 0, 0, body);
         delete[] vars;
         return z3::expr(m_context, r);
     }
