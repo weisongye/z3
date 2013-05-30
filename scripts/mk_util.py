@@ -1224,9 +1224,9 @@ class CppExampleComponent(ExampleComponent):
 
     def mk_makefile(self, out):
 	if build_static_lib():
-	    mk_makefile_static(self, out)
+	    self.mk_makefile_static(out)
 	else:
-	    mk_makefile_dll(self, out)
+	    self.mk_makefile_dll(out)
 	    
     def mk_makefile_dll(self, out):
         dll_name = get_component(Z3_DLL_COMPONENT).dll_name
@@ -1269,7 +1269,7 @@ class CppExampleComponent(ExampleComponent):
             out.write(' ')
             out.write(os.path.join(self.to_ex_dir, cppfile))
         out.write(' ')
-	out.write(dll)
+	out.write(lib)
         out.write(' $(LINK_EXTRA_FLAGS)\n')
         out.write('_ex_%s: %s\n\n' % (self.name, exefile))
 
