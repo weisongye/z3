@@ -1225,7 +1225,7 @@ class CppExampleComponent(ExampleComponent):
 	    
     def mk_makefile(self, out):
         dll_name = get_component(Z3_DLL_COMPONENT).dll_name
-	if build_static_lib():
+	if build_static_lib() and self.compiler() == "$(CXX)":
            dll = '%s$(LIB_EXT)' % dll_name
         else:
 	   dll = '%s$(SO_EXT)' % dll_name
