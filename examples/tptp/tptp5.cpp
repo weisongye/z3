@@ -55,7 +55,7 @@ struct symbol_table {
         m_map.insert(std::pair<z3::symbol, T>(s, val));
     }
 
-    bool find(z3::symbol const& s, T val) { 
+    bool find(z3::symbol const& s, T& val) { 
         typename map::iterator it = m_map.find(s);
         if (it == m_map.end()) {
             return false;
@@ -477,7 +477,8 @@ class env {
         else if (!strcmp(name,"plain_atomic_formula") ||             
             !strcmp(name,"defined_plain_formula") ||
             !strcmp(name,"system_atomic_formula")) {
-            term(f->child(0), m_context.bool_sort(), fml);
+            z3::sort srt(m_context.bool_sort());
+            term(f->child(0), srt, fml);
         }
         else if (!strcmp(name,"defined_infix_formula") ||
             !strcmp(name,"fol_infix_unary")) {
@@ -656,7 +657,7 @@ class env {
         }
     }
 
-    void term(TreeNode* t, z3::sort s, z3::expr r) {
+    void term(TreeNode* t, z3::sort const& s, z3::expr& r) {
         char const* name = t->symbol();
         if (!strcmp(name, "defined_plain_term") ||
             !strcmp(name, "system_term") ||
@@ -748,7 +749,7 @@ class env {
         }
     }
 
-    void apply_term(TreeNode* f, TreeNode* args, z3::sort& s, z3::expr& r) {
+    void apply_term(TreeNode* f, TreeNode* args, z3::sort const& s, z3::expr& r) {
         z3::expr_vector terms(m_context);
         z3::sort_vector sorts(m_context);
         mk_args(args, terms);
@@ -1195,21 +1196,25 @@ public:
         switch(na) {
         case 0:
             break;
-        case 1:
-            display_sort(out, f.domain(0));
+        case 1: {
+            z3::sort s(f.domain(0));
+            display_sort(out, s);
             out << " > ";
             break;
+        }
         default:
             out << "( ";
             for (unsigned j = 0; j < na; ++j) {
-                display_sort(out, f.domain(j));
+                z3::sort s(f.domain(j));
+                display_sort(out, s);
                 if (j + 1 < na) {
                     out << " * ";
                 }
             }
             out << " ) > ";
         }
-        display_sort(out, f.range());
+        z3::sort srt(f.range());
+        display_sort(out, srt);
         out << ")).\n";
     }
 
@@ -1369,7 +1374,7 @@ public:
         out << ")";
     }
 
-    void display_sort(std::ostream& out, z3::sort s) {
+    void display_sort(std::ostream& out, z3::sort const& s) {
         if (s.is_int()) {
             out << "$int";
         }
