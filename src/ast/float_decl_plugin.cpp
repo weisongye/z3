@@ -200,6 +200,7 @@ func_decl * float_decl_plugin::mk_float_const_decl(decl_kind k, unsigned num_par
     }
     else {
         m_manager->raise_exception("sort of floating point constant was not specified");
+        UNREACHABLE();
     }
 
     SASSERT(is_sort_of(s, m_family_id, FLOAT_SORT));
@@ -489,6 +490,15 @@ void float_decl_plugin::get_op_names(svector<builtin_name> & op_names, symbol co
 void float_decl_plugin::get_sort_names(svector<builtin_name> & sort_names, symbol const & logic) {
     sort_names.push_back(builtin_name("FP", FLOAT_SORT));
     sort_names.push_back(builtin_name("RoundingMode", ROUNDING_MODE_SORT));
+}
+
+expr * float_decl_plugin::get_some_value(sort * s) {
+    SASSERT(s->is_sort_of(m_family_id, FLOAT_SORT));    
+    mpf tmp;
+    m_fm.mk_nan(s->get_parameter(0).get_int(), s->get_parameter(1).get_int(), tmp);
+    expr * res = this->mk_value(tmp);
+    m_fm.del(tmp);
+    return res;
 }
 
 bool float_decl_plugin::is_value(app * e) const {
