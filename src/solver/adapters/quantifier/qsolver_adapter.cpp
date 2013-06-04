@@ -252,7 +252,7 @@ public:
     }
 
     lbool check_quantifiers() {
-        std::cout << "Check quantifiers..." << std::endl;
+        //std::cout << "Check quantifiers..." << std::endl;
         m_total_rounds++;
         model_ref aM;
         m_kernel->get_model(aM);
@@ -283,7 +283,7 @@ public:
         bool round_robin = false;//true;
         bool do_continue;
 
-        std::cout << "Make model..." << std::endl;
+        //std::cout << "Make model..." << std::endl;
         if (needs_make_model) {
             //reset the round
             m_mc.reset_round();
@@ -317,7 +317,7 @@ public:
 
             needs_make_model = false;
         }
-        std::cout << "Add instances..." << std::endl;
+        //std::cout << "Add instances..." << std::endl;
         bool continue_once = true;
         do
         {
@@ -407,7 +407,7 @@ public:
                     }
                     else {
                         TRACE("qsolver_q", tout << "Iterate eval check, currently " << instantiation_lemmas.size() << " lemmas.\n";);
-                        std::cout << "Iterate..." << std::endl;
+                        //std::cout << "Iterate..." << std::endl;
                     }
                 }
                 else {
@@ -439,10 +439,10 @@ public:
         }
         if (m_mct.get_model_repair()->m_stat_repairs>0) {
           TRACE("qsolver_q", tout << "...did " << m_mct.get_model_repair()->m_stat_repairs << " repairs.\n";);
-          std::cout << "...did " << m_mct.get_model_repair()->m_stat_repairs << " repairs.\n";
+          //std::cout << "...did " << m_mct.get_model_repair()->m_stat_repairs << " repairs.\n";
         }
         TRACE("qsolver_q", tout << "Produced " << instantiation_lemmas.size() << " lemmas \n";);
-        std::cout << "Produced " << instantiation_lemmas.size() << " lemmas \n";
+        //std::cout << "Produced " << instantiation_lemmas.size() << " lemmas \n";
         m_total_inst += instantiation_lemmas.size();
         if (instantiation_lemmas.empty() || !star_only_if_non_star) {
             for (unsigned i=0; i<instantiation_lemmas_star.size(); i++) {
