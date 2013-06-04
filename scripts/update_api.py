@@ -1134,7 +1134,8 @@ def mk_ml():
         ip = inparams(params)
         op = outparams(params)
         if len(ip) == 0:
-           ml_native.write(' unit -> ')
+            ml_native.write(' unit -> ')
+            ml_i.write(' unit -> ')
         for p in ip:
             ml_native.write('%s -> ' % param2ml(p))
             ml_i.write('%s -> ' % param2ml(p))
@@ -1182,6 +1183,8 @@ def mk_ml():
                     ml_native.write(' ')
                 ml_native.write('a%d' % i)
             i = i + 1
+        if len(ip) == 0:
+            ml_native.write('()')
         ml_native.write(' = \n')
         ml_native.write('    ')
         if result == VOID and len(op) == 0:
