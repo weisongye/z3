@@ -26,14 +26,14 @@ struct sort_val_indices {
     sort_val_indices(mc_context & mc) : m_mc(mc) {}
     mc_context & m_mc;
     ptr_vector<val> m_args;
-    bool operator() (unsigned i, unsigned j) { 
+    bool operator() (unsigned i, unsigned j) {
         return m_mc.is_lt(m_args[i],m_args[j]);
     }
 };
 
 struct sort_unsigned_indices {
     sbuffer<unsigned> m_args;
-    bool operator() (unsigned i, unsigned j) { 
+    bool operator() (unsigned i, unsigned j) {
         return m_args[i]<m_args[j];
     }
 };
@@ -67,10 +67,10 @@ protected:
     }
 public:
     //compare two conditions wrt to pointwise entries
-    static int compare(mc_context & mc, cond * i, cond * j, ptr_vector<projection> & proj) { 
+    static int compare(mc_context & mc, cond * i, cond * j, ptr_vector<projection> & proj) {
         SASSERT(i->get_size()==j->get_size());
         SASSERT(i->get_size()==proj.size());
-        return compare(mc, i, j, proj, 0); 
+        return compare(mc, i, j, proj, 0);
     }
 public:
     sort_pointwise_entry_indices(mc_context & mc, ptr_vector<projection> & proj, def * d) : m_mc(mc), m_proj(proj), m_def(d) {}
@@ -174,9 +174,9 @@ projection * projection::get_rep() {
     }
 }
 
-void projection::set_projection_term(expr * e) { 
+void projection::set_projection_term(expr * e) {
     SASSERT(!m_no_projection_terms.contains(e));
-    m_projection_term = e; 
+    m_projection_term = e;
 }
 
 void projection::add_no_projection_term(expr * e) {
@@ -233,7 +233,7 @@ void projection::assert_partial_model(mc_context & mc, obj_map< expr, expr * > &
             ecv = m.find(m_rel_domain_pre[i]);
         }
         val * ecvv = mc.mk_val(ecv);
-        TRACE("model_construct_debug", tout << "Adding for term "; mc.display(tout,m_rel_domain_pre[i]); 
+        TRACE("model_construct_debug", tout << "Adding for term "; mc.display(tout,m_rel_domain_pre[i]);
                                        tout << ", value is "; mc.display(tout,ecvv); tout << "\n";);
         add_relevant_domain(m_rel_domain_pre[i], ecvv);
     }
@@ -268,7 +268,7 @@ void projection::assert_partial_model(mc_context & mc, obj_map< expr, expr * > &
             bool success = false;
             if (m_projection_term) {
                 TRACE("model_construct_proj_term", tout << "Test "; mc.display(tout, m_projection_term); tout << " as projection term...\n";);
-                                                   
+
                 success = true;
                 expr * ecpt = m_projection_term;
                 if (!mc.is_atomic_value(ecpt)) {
@@ -276,7 +276,7 @@ void projection::assert_partial_model(mc_context & mc, obj_map< expr, expr * > &
                         ecpt = m.find(ecpt);
                     }
                     else {
-                        //make whatever value you want (it does not matter) 
+                        //make whatever value you want (it does not matter)
                         ecpt = mc.get_some_value(s);
                     }
                 }
@@ -428,9 +428,9 @@ void projection::get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * 
                            tout << "Projection term is : ";
                            if (m_projection_term) {
                                mc.display(tout,m_projection_term);
-                           } 
+                           }
                            else {
-                               tout << "[NULL]"; 
+                               tout << "[NULL]";
                            }
                            tout << "\n";
                        }
@@ -470,7 +470,7 @@ void projection::get_witness(mc_context & mc, abs_val * a, expr_ref & e, expr * 
                 e = mc.get_some_value(s);
             }
         }
-    } 
+    }
     else {
         SASSERT(false);
     }
@@ -573,7 +573,7 @@ void projection::compute_intervals(mc_context & mc, ptr_vector<val> & vals, ptr_
 }
 
 model_constructor::model_constructor(ast_manager & _m)
-    : m_m(_m), m_au(_m), m_bvu(_m), m_partial_model_terms(_m), m_model_repair(_m) {
+    : m_partial_model_terms(_m), m_model_repair(_m), m_m(_m), m_au(_m), m_bvu(_m) {
     m_monotonic_projections = false;
     m_simplification = false;
     m_simple_definitions = true;
@@ -620,7 +620,7 @@ void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection
             if (is_uninterp(e)) {
                 if (is_var(ec)) {
                     unsigned vid = to_var(ec)->get_idx();
-                    projection * vp = var_proj[vid]->get_rep(); 
+                    projection * vp = var_proj[vid]->get_rep();
                     projection * fp = get_projection(mc, to_app(e)->get_decl(), i);
                     //merge projection if uninterpreted
                     vp->merge(fp);
@@ -635,7 +635,7 @@ void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection
                     bool is_negated;
                     if (mc.get_classify_util()->is_var_offset(ec, v, offset, is_negated, classify_util::REQ_GROUND)) {
                         unsigned vid = v->get_idx();
-                        projection * vp = var_proj[vid]; 
+                        projection * vp = var_proj[vid];
                         projection * fp = get_projection(mc, to_app(e)->get_decl(), i, false);
                         if (offset && m_au.is_zero(offset)) {
                             offset = 0;
@@ -654,13 +654,13 @@ void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection
             var * v1 = 0;
             var * v2 = 0;
             ptr_vector<expr> no_proj_terms;
-            expr_ref_buffer rel_domain(m_m); 
+            expr_ref_buffer rel_domain(m_m);
             unsigned proj_type = projection::PROJ_POINTWISE;
             if (mc.get_classify_util()->is_witnessable(e, hasPolarity, polarity, v1, v2, no_proj_terms, rel_domain, proj_type, false)) {
                 TRACE("rel_domain_debug", tout << "Processing variable relation for relevant domain : " << mk_pp(e,m_m) << " ";
                                           if (hasPolarity) tout << "(polarity = " << hasPolarity << ")\n";);
                 unsigned vid = v1->get_idx();
-                projection * vp = var_proj[vid]->get_rep(); 
+                projection * vp = var_proj[vid]->get_rep();
                 //add no projection terms
                 for (unsigned r=0; r<no_proj_terms.size(); r++) {
                     TRACE("rel_domain_debug", tout << "Term " << mk_pp(no_proj_terms[r],m_m) << " should not be chosen as projection term.\n";);
@@ -684,7 +684,7 @@ void model_constructor::process(mc_context & mc, expr * e, ptr_vector<projection
                     TRACE("rel_domain_debug", tout << "Projections of " << mk_pp(v1,m_m) << " and " << mk_pp(v2,m_m) << " should be equal.\n";);
                     unsigned vid2 = v2->get_idx();
                     //TODO: the offsets need to be managed properly
-                    projection * vp2 = var_proj[vid2]->get_rep(); 
+                    projection * vp2 = var_proj[vid2]->get_rep();
                     vp->merge(vp2);
                 }
             }
@@ -800,7 +800,7 @@ void model_constructor::assert_partial_model(mc_context & mc, obj_map< expr, exp
 
 //push user context
 void model_constructor::push() {
-    
+
 }
 
 //pop user context
@@ -853,7 +853,7 @@ simple_def * model_constructor::get_ground_def(mc_context & mc, func_decl * f) {
     return m_ground_def.find(id);
 }
 
-void model_constructor::construct_entries(mc_context & mc, func_decl * f, def * dg, sbuffer<unsigned> & order_indices, 
+void model_constructor::construct_entries(mc_context & mc, func_decl * f, def * dg, sbuffer<unsigned> & order_indices,
                                           sbuffer<unsigned> & process_entries, ptr_buffer<abs_val> & avals,
                                           def * d) {
     unsigned index = avals.size();
@@ -948,7 +948,7 @@ cond * model_constructor::mk_star(mc_context & mc, func_decl * f) {
 
 simple_def * model_constructor::get_simple_def(mc_context & mc, func_decl * f) {
     if (!is_uninterp(f)) {
-        std::cout << "Get func id " << mk_pp(f, m_m) << "\n";
+        //std::cout << "Get func id " << mk_pp(f, m_m) << "\n";
     }
     SASSERT(is_uninterp(f));
     SASSERT(m_simple_definitions);
@@ -1080,7 +1080,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                         process_entries.push_back(entry_index);
                         entry_index++;
                         //if monotonic projection exists, continue iterating while pointwise component of entries are the same
-                        continue_iter = (has_monotonic && entry_index<dg->get_num_entries() && 
+                        continue_iter = (has_monotonic && entry_index<dg->get_num_entries() &&
                                          sort_pointwise_entry_indices::compare(mc, dg->get_condition(order_indices[entry_index]), dg->get_condition(order_indices[entry_start]), projs)==0);
                     }
                     TRACE("model_construct_debug", tout << "Process entries " << entry_start << " .... " << (entry_index-1) << "\n";);
@@ -1089,7 +1089,7 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                     construct_entries(mc, f, dg, order_indices, process_entries, avals, cd);
                 }
                 //check if complete: look at last entry
-                cond * c_last = cd->get_condition(cd->get_num_entries()-1);  
+                cond * c_last = cd->get_condition(cd->get_num_entries()-1);
                 for (unsigned k=0; k<f->get_arity(); k++) {
                     if (projs[k]->get_projection_type()==projection::PROJ_POINTWISE && !c_last->get_value(k)->is_star()) {
                         is_complete = false;
@@ -1112,10 +1112,10 @@ def * model_constructor::get_def(mc_context & mc, func_decl * f) {
                 }
 
                 //simplify the definition
-                if (m_simplification) {     
+                if (m_simplification) {
                     TRACE("model_construct_simp",tout << "Before simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
                                             mc.display(tout, cd);
-                                            tout << "\n";);           
+                                            tout << "\n";);
                     cd->simplify(mc);
                     TRACE("model_construct_simp",tout << "After simplification, Definition for " << mk_pp(f,m_m) << ": " << "\n";
                                             mc.display(tout, cd);
@@ -1154,7 +1154,7 @@ unsigned model_constructor::get_num_universe(sort * s) {
     return m_universe.contains(s) ? m_universe.find(s).size() : 1;
 }
 
-//get universe 
+//get universe
 expr * model_constructor::get_universe(mc_context & mc, sort * s, unsigned i) {
     SASSERT(m_m.is_uninterp(s));
     if (!m_universe.contains(s)) {
@@ -1194,7 +1194,6 @@ projection * model_constructor::get_projection(mc_context & mc, quantifier * q, 
 
 void model_constructor::get_inst(mc_context & mc, quantifier * q, cond * c, expr_ref_buffer & inst, bool & found_expr) {
     found_expr = true;
-    bool used_only_rel_domain = true;
     for (int j=(c->get_size()-1); j>=0; j--) {
         abs_val * a = c->get_value(j);
         projection * p = get_projection(mc, q, j, false);
@@ -1210,7 +1209,6 @@ void model_constructor::get_inst(mc_context & mc, quantifier * q, cond * c, expr
 
 void model_constructor::get_inst(mc_context & mc, quantifier * q, expr_ref_buffer & vsub, expr_ref_buffer & inst, bool & found_expr) {
     found_expr = true;
-    bool used_only_rel_domain = true;
     for (int j=(vsub.size()-1); j>=0; j--) {
         abs_val * a = mc.mk_value(mc.mk_val(vsub[j]));
         projection * p = get_projection(mc, q, j, false);

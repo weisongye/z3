@@ -37,7 +37,7 @@ class val
 protected:
     expr * m_expr;
     unsigned m_kind;
-    val(unsigned k, expr * e = 0) : m_kind(k), m_expr(e){}
+    val(unsigned k, expr * e = 0) : m_expr(e), m_kind(k){}
 public:
     enum {
         KIND_INT,
@@ -209,7 +209,7 @@ public:
 };
 
 //trie of values
-class cond_generalization_trie 
+class cond_generalization_trie
 {
 private:
     unsigned m_data;

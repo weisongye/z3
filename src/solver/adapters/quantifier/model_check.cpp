@@ -68,7 +68,7 @@ bool inst_trie::add(mc_context & mc, expr_ref_buffer & inst, unsigned i) {
 }
 
 
-mc_context::mc_context(ast_manager & _m) 
+mc_context::mc_context(ast_manager & _m)
     : m_m(_m), m_au(_m), m_bvu(_m), m_ar(_m), m_bvr(_m), m_cutil(_m, m_au, m_bvu), m_expr_produced_global(_m), m_expr_produced(_m) {
     m_true = m_m.mk_true();
     m_false = m_m.mk_false();
@@ -98,7 +98,7 @@ void mc_context::reset_round() {
 
 //push user context
 void mc_context::push() {
-    
+
 }
 
 //pop user context
@@ -126,7 +126,7 @@ val * mc_context::get_bound(abs_val * a, bool isLower) {
 
 val * mc_context::mk_val(expr* e) {
     if (m_expr_to_val.contains(e)) {
-        return m_expr_to_val.find(e); 
+        return m_expr_to_val.find(e);
     }
     else {
         val * v;
@@ -466,7 +466,7 @@ bool mc_context::is_compatible(abs_val * a1, abs_val * a2) {
             val * b1 = i==0 ? to_interval(a1)->get_lower() : to_interval(a1)->get_upper();
             val * b2 = get_bound(a2, i==0);
             //take the upper bound of lower bounds, and lower bound of upper bounds, store in nb[0], nb[1]
-            nb[i] = (is_lt(b1,b2,i==0) ? (i==0 ? b2 : b1) : (i==0 ? b1 : b2)); 
+            nb[i] = (is_lt(b1,b2,i==0) ? (i==0 ? b2 : b1) : (i==0 ? b1 : b2));
         }
         TRACE("mc_context_debug", tout << "Is compatible : ";
                                   display(tout,a1);
@@ -563,7 +563,7 @@ abs_val * mc_context::mk_meet(abs_val * a1, abs_val * a2) {
                 val * b1 = get_bound(a1, i==0);
                 val * b2 = get_bound(a2, i==0);
                 //take the upper bound of the lowers, and the lower bound of the uppers
-                nb[i] = (is_lt(b1,b2,i==0) ? (i==0 ? b2 : b1) : (i==0 ? b1 : b2)); 
+                nb[i] = (is_lt(b1,b2,i==0) ? (i==0 ? b2 : b1) : (i==0 ? b1 : b2));
             }
             //TODO: make only if it is different from both a1 and a2
             return mk_interval(nb[0], nb[1]);
@@ -789,7 +789,7 @@ def * mc_context::mk_var_relation(def * d, func_decl * f, var * v, bool is_flipp
                                                 display(tout, rets[j]);
                                                 tout << "\n";
                                              });
-                
+
             //now process the intervals
             for (unsigned j=0; j<interval_bounds.size(); j++) {
                 if (is_compatible(a, interval_bounds[j])) {
@@ -808,7 +808,7 @@ def * mc_context::mk_var_relation(def * d, func_decl * f, var * v, bool is_flipp
 }
 
 def * mc_context::mk_var_offset(def * d, var * v, bool is_negated) {
-    unsigned vid = v->get_idx();
+    //unsigned vid = v->get_idx();
     def * nd = new_def();
     for (unsigned i=0; i<d->get_num_entries(); i++) {
         val * vl = d->get_value(i)->get_value(0);
@@ -834,7 +834,7 @@ def * mc_context::mk_compose(def * df, def * da) {
                 }
             }
         }
-        
+
     }
     return d;
 }
@@ -1116,9 +1116,9 @@ expr * mc_context::mk_distinguished_constant_expr(sort * s) {
 }
 
 //make some value
-expr * mc_context::get_some_value(sort * s) { 
+expr * mc_context::get_some_value(sort * s) {
     expr_ref edc(m_m);
-    edc = m_m.get_some_value(s); 
+    edc = m_m.get_some_value(s);
     m_expr_produced_global.push_back(edc);
     return edc;
 }
@@ -1486,7 +1486,7 @@ expr * mc_context::evaluate_interp(func_decl * f, expr_ref_buffer & vals) {
 }
 
 
-//evaluate ground term 
+//evaluate ground term
 expr * mc_context::evaluate(model_constructor * mct, expr * e, expr_ref_buffer & vsub, bool partial) {
     if (is_atomic_value(e)) {
         return e;
@@ -1556,7 +1556,7 @@ expr * mc_context::evaluate(model_constructor * mct, expr * e, expr_ref_buffer &
                 ev = evaluate_interp(f, children);
             }
         }
-        TRACE("eval_term_debug", tout << (partial ? "(partial)" : "") << " evaluated " << mk_pp(e,m_m) << " to "; 
+        TRACE("eval_term_debug", tout << (partial ? "(partial)" : "") << " evaluated " << mk_pp(e,m_m) << " to ";
                                     if (ev==0) {tout << "[null]"; }else{ display(tout, ev); }
                                     tout << "\n";);
         if (is_ground(e)) {
@@ -1674,7 +1674,7 @@ bool mc_context::add_instantiation2(model_constructor * mct, quantifier * q, exp
     return add_instantiation(mct, q, inst, vsub, instantiations, filterEval, filterRepair, filterCache);
 }
 */
-bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub, 
+bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr_ref_buffer & inst, expr_ref_buffer & vsub,
                                    expr_ref_buffer & instantiations,
                                    bool filterEval, bool filterRepair, bool filterCache) {
     SASSERT(inst.size()==q->get_num_decls());
@@ -1743,11 +1743,23 @@ bool mc_context::add_instantiation(model_constructor * mct, quantifier * q, expr
             if (!m_inst_trie.find(q, it)) {
                 void * mem = allocate(sizeof(inst_trie));
                 it = new (mem) inst_trie;
+                //it = new inst_trie;
                 m_inst_trie.insert(q,it);
             }
             if (!it->add(*this, inst)) {
                 addInstantiation = false;
                 TRACE("inst_debug",tout << "...instantiation was already added to cache.\n";);
+            }else{
+              /*
+              if(!m_expr_produced_global.contains(q)) {
+                m_expr_produced_global.push_back(q);
+              }
+              for (unsigned i=0; i<inst.size(); i++) {
+                if (!m_expr_produced_global.contains(inst[i])) {
+                  m_expr_produced_global.push_back(inst[i]);
+                }
+              }
+              */
             }
         }
         if (addInstantiation) {

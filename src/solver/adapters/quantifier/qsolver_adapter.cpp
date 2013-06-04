@@ -34,12 +34,12 @@ using namespace qsolver;
 class qsolver_adapter : public solver {
     ast_manager &              m_manager;
     ref<solver>                m_kernel;
-    // 
+    //
     quantifier_ref_vector      m_quantifiers;         // quantifiers
     expr_ref_vector            m_fresh_props;         // m_fresh_props and m_nested_quantifiers have the same size.
     quantifier_ref_vector      m_nested_quantifiers;
     obj_map<quantifier, expr*> m_nq2p;                // nested quantifiers -> fresh propositions (domain is m_nested_quantifiers)
-    expr_ref_vector            m_ground_formulas; 
+    expr_ref_vector            m_ground_formulas;
 
     bool                       m_produce_proofs;
 
@@ -49,6 +49,7 @@ class qsolver_adapter : public solver {
     eval_check m_ec;
     full_model_check m_fmc;
     exhaustive_check m_exhc;
+    bool m_fc_out;
 
     //statistics for quantifiers
     unsigned m_total_rounds;
@@ -70,9 +71,9 @@ class qsolver_adapter : public solver {
         qsolver_adapter & m;
         cfg(qsolver_adapter & _m):m(_m) {}
 
-        bool reduce_quantifier(quantifier * old_q, 
-                               expr * new_body, 
-                               expr * const * new_patterns, 
+        bool reduce_quantifier(quantifier * old_q,
+                               expr * new_body,
+                               expr * const * new_patterns,
                                expr * const * new_no_patterns,
                                expr_ref & result,
                                proof_ref & result_pr) {
@@ -104,9 +105,9 @@ public:
         m_fresh_props(m),
         m_nested_quantifiers(m),
         m_ground_formulas(m),
-        m_produce_proofs(produce_proofs), 
+        m_produce_proofs(produce_proofs),
         m_mc(m),
-        m_mct(m), 
+        m_mct(m),
         m_ec(m),
         m_fmc(m),
         m_exhc(m) {
@@ -115,24 +116,25 @@ public:
         m_total_inst = 0;
         m_q_next_index = 0;
         m_cancel = false;
+        m_fc_out = false;
     }
 
     virtual ~qsolver_adapter() {
     }
 
-    ast_manager & m() const { 
-        return m_manager; 
+    ast_manager & m() const {
+        return m_manager;
     }
-    
+
     virtual void collect_param_descrs(param_descrs & r) {
     }
-    
+
     virtual void set_produce_models(bool f) {
     }
-    
+
     virtual void set_progress_callback(progress_callback * callback) {
     }
-    
+
     virtual void updt_params(params_ref const & p) {
     }
 
@@ -144,7 +146,7 @@ public:
         out << "=== Quantifiers ===========\n";
         for (unsigned i = 0; i < m_quantifiers.size(); i++) {
             out << mk_pp(m_quantifiers.get(i), m()) << "\n";
-        }        
+        }
         out << "=== Nested quantifiers ===\n";
         for (unsigned i = 0; i < m_nested_quantifiers.size(); i++) {
             out << mk_pp(m_fresh_props.get(i), m()) << " => " << mk_pp(m_nested_quantifiers.get(i), m()) << "\n";
@@ -152,9 +154,9 @@ public:
         out << "=== Ground abstraction ===\n";
         for (unsigned i = 0; i < m_ground_formulas.size(); i++) {
             out << mk_pp(m_ground_formulas.get(i), m()) << "\n";
-        }        
+        }
     }
-    
+
     virtual void set_cancel(bool f) {
         m_cancel = true;
         m_kernel->set_cancel(f);
@@ -227,7 +229,7 @@ public:
     virtual void assert_expr_assumption(expr * t, expr * a) {
         throw solver_exception("solver does not support assert_expr_assumption");
     }
-    
+
     virtual void assert_expr_proof(expr * t, proof * pr) {
         expr_ref  a(m());
         proof_ref pr2(m());
@@ -250,6 +252,7 @@ public:
     }
 
     lbool check_quantifiers() {
+        std::cout << "Check quantifiers..." << std::endl;
         m_total_rounds++;
         model_ref aM;
         m_kernel->get_model(aM);
@@ -280,6 +283,7 @@ public:
         bool round_robin = false;//true;
         bool do_continue;
 
+        std::cout << "Make model..." << std::endl;
         if (needs_make_model) {
             //reset the round
             m_mc.reset_round();
@@ -294,7 +298,7 @@ public:
             for (unsigned i=0; i<m_mct.get_num_partial_model_terms(); i++) {
                 proc(m_mct.get_partial_model_term(i), false);
             }
-            TRACE("qsolver_pm", 
+            TRACE("qsolver_pm",
                   tout << "==== Partial Model\n";
                   expr_substitution::iterator it  = pM.begin();
                   expr_substitution::iterator end = pM.end();
@@ -309,11 +313,13 @@ public:
             //assert the partial model
             m_mct.assert_partial_model(m_mc, pM.get_map());
             //std::cout << "Produce lemmas...\n";
+            //TRACE("qsolver_m",m_mct.print(tout, m_mc); }
 
             needs_make_model = false;
         }
+        std::cout << "Add instances..." << std::endl;
         bool continue_once = true;
-        do 
+        do
         {
             result = l_true;
             do_continue = false;
@@ -334,7 +340,7 @@ public:
                 }
                 else {
                     //check the relevant quantifiers
-                    c_result = m_fmc.run(m_mc, &m_mct, quantifiers[pr_i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star); 
+                    c_result = m_fmc.run(m_mc, &m_mct, quantifiers[pr_i], instantiations, instantiations_star, instantiation_lemmas.empty() || !star_only_if_non_star);
                 }
                 //std::cout << "current result " << (c_result==l_true ? "true" : (c_result==l_false ? "false" : "undef")) << std::endl;
                 if (!instantiations.empty()) {
@@ -344,11 +350,14 @@ public:
                     result = result!=l_false ? c_result : result;
                 }
                 if (!instantiations.empty() || !instantiations_star.empty()) {
+                    //TRACE("qsolver_q", tout << "Quantifier " << mk_pp(quantifiers[i],m_manager) << "\n";
+                    //                   tout << "generated " << instantiations.size() << " " << instantiations_star.size() << std::endl;);
+
                     if (!inst_made_this_round.contains(quantifiers[pr_i])) {
                         inst_made_this_round.push_back(quantifiers[pr_i]);
                     }
                     if (instantiations.size()>=1000) {
-                        std::cout << mk_pp(quantifiers[pr_i],m_manager) << " produced " << instantiations.size() << " instantiations.\n";
+                        TRACE("qsolver_q", tout << mk_pp(quantifiers[pr_i],m_manager) << " produced " << instantiations.size() << " instantiations.\n";);
                     }
                     unsigned n;
                     if (m_q_inst.find(quantifiers[pr_i], n)) {
@@ -360,7 +369,6 @@ public:
                     }
 
                 }
-                //std::cout << "Quantifier " << mk_pp(quantifiers[i],m_manager) << "\n" << "generated " << instantiations.size() << " " << instantiations_star.size() << std::endl;
                 //convert and add instantiation lemmas
                 if (m_nq2p.contains(quantifiers[pr_i])) {
                     expr * pv = m_nq2p.find(quantifiers[pr_i]);
@@ -390,17 +398,22 @@ public:
                 if (instantiation_lemmas.empty()) {
                     do_continue = true;
                     if (!m_mct.get_model_repair()->m_was_repaired) {
-                        std::cout << "Try full model-checking...\n";
+                        TRACE("qsolver_q", tout << "Try full model-checking...\n";);
+                        if (!m_fc_out) {
+                          m_fc_out = true;
+                          std::cout << "FC ";
+                        }
                         do_eval_check = false;
                     }
                     else {
-                        std::cout << "Iterate eval check, currently " << instantiation_lemmas.size() << " lemmas.\n";
+                        TRACE("qsolver_q", tout << "Iterate eval check, currently " << instantiation_lemmas.size() << " lemmas.\n";);
+                        std::cout << "Iterate..." << std::endl;
                     }
                 }
                 else {
                     //do_continue = continue_once;
                     //continue_once = false;
-                }
+                 }
             }
         }
         while (do_continue);
@@ -409,21 +422,26 @@ public:
             unsigned n;
             if (m_q_inst_round.find(inst_made_this_round[i], n)) {
                 if (n>0 && n%5==0) {
-                    std::cout << mk_pp(inst_made_this_round[i], m_manager) << " has produced instances on " << n << " rounds.\n";
+                    TRACE("qsolver_q", tout << mk_pp(inst_made_this_round[i], m_manager) << " has produced instances on " << n << " rounds.\n";);
                 }
                 m_q_inst_round.erase(inst_made_this_round[i]);
                 m_q_inst_round.insert(inst_made_this_round[i],n+1);
             }
             else {
-                m_q_inst_round.insert(inst_made_this_round[i],0);  
+                m_q_inst_round.insert(inst_made_this_round[i],0);
             }
         }
 
         for (unsigned i=0; i<instantiation_lemmas.size(); i++) {
             TRACE("qsolver_inst", tout << "Produced instantiation : " << mk_pp(instantiation_lemmas[i],m_manager) << "\n";);
+            //std::cout << "Instantiation : " << mk_pp(instantiation_lemmas[i],m_manager) << std::endl;
             assert_expr_core(instantiation_lemmas[i]);
         }
-        std::cout << "...did " << m_mct.get_model_repair()->m_stat_repairs << " repairs.\n";
+        if (m_mct.get_model_repair()->m_stat_repairs>0) {
+          TRACE("qsolver_q", tout << "...did " << m_mct.get_model_repair()->m_stat_repairs << " repairs.\n";);
+          std::cout << "...did " << m_mct.get_model_repair()->m_stat_repairs << " repairs.\n";
+        }
+        TRACE("qsolver_q", tout << "Produced " << instantiation_lemmas.size() << " lemmas \n";);
         std::cout << "Produced " << instantiation_lemmas.size() << " lemmas \n";
         m_total_inst += instantiation_lemmas.size();
         if (instantiation_lemmas.empty() || !star_only_if_non_star) {
@@ -431,9 +449,10 @@ public:
                 TRACE("qsolver_inst", tout << "Produced (star) instantiation : " << mk_pp(instantiation_lemmas_star[i],m_manager) << "\n";);
                 assert_expr_core(instantiation_lemmas_star[i]);
             }
-            std::cout << "Produced " << instantiation_lemmas_star.size() << " star lemmas.\n";
+            //std::cout << "Produced " << instantiation_lemmas_star.size() << " star lemmas.\n";
             m_total_inst += instantiation_lemmas_star.size();
         }
+        //std::cout << "Finished check quantifiers." << std::endl;
         return result;
     }
 
@@ -445,8 +464,9 @@ public:
                 return l_undef;
             lbool r = m_kernel->check_sat(num_assumptions, assumptions);
             if (r == l_false) {
-                std::cout << "Total inst : " << m_total_inst << "\n";
-                std::cout << "Total rounds : " << m_total_rounds << "\n";
+                //std::cout << "Total inst : " << m_total_inst << "\n";
+                //std::cout << "Total rounds : " << m_total_rounds << "\n";
+                std::cout << m_total_inst << " " << m_total_rounds << " ";
                 return r;
             }
             r = check_quantifiers();
@@ -459,11 +479,11 @@ public:
     virtual void collect_statistics(statistics & st) const {
         m_kernel->collect_statistics(st);
     }
-    
+
     virtual void get_unsat_core(ptr_vector<expr> & r) {
         m_kernel->get_unsat_core(r);
     }
-    
+
     virtual void get_model(model_ref & md) {
         // TODO
         m_kernel->get_model(md);

@@ -70,9 +70,9 @@ unsigned read_smtlib_file(char const * benchmark_file) {
     signal(SIGINT, on_ctrl_c);
     smtlib::solver solver;
     g_solver = &solver;
-    
+
     bool ok = true;
-    
+
     ok = solver.solve_smt(benchmark_file);
     if (!ok) {
         if (benchmark_file) {
@@ -82,7 +82,7 @@ unsigned read_smtlib_file(char const * benchmark_file) {
             std::cerr << "ERROR: solving input stream.\n";
         }
     }
-    
+
     display_statistics();
     register_on_timeout_proc(0);
     g_solver = 0;
@@ -113,7 +113,7 @@ struct my_solver_factory : public solver_factory {
         pre_solver_adapter * s = alloc(pre_solver_adapter, m, kernel, p, proofs_enabled, models_enabled, unsat_core_enabled);
         params_ref nnf_p;
         nnf_p.set_bool("ignore_labels", true);
-        s->add_tactic_after(mk_elim_patterns_tactic(m));
+        //s->add_tactic_after(mk_elim_patterns_tactic(m));
         s->add_tactic_after(mk_simplify_tactic(m));
         s->add_tactic_after(mk_propagate_values_tactic(m));
         s->add_tactic_after(mk_miniscope_tactic(m));
@@ -144,7 +144,7 @@ unsigned read_smtlib2_commands(char const * file_name) {
 
     // ctx.set_solver_factory(mk_smt_strategic_solver_factory());
     ctx.set_solver_factory(get_my_solver_factor());
-    
+
     install_dl_cmds(ctx);
     install_dbg_cmds(ctx);
     install_polynomial_cmds(ctx);
@@ -153,7 +153,7 @@ unsigned read_smtlib2_commands(char const * file_name) {
     g_cmd_context = &ctx;
     register_on_timeout_proc(on_timeout);
     signal(SIGINT, on_ctrl_c);
-    
+
     bool result = true;
     if (file_name) {
         std::ifstream in(file_name);
@@ -166,7 +166,7 @@ unsigned read_smtlib2_commands(char const * file_name) {
     else {
         result = parse_smt2_commands(ctx, std::cin, true);
     }
-    
+
     display_statistics();
     g_cmd_context = 0;
     return result ? 0 : 1;

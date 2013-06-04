@@ -56,7 +56,7 @@ public:
 
 
 //trie of values
-class annot_entry_trie 
+class annot_entry_trie
 {
 private:
     unsigned m_data;
@@ -73,7 +73,7 @@ public:
 
 
 /*
-class add_inst 
+class add_inst
 {
 public:
 
@@ -124,7 +124,7 @@ private:
     unsigned m_children_eval_count;
     unsigned m_vars_to_bind;
     unsigned m_q_depth; //depth in quantifier
-    
+
 
     //for basic trigger hack
     ptr_vector<expr> m_basic_trigger_terms;
@@ -145,8 +145,8 @@ public:
         m_basic_trigger_terms.reset();
     }
     expr * get_expr() { return m_e; }
-    void add_parent(eval_node * p) { 
-        m_parents.push_back(p); 
+    void add_parent(eval_node * p) {
+        m_parents.push_back(p);
         p->m_children.push_back(this);
     }
     unsigned get_num_children() { return m_children.size(); }
@@ -158,6 +158,22 @@ public:
     bool can_evaluate() { return (is_app(m_e) && (is_ground(m_e) || m_children_eval_count==to_app(m_e)->get_num_args())) || is_basic_trigger_node(); }
 
 };
+
+
+class ematcher
+{
+public:
+  ematcher( ast_manager & _m, expr * c ) : m_curr(c), m_next(0), m_eqc(0){}
+  ~ematcher(){}
+  expr * m_curr;
+  u_map< ematcher * > m_children;
+  ematcher * m_next;
+  //temporary
+  expr * m_eqc;
+  u_map< expr * > m_ground_eval;
+  void reset(ast_manager & _m, mc_context & mc, model_constructor * mct);
+};
+
 
 class model_constructor;
 
@@ -172,6 +188,8 @@ protected:
     bool m_multiple_patterns;
     // only follow partial evaluation
     bool m_ground_partial_evaluation;
+    //just do pattern matching
+    bool m_simple_pattern_match;
 protected: //temporary information
     //first time
     bool m_first_time;
@@ -200,17 +218,24 @@ protected:
     void set_var_unbound(unsigned vid);
 public:
     eval_check(ast_manager & _m);
+    ~eval_check();
     void reset_round();
 protected:
     void set_counters(mc_context & mc, model_constructor * mct, func_decl * f);
     eval_node * mk_eval_node(mc_context & mc, model_constructor * mct, expr * e, ptr_vector<eval_node> & active, obj_map< expr, eval_node *> & evals, unsigned q_depth = 0);
 
-    lbool do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active, 
+    lbool do_eval_check(mc_context & mc, model_constructor * mct, quantifier * q, ptr_vector<eval_node> & active,
                         expr_ref_buffer & vsub, expr_ref_buffer & esub, expr_ref_buffer & instantiations);
+protected:
+  obj_map< quantifier, quantifier * > m_pattern_quants;
+  obj_map< quantifier, ptr_vector< ematcher > > m_ematcher;
+  lbool do_pattern_match(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
+  lbool do_ematching(mc_context & mc, model_constructor * mct, quantifier * q, ematcher * curr,
+                     expr_ref_buffer & vsub, expr_ref_buffer & esub, expr_ref_buffer & instantiations);
 public:
-    //eval check
-    lbool run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
-    bool m_filter_inst_cache;
+  //eval check
+  lbool run(mc_context & mc, model_constructor * mct, quantifier * q, expr_ref_buffer & instantiations);
+  bool m_filter_inst_cache;
 };
 
 }

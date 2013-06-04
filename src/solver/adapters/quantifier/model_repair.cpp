@@ -32,7 +32,7 @@ void model_repair::reset_round(mc_context & mc) {
     m_repair_quant.reset();
     m_repair_inst.reset();
     m_repairs_permanent.reset();
-    m_active = true; 
+    m_active = true;
     m_tracking = false;//true;
     m_tracking_rec_repair = true;
     //stats
@@ -76,15 +76,17 @@ bool model_repair::repair_formula(mc_context & mc, model_constructor * mct, quan
                             quantifier * qr = qrv[j];
                             annot_entry * ir = irv[j];
                             TRACE("repair_model_recurse", tout << "This entry had repaired " << mk_pp(qr,m_m) << " with instantiation "; mc.display(tout, ir); tout << "\n";);
-                            //now, try to add the other instantiation
-                            expr_ref_buffer instr(m_m); 
-                            expr_ref_buffer vsubr(m_m);
-                            for (unsigned k=0; k<ir->get_size(); k++) {
-                                instr.push_back(ir->get_annotation(k));
-                                vsubr.push_back(ir->get_value(k));
-                            }
-                            if (mc.add_instantiation(mct, qr, instr, vsubr, instantiations, false, true)) {
-                                success = false;
+                            if (qr!=q) {
+                              //now, try to add the other instantiation
+                              expr_ref_buffer instr(m_m);
+                              expr_ref_buffer vsubr(m_m);
+                              for (unsigned k=0; k<ir->get_size(); k++) {
+                                  instr.push_back(ir->get_annotation(k));
+                                  vsubr.push_back(ir->get_value(k));
+                              }
+                              if (mc.add_instantiation(mct, qr, instr, vsubr, instantiations, false, true)) {
+                                  success = false;
+                              }
                             }
                         }
                         pop_permanent_repair();
@@ -101,7 +103,7 @@ bool model_repair::repair_formula(mc_context & mc, model_constructor * mct, quan
 }
 
 //repair model
-bool model_repair::do_repair_formula(mc_context & mc, model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity, 
+bool model_repair::do_repair_formula(mc_context & mc, model_constructor * mct, quantifier * q, expr * e, expr_ref_buffer & vsub, expr_ref_buffer & tsub, bool polarity,
                                   ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason) {
     TRACE("repair_model_debug", tout << "Try repairing " << mk_pp(e,m_m) << ", polarity = " << polarity << "\n";);
     if (is_app(e)) {
@@ -140,7 +142,7 @@ bool model_repair::do_repair_formula(mc_context & mc, model_constructor * mct, q
         else if (m_m.is_not(e)) {
             return do_repair_formula(mc, mct, q, to_app(e)->get_arg(0), vsub, tsub, !polarity, fail_entry, fail_value, fail_func, inst_reason);
         }
-        else if (m_m.is_eq(e) || m_m.is_iff(e) || mc.m_au.is_le(e) || mc.m_au.is_ge(e)) { 
+        else if (m_m.is_eq(e) || m_m.is_iff(e) || mc.m_au.is_le(e) || mc.m_au.is_ge(e)) {
 
             //two iterations
             // on first iteration, check if a side is defined in partial model (this is prefered)
@@ -187,7 +189,7 @@ bool model_repair::do_repair_formula(mc_context & mc, model_constructor * mct, q
                                 if (vcomp && do_repair_term(mc, mct, q, ec, vsub, tsub, vcomp, fail_entry, fail_value, fail_func, inst_reason)) {
                                     //ensure the interpretation of the other side is defined in partial model if necessary
                                     if (r==1) {
-                                        expr * ecov2 = ensure_interpretation(mc, mct, eco, vsub, tsub, q, inst_reason); 
+                                        expr * ecov2 = ensure_interpretation(mc, mct, eco, vsub, tsub, q, inst_reason);
                                         if (ecov!=ecov2) {  //this should only happen in rare cases
                                             TRACE("repair_model_warn", tout << "WARNING : While repairing " << mk_pp(e,m_m) << ", trying to ensure interpretation of " << mk_pp(eco,m_m) << ", the value became different.\n";
                                                                         tout << "Before : " << mk_pp(ecov,m_m) << "\n";
@@ -243,7 +245,7 @@ bool model_repair::do_repair_formula(mc_context & mc, model_constructor * mct, q
     return false;
 }
 
-bool model_repair::do_repair_term(mc_context & mc, model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v, 
+bool model_repair::do_repair_term(mc_context & mc, model_constructor * mct, quantifier * q, expr * t, expr_ref_buffer & vsub, expr_ref_buffer & tsub, expr * v,
                                ptr_buffer<annot_entry> & fail_entry, ptr_buffer<expr> & fail_value, ptr_buffer<func_decl> & fail_func, annot_entry * & inst_reason) {
     //try to make the term with var_subst equal to v
     SASSERT(is_uninterp(t));
@@ -298,10 +300,20 @@ bool model_repair::do_repair_term(mc_context & mc, model_constructor * mct, quan
                                         for (unsigned i=0; i<vsub.size(); i++) {
                                             tout << "   " << mk_pp(tsub[(vsub.size()-1)-i], m_m) << ", value = "; mc.display(tout, vsub[i]);
                                             expr * ve = mc.evaluate(mct,tsub[(vsub.size()-1)-i],vsub);
-                                            SASSERT(ve==vsub[i]);
+                                            //SASSERT(ve==vsub[i]);
                                             tout << ", evaluated = "; mc.display(tout,ve); tout << "\n";
                                         }
                                         );
+                                        /*
+            for (unsigned i=0; i<vsub.size(); i++) {
+                expr * ve = mc.evaluate(mct,tsub[(vsub.size()-1)-i],vsub);
+                if(ve!=vsub[i]){
+                  std::cout << "Not equal : " << mk_pp(ve,m_m) << " " << mk_pp(vsub[i], m_m);
+                  std::cout << " from term " << mk_pp(tsub[(vsub.size()-1)-i],m_m) << std::endl;
+                exit(0);
+                }
+            }
+            */
             append_entry_to_simple_def(mc, mct, f, c, q, inst_reason);
         }
         //then, make sure all entries are produced by ground entries
@@ -391,7 +403,7 @@ bool model_repair::append_entry_to_simple_def(mc_context & mc, model_constructor
         }
         append_repair(c, q_repair, inst_repair);
         //clear evaluation caches
-        mc.m_evaluations.reset(); 
+        mc.m_evaluations.reset();
         mc.m_partial_evaluations.reset();
         return true;
     }
