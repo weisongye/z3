@@ -101,6 +101,7 @@ unsigned read_smtlib_file(char const * benchmark_file) {
 #include"nnf_tactic.h"
 #include"elim_array_tactic.h"
 #include"pull_nested_quantifiers_tactic.h"
+#include"purify_arith_tactic.h"
 #include"qsolver_adapter.h"
 
 // Temporary hack to test solver infrastructure
@@ -117,6 +118,9 @@ struct my_solver_factory : public solver_factory {
         s->add_tactic_after(mk_simplify_tactic(m));
         s->add_tactic_after(mk_propagate_values_tactic(m));
         s->add_tactic_after(mk_miniscope_tactic(m));
+        params_ref purify_p;
+        purify_p.set_bool("complete", false);
+        s->add_tactic_after(mk_purify_arith_tactic(m, purify_p));
         s->add_tactic_after(mk_snf_tactic(m, nnf_p));
         s->add_tactic_after(mk_elim_array_tactic(m));
         s->add_tactic_after(mk_der_tactic(m));

@@ -28,6 +28,8 @@ Revision History:
 #include"simplify_tactic.h"
 #include"th_rewriter.h"
 #include"filter_model_converter.h"
+#include"assertion_stack.h"
+#include"assertion_stream.h"
 #include"ast_smt2_pp.h"
 
 /*
@@ -707,13 +709,14 @@ struct purify_arith_proc {
         }
     }
 
-    void operator()(goal & g, model_converter_ref & mc, bool produce_models) {
+    void apply(assertion_stream & g, bool produce_models) {
+        stream_report report("purify-arith", g);
         rw r(*this, false);
         // purify
         expr_ref   new_curr(m());
         proof_ref  new_pr(m());
         unsigned sz = g.size();
-        for (unsigned i = 0; i < sz; i++) {
+        for (unsigned i = g.qhead(); i < sz; i++) {
             expr * curr = g.form(i);
             r(curr, new_curr, new_pr);
             if (m_produce_proofs) {
@@ -731,17 +734,24 @@ struct purify_arith_proc {
         
         // add filter_model_converter to eliminate auxiliary variables from model
         if (produce_models) {
-            filter_model_converter * fmc = alloc(filter_model_converter, m());
-            mc = fmc;
             obj_map<app, expr*> & f2v = r.cfg().m_app2fresh;
             obj_map<app, expr*>::iterator it  = f2v.begin();
             obj_map<app, expr*>::iterator end = f2v.end();
             for (; it != end; ++it) {
                 app * v = to_app(it->m_value);
                 SASSERT(is_uninterp_const(v));
-                fmc->insert(v->get_decl());
+                g.add_filter(v->get_decl());
             }
         }
+        TRACE("purify_arith", g.display(tout););
+    }
+
+    void operator()(goal & g, model_converter_ref & mc, bool produce_models) {
+        mc = 0; 
+        goal_and_fmc2stream strm(g);
+        apply(strm, produce_models);
+        if (produce_models)
+            mc = strm.mc();
     }
 };
 
@@ -775,6 +785,8 @@ public:
         th_rewriter::get_param_descrs(r);
     }
     
+    
+    
     virtual void operator()(goal_ref const & g, 
                             goal_ref_buffer & result, 
                             model_converter_ref & mc, 
@@ -783,7 +795,6 @@ public:
         try {
             SASSERT(g->is_well_sorted());
             mc = 0; pc = 0; core = 0;
-            tactic_report report("purify-arith", *g);
             bool produce_proofs = g->proofs_enabled();
             bool produce_models = g->models_enabled();
             bool elim_root_objs = m_params.get_bool("elim_root_objects", true);
@@ -801,6 +812,17 @@ public:
         catch (rewriter_exception & ex) {
             throw tactic_exception(ex.msg());
         }
+    }
+
+    virtual void operator()(assertion_stack & s) {
+        bool produce_proofs = s.proofs_enabled();
+        bool produce_models = s.models_enabled();
+        bool elim_root_objs = m_params.get_bool("elim_root_objects", true);
+        bool elim_inverses  = m_params.get_bool("elim_inverses", true);
+        bool complete       = m_params.get_bool("complete", true);
+        purify_arith_proc proc(m_util, produce_proofs, elim_root_objs, elim_inverses, complete);
+        assertion_stack2stream strm(s);
+        proc.apply(strm, produce_models);
     }
     
     virtual void cleanup() {
