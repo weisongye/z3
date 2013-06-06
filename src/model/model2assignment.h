@@ -37,9 +37,11 @@ public:
        result must containt enough entries to justify that f is true.
        
        \pre f is satisfied by the model provided in the constructor.
+
+       If the input is not satisfied, then return false.
     */
-    void operator()(expr * f, bool assertion=true);
-    void operator()(unsigned n, expr * const * fs, bool assertion=true);
+    bool operator()(expr * f, bool assertion=true);
+    bool operator()(unsigned n, expr * const * fs, bool assertion=true);
     /**
        \brief Return a reference to the object provided in the constructor.
     */

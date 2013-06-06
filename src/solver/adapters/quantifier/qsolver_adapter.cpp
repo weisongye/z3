@@ -469,9 +469,11 @@ public:
                 std::cout << m_total_inst << " " << m_total_rounds << " ";
                 return r;
             }
-            r = check_quantifiers();
-            if (r == l_true || r == l_undef)
-                return r;
+            lbool qr = check_quantifiers();
+            if (r == l_true && qr == l_true)
+                return l_true;
+            if (qr == l_undef)
+                return l_undef; // giving up
             // TODO: return unknown if maximum number of iteration exceeded
         }
     }
