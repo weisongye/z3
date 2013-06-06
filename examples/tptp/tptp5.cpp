@@ -1997,6 +1997,7 @@ static bool g_generate_core = false;
 static bool g_display_statistics = false;
 static bool g_first_interrupt = true;
 static bool g_smt2status = false;
+static bool g_check_status = false;
 static int g_timeout = 0;
 static double g_start_time = 0;
 static z3::solver*   g_solver = 0;
@@ -2018,7 +2019,8 @@ static void display_usage() {
     std::cout << "  -st, -statistics display statistics.\n";
     std::cout << "  -t:timeout   set timeout (in second).\n";
     std::cout << "  -smt2status  display status in smt2 format instead of SZS.\n";
-    std::cout << "  -<param>=<value> configuration parameter and value.\n";
+    std::cout << "  -check_status check the status produced by Z3 against annotation in benchmark.\n";
+    std::cout << "  -<param>:<value> configuration parameter and value.\n";
     std::cout << "  -o:<output-file> file to place output in.\n";
 }
 
@@ -2044,6 +2046,68 @@ static void on_ctrl_c(int) {
         display_statistics();
         raise(SIGINT);
     }
+}
+
+bool parse_token(char const*& line, char const* token) {
+    char const* result = line;
+    while (result[0] == ' ') ++result;
+    while (token[0] && result[0] == token[0]) {
+        ++token;
+        ++result;
+    }
+    if (!token[0]) {
+        line = result;
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+bool parse_is_sat_line(char const* line, bool& is_sat) {
+    if (!parse_token(line, "%")) return false;
+    if (!parse_token(line, "Status")) return false;
+    if (!parse_token(line, ":")) return false;
+    
+    if (parse_token(line, "Unsatisfiable")) {
+        is_sat = false;
+        return true;
+    }
+    if (parse_token(line, "Theorem")) {
+        is_sat = false;
+        return true;
+    }
+    if (parse_token(line, "Theorem")) {
+        is_sat = false;
+        return true;
+    }
+    if (parse_token(line, "CounterSatisfiable")) {
+        is_sat = true;
+        return true;
+    }
+    if (parse_token(line, "Satisfiable")) {
+        is_sat = true;
+        return true;
+    }
+    return false;
+}
+
+bool parse_is_sat(char const* filename, bool& is_sat) {
+    std::ifstream is(filename);
+    if (is.bad() || is.fail()) {
+        std::stringstream strm;
+        strm << "Could not open file " << filename << "\n";
+        throw failure_ex(strm.str().c_str());
+    }
+    
+    for (unsigned i = 0; !is.eof() && i < 200; ++i) {
+        std::string line;
+        std::getline(is, line);
+        if (parse_is_sat_line(line.c_str(), is_sat)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 
@@ -2081,6 +2145,9 @@ void parse_cmd_line_args(int argc, char ** argv) {
             else if (!strcmp(arg,"st") || !strcmp(arg,"statistics")) {
                 g_display_statistics = true;
             }
+            else if (!strcmp(arg,"check_status")) {
+                g_check_status = true;
+            }
             else if (!strcmp(arg,"t") || !strcmp(arg,"timeout")) {
                 if (!opt_arg) {
                     display_usage();
@@ -2111,9 +2178,7 @@ void parse_cmd_line_args(int argc, char ** argv) {
             else if (!strcmp(arg, "file")) {
                 g_input_file = opt_arg;
             }
-            else if (!opt_arg && (eq = strchr(arg,'=')) && arg[0] != '"') {
-                opt_arg = eq + 1;
-                *eq = 0;
+            else if (opt_arg && arg[0] != '"') {
                 Z3_global_param_set(arg, opt_arg);
             }
             else {
@@ -2121,11 +2186,6 @@ void parse_cmd_line_args(int argc, char ** argv) {
                 display_usage();
                 exit(0);
             }
-        }
-        else if ((eq = strchr(arg,'=')) && arg[0] != '\'' && arg[0] != '"' ) {
-            opt_arg = eq + 1;
-            *eq = 0;
-            Z3_global_param_set(arg, opt_arg);            
         }
         else {
             g_input_file = arg;
@@ -2389,6 +2449,17 @@ static void prove_tptp() {
         }
         break;
     }    
+    bool is_sat = true;
+    if (g_check_status && 
+        result != z3::unknown &&
+        parse_is_sat(g_input_file, is_sat)) {
+        if (is_sat && result == z3::unsat) {
+            std::cout << "BUG!! expected result is Satisfiable, returned result is Unsat\n";
+        }
+        if (!is_sat && result == z3::sat) {
+            std::cout << "BUG!! expected result is Unsatisfiable, returned result is Satisfiable\n";
+        }
+    }
     display_statistics();
 }
 

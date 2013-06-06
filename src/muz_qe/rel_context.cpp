@@ -89,10 +89,6 @@ namespace datalog {
         get_rmanager().register_plugin(alloc(bitvector_table_plugin, get_rmanager()));
         get_rmanager().register_plugin(alloc(equivalence_table_plugin, get_rmanager()));
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 56bfc06c4f7e33d4249551e269e443b19f71ef89
         // register plugins for builtin relations
 
         get_rmanager().register_plugin(alloc(bound_relation_plugin, get_rmanager()));
