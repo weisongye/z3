@@ -1229,13 +1229,17 @@ class CppExampleComponent(ExampleComponent):
            dll = '%s$(LIB_EXT)' % dll_name
         else:
 	   dll = '%s$(SO_EXT)' % dll_name
+	if self.compiler() == "$(CXX)":
+	    c_defines = "$(CXX_DEFINES)"
+	else:
+	    c_defines = "$(OS_DEFINES)"
         exefile = '%s$(EXE_EXT)' % self.name
         out.write('%s: %s' % (exefile, dll))
         for cppfile in self.src_files():
             out.write(' ')
             out.write(os.path.join(self.to_ex_dir, cppfile))
         out.write('\n')
-        out.write('\t%s $(OS_DEFINES) $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % (self.compiler(), exefile))
+        out.write('\t%s %s $(LINK_OUT_FLAG)%s $(LINK_FLAGS)' % (self.compiler(), c_defines, exefile))
         # Add include dir components
         out.write(' -I%s' % get_component(API_COMPONENT).to_src_dir)
         out.write(' -I%s' % get_component(CPP_COMPONENT).to_src_dir)
