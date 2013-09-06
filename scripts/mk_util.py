@@ -1230,7 +1230,7 @@ class CppExampleComponent(ExampleComponent):
         else:
 	   dll = '%s$(SO_EXT)' % dll_name
 	if self.compiler() == "$(CXX)":
-	    c_defines = "$(CXX_DEFINES)"
+	    c_defines = "$(CXXFLAGS)"
 	else:
 	    c_defines = "$(OS_DEFINES)"
         exefile = '%s$(EXE_EXT)' % self.name
