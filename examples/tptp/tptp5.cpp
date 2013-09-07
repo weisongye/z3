@@ -690,18 +690,13 @@ class env {
                 name0 = t->child(0)->child(0)->symbol();
                 char const* per = strchr(name0, '.');
                 bool is_real = 0 != per;
-                bool is_rat = 0 != strchr(name0, '/');
-                bool is_int = !is_real && !is_rat;
+                bool is_rat  = 0 != strchr(name0, '/');
+                bool is_int  = !is_real && !is_rat;
                 if (is_int) {
                     r = m_context.int_val(name0);
                 }
-                else if (is_rat) {
-                    r = m_context.real_val(name0);
-                }
                 else {
                     r = m_context.real_val(name0);
-                    z3::expr y = m_context.real_val(per-name0);
-                    r = r/y;
                 }
             }
             else if (!strcmp(name0, "distinct_object")) {

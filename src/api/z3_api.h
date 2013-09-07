@@ -778,11 +778,11 @@ typedef enum
         }
         or
         \nicebox{
-             (=> (and ln+1 ln+2 .. ln+m) l0)
+             (=> (and l1 l2 .. ln) l0)
         }
         or in the most general (ground) form:
         \nicebox{
-             (=> (and ln+1 ln+2 .. ln+m) (or l0 l1 .. ln-1))
+             (=> (and ln+1 ln+2 .. ln+m) (or l0 l1 .. ln))
         }
         In other words we use the following (Prolog style) convention for Horn 
         implications:
@@ -798,7 +798,7 @@ typedef enum
         general non-ground form is:
 
         \nicebox{
-             (forall (vars) (=> (and ln+1 ln+2 .. ln+m) (or l0 l1 .. ln-1)))
+             (forall (vars) (=> (and ln+1 ln+2 .. ln+m) (or l0 l1 .. ln)))
         }
 
         The hyper-resolution rule takes a sequence of parameters.
@@ -1721,6 +1721,8 @@ extern "C" {
        To create constants that belong to the finite domain, 
        use the APIs for creating numerals and pass a numeric
        constant together with the sort returned by this call.
+       The numeric constant should be between 0 and the less 
+       than the size of the domain.
 
        \sa Z3_get_finite_domain_sort_size
 
