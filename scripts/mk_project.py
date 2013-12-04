@@ -34,7 +34,8 @@ def init_project_def():
     add_lib('subpaving_tactic', ['core_tactics', 'subpaving'], 'math/subpaving/tactic')
     add_lib('aig_tactic', ['tactic'], 'tactic/aig')
     add_lib('solver', ['model', 'tactic'])
-    add_lib('cmd_context', ['solver', 'rewriter'])
+    add_lib('interp', ['solver'])
+    add_lib('cmd_context', ['solver', 'rewriter', 'interp'])
     add_lib('extra_cmds', ['cmd_context', 'subpaving_tactic', 'arith_tactics'], 'cmd_context/extra_cmds')
     add_lib('smt2parser', ['cmd_context', 'parser_util'], 'parsers/smt2')
     add_lib('proof_checker', ['rewriter'], 'ast/proof_checker')
@@ -54,6 +55,7 @@ def init_project_def():
     add_lib('fpa', ['core_tactics', 'bv_tactics', 'sat_tactic'], 'tactic/fpa')
     add_lib('smt_tactic', ['smt'], 'smt/tactic')
     add_lib('sls_tactic', ['tactic', 'normal_forms', 'core_tactics', 'bv_tactics'], 'tactic/sls')
+    add_lib('duality', ['smt', 'interp'])
     add_lib('qe', ['smt','sat'], 'qe')
     add_lib('muz', ['smt', 'sat', 'smt2parser', 'aig_tactic', 'qe'], 'muz/base')
     add_lib('transforms', ['muz', 'hilbert'], 'muz/transforms')
@@ -62,13 +64,18 @@ def init_project_def():
     add_lib('clp', ['muz', 'transforms'], 'muz/clp')
     add_lib('tab', ['muz', 'transforms'], 'muz/tab')
     add_lib('bmc', ['muz', 'transforms'], 'muz/bmc')
-    add_lib('fp',  ['muz', 'pdr', 'clp', 'tab', 'rel', 'bmc'], 'muz/fp')
+    add_lib('duality_intf', ['muz', 'transforms', 'duality'], 'muz/duality')
+    add_lib('fp',  ['muz', 'pdr', 'clp', 'tab', 'rel', 'bmc', 'duality_intf'], 'muz/fp')
     add_lib('smtlogic_tactics', ['arith_tactics', 'bv_tactics', 'nlsat_tactic', 'smt_tactic', 'aig_tactic', 'fp', 'muz','qe'], 'tactic/smtlogics')
     add_lib('ufbv_tactic', ['normal_forms', 'core_tactics', 'macros', 'smt_tactic', 'rewriter'], 'tactic/ufbv')
     add_lib('portfolio', ['smtlogic_tactics', 'ufbv_tactic', 'fpa', 'aig_tactic', 'fp',  'qe','sls_tactic', 'subpaving_tactic'], 'tactic/portfolio')
     add_lib('smtparser', ['portfolio'], 'parsers/smt')
+#    add_dll('foci2', ['util'], 'interp/foci2stub', 
+#            dll_name='foci2', 
+#            export_files=['foci2stub.cpp'])
+#    add_lib('interp', ['solver','foci2'])
     API_files = ['z3_api.h', 'z3_algebraic.h', 'z3_polynomial.h', 'z3_rcf.h']
-    add_lib('api', ['portfolio', 'user_plugin', 'smtparser', 'realclosure'],
+    add_lib('api', ['portfolio', 'user_plugin', 'smtparser', 'realclosure', 'interp'],
             includes2install=['z3.h', 'z3_v1.h', 'z3_macros.h'] + API_files)
     add_exe('shell', ['api', 'sat', 'extra_cmds'], exe_name='z3')
     add_exe('test', ['api', 'fuzzing'], exe_name='test-z3', install=False)
@@ -84,6 +91,7 @@ def init_project_def():
     set_z3py_dir('api/python')
     # Examples
     add_cpp_example('cpp_example', 'c++') 
+    add_cpp_example('iz3', 'interp') 
     add_cpp_example('z3_tptp', 'tptp') 
     add_c_example('c_example', 'c')
     add_c_example('maxsat')
