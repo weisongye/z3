@@ -9,6 +9,7 @@ Abstract:
 
     Rule transformer which removes relations which are out of the cone of 
     influence of output relations
+    TODO: clean up buttom_up using cardinalities
 
 Author:
 
