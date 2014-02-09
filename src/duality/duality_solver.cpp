@@ -45,6 +45,10 @@ Revision History:
 // #define EFFORT_BOUNDED_STRAT
 #define SKIP_UNDERAPPROX_NODES
 
+// #define NO_BACK_JUMPING
+// #define NO_DECISION_HEURISTIC
+// #define NO_GENERALIZE
+// #define NO_DECISIONS
 
 namespace Duality {
 
@@ -1754,14 +1758,23 @@ namespace Duality {
 	      for(unsigned i = 0; i < expansions.size(); i++){
 		Node *node = expansions[i];
 		tree->SolveSingleNode(top,node);
+#ifndef NO_GENERALIZE
 		if(expansions.size() == 1 && NodeTooComplicated(node))
 		  SimplifyNode(node);
 		tree->Generalize(top,node);
+#endif
 		if(RecordUpdate(node))
 		  update_count++;
 	      }
-	      if(update_count == 0)
+	      if(update_count == 0){
+#ifdef NO_BACK_JUMPING
+#ifndef NO_DECISION_HEURISTIC
+		for(unsigned i = 0; i < expansions.size(); i++)
+		  heuristic->Update(expansions[i]->map); // make it less likely to expand this node in future
+#endif
+#endif
 		reporter->Message("backtracked without learning");
+	      }
 	    }
 	    tree->ComputeProofCore(); // need to compute the proof core before popping solver
 	    while(1) {
@@ -1787,11 +1800,16 @@ namespace Duality {
 		RemoveExpansion(node);
 	      }
 	      stack.pop_back();
+#ifdef NO_BACK_JUMPING
+	      break;
+#endif
 	      if(prev_level_used || stack.size() == 1) break;
 	      RemoveUpdateNodesAtCurrentLevel(); // this level is about to be deleted -- remove its children from update list
 	      std::vector<Node *> &unused_ex = stack.back().expansions;
+#ifndef NO_DECISION_HEURISTIC
 	      for(unsigned i = 0; i < unused_ex.size(); i++)
 		heuristic->Update(unused_ex[i]->map); // make it less likely to expand this node in future
+#endif
 	    } 
 	    HandleUpdatedNodes();
 	    if(stack.size() == 1)
@@ -1800,9 +1818,11 @@ namespace Duality {
 	  else {
 	    tree->Push();
 	    std::vector<Node *> &expansions = stack.back().expansions;
+#ifndef NO_DECISIONS
 	    for(unsigned i = 0; i < expansions.size(); i++){
 	      tree->FixCurrentState(expansions[i]->Outgoing);
 	    }
+#endif
 #if 0
 	    if(tree->slvr.check() == unsat)
 	      throw "help!";
