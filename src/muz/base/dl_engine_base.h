@@ -31,7 +31,8 @@ namespace datalog {
         TAB_ENGINE,
         CLP_ENGINE,
         LAST_ENGINE,
-	DUALITY_ENGINE
+	DUALITY_ENGINE,
+        PREDABST_ENGINE
     };
 
     class engine_base {

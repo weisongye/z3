@@ -712,6 +712,10 @@ namespace datalog {
             check_existential_tail(r);
             check_positive_predicates(r);
             break;
+        case PREDABST_ENGINE:
+            check_existential_tail(r);
+            check_positive_predicates(r);
+            break;
         case LAST_ENGINE:
         default:
             UNREACHABLE();
@@ -932,6 +936,9 @@ namespace datalog {
         else if (e == symbol("duality")) {
             m_engine_type = DUALITY_ENGINE;
         }
+        else if (e == symbol("predabst")) {
+            m_engine_type = PREDABST_ENGINE;
+        }
 
         if (m_engine_type == LAST_ENGINE) {
             expr_fast_mark1 mark;
@@ -980,6 +987,7 @@ namespace datalog {
         case QBMC_ENGINE:
         case TAB_ENGINE:
         case CLP_ENGINE:
+        case PREDABST_ENGINE:
             flush_add_rules();
             break;
         case DUALITY_ENGINE:
