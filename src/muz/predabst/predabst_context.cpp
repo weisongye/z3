@@ -25,6 +25,8 @@ Revision History:
 #include "smt_kernel.h"
 #include "dl_transforms.h"
 
+#include <cstring>
+
 namespace datalog {
 
     class predabst::imp {
@@ -36,16 +38,19 @@ namespace datalog {
             unsigned m_num_subsumed;
         };
 
-        context&               m_ctx;
-        ast_manager&           m;
-        rule_manager&          rm;
-        smt_params             m_fparams;
-        smt::kernel            m_solver;
-        var_subst              m_var_subst;
-        expr_ref_vector        m_ground;
-        app_ref_vector         m_goals;
-        volatile bool          m_cancel;
-        stats                  m_stats;
+        context&               m_ctx;         // main context where (fixedpoint) constraints are stored.
+        ast_manager&           m;             // manager for ASTs. It is used for managing expressions
+        rule_manager&          rm;            // context with utilities for fixedpoint rules.
+        smt_params             m_fparams;     // parameters specific to smt solving
+        smt::kernel            m_solver;      // basic SMT solver class
+        var_subst              m_var_subst;   // substitution object. It gets updated and reset.
+        expr_ref_vector        m_ground;      // vector of ground formulas during a search branch.
+        app_ref_vector         m_goals;       // vector of recursive predicates in the SLD resolution tree.
+        volatile bool          m_cancel;      // Boolean flag to track external cancelation.
+        stats                  m_stats;       // statistics information specific to the CLP module.
+        //        std::string            m_pred_symbol_prefix; // TBD replace by proper constant
+        static char const * const m_pred_symbol_prefix; // prefix for predicate containing rules
+        static unsigned const m_pred_symbol_prefix_size; // prefix for predicate containing rules
     public:
         imp(context& ctx):
             m_ctx(ctx), 
@@ -56,6 +61,7 @@ namespace datalog {
             m_ground(m),
             m_goals(m),
             m_cancel(false)
+            //            m_pred_symbol_prefix("__pred__")
         {
             // m_fparams.m_relevancy_lvl = 0;
             m_fparams.m_mbqi = false;
@@ -67,9 +73,52 @@ namespace datalog {
         lbool query(expr* query) {
             // TBD predicate abstraction here
             std::cout << "Hello World!" << std::endl;
-            std::cout << mk_pp(query, m) << std::endl;
+            std::cout << "query " << mk_pp(query, m) << std::endl;
+            m_ctx.ensure_opened();
+
+            datalog::rule_set & rules = m_ctx.get_rules();
+
+            std::cout << "number of rules is "<< 
+                rules.get_num_rules() << std::endl;
+
+            //            rules.display(std::cout);
+
+            // collect predicate definitions
+            for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
+                rule * r = *it;
+                symbol const & head_symbol = r->get_decl()->get_name();
+                if (r->get_uninterpreted_tail_size() == 0 
+                    && !memcmp(head_symbol.bare_str(), m_pred_symbol_prefix, m_pred_symbol_prefix_size)
+                    ) {
+                    std::string const & suffix = head_symbol.str().substr(m_pred_symbol_prefix_size, head_symbol.str().size()-m_pred_symbol_prefix_size);
+                    std::cout << "found pred definition" << std::endl;
+                    std::cout << "pred name " << head_symbol << std::endl;
+                    std::cout << "prefix " 
+                              << head_symbol.str().substr(0, m_pred_symbol_prefix_size) 
+                              << " suffix "
+                              << suffix
+                              << " hash "
+                              << head_symbol.hash()
+                              << " positive tail "
+                              << r->get_tail_size()
+                              << std::endl;
+                    r->display(m_ctx, std::cout);
+                    for (unsigned i = 0; i < r->get_tail_size(); ++i)  {
+                        std::cout << "pred app" << i << " " << mk_pp(r->get_tail(i), m)
+                                  << std::endl;
+                        std::cout << "pred func_decl" << i << " " << mk_pp(r->get_decl(i), m)
+                                  << std::endl;
+                    }
+                    rules.del_rule(r);
+                }
+            }
+
+            std::cout << "number of rules is "<< 
+                rules.get_num_rules() << std::endl;
+
             return l_true;
         }
+           
     
         void cancel() {
             m_cancel = true;
@@ -106,6 +155,9 @@ namespace datalog {
 
 
     };
+
+    char const * const predabst::imp::m_pred_symbol_prefix = "__pred__";
+    unsigned const predabst::imp::m_pred_symbol_prefix_size = 8;
     
     predabst::predabst(context& ctx):
         engine_base(ctx.get_manager(), "predabst"),
