@@ -51,6 +51,11 @@ namespace datalog {
         //        std::string            m_pred_symbol_prefix; // TBD replace by proper constant
         static char const * const m_pred_symbol_prefix; // prefix for predicate containing rules
         static unsigned const m_pred_symbol_prefix_size; // prefix for predicate containing rules
+
+        typedef obj_map<func_decl, unsigned> pred_abst_map;
+
+        pred_abst_map           m_pred_abst_map; // map from predicate declarations to predicates
+
     public:
         imp(context& ctx):
             m_ctx(ctx), 
@@ -81,7 +86,7 @@ namespace datalog {
             std::cout << "number of rules is "<< 
                 rules.get_num_rules() << std::endl;
 
-            //            rules.display(std::cout);
+            rules.display(std::cout);
 
             // collect predicate definitions
             for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
@@ -109,12 +114,19 @@ namespace datalog {
                         std::cout << "pred func_decl" << i << " " << mk_pp(r->get_decl(i), m)
                                   << std::endl;
                     }
+                    m_pred_abst_map.insert(r->get_decl(), r->get_tail_size());
                     rules.del_rule(r);
                 }
             }
 
             std::cout << "number of rules is "<< 
                 rules.get_num_rules() << std::endl;
+            rules.display(std::cout);
+
+            for (pred_abst_map::iterator it = m_pred_abst_map.begin(); it != m_pred_abst_map.end(); ++it) {
+                std::cout << "preds:: key " << mk_pp(it->m_key, m) << " val " << it->m_value << std::endl;
+
+            }
 
             return l_true;
         }
