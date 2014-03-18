@@ -52,7 +52,7 @@ namespace datalog {
         static char const * const m_pred_symbol_prefix; // prefix for predicate containing rules
         static unsigned const m_pred_symbol_prefix_size; // prefix for predicate containing rules
 
-        typedef obj_map<func_decl, unsigned> pred_abst_map;
+        typedef obj_map<func_decl, ptr_vector<app>> pred_abst_map;
 
         pred_abst_map           m_pred_abst_map; // map from predicate declarations to predicates
 
@@ -76,58 +76,42 @@ namespace datalog {
         ~imp() {}        
 
         lbool query(expr* query) {
-            // TBD predicate abstraction here
-            std::cout << "Hello World!" << std::endl;
-            std::cout << "query " << mk_pp(query, m) << std::endl;
             m_ctx.ensure_opened();
 
             datalog::rule_set & rules = m_ctx.get_rules();
 
-            std::cout << "number of rules is "<< 
-                rules.get_num_rules() << std::endl;
-
-            rules.display(std::cout);
-
             // collect predicate definitions
             for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
                 rule * r = *it;
-                symbol const & head_symbol = r->get_decl()->get_name();
+                char const * head_str = r->get_decl()->get_name().bare_str();
                 if (r->get_uninterpreted_tail_size() == 0 
-                    && !memcmp(head_symbol.bare_str(), m_pred_symbol_prefix, m_pred_symbol_prefix_size)
+                    && !memcmp(head_str, m_pred_symbol_prefix, m_pred_symbol_prefix_size)
                     ) {
-                    std::string const & suffix = head_symbol.str().substr(m_pred_symbol_prefix_size, head_symbol.str().size()-m_pred_symbol_prefix_size);
-                    std::cout << "found pred definition" << std::endl;
-                    std::cout << "pred name " << head_symbol << std::endl;
-                    std::cout << "prefix " 
-                              << head_symbol.str().substr(0, m_pred_symbol_prefix_size) 
-                              << " suffix "
-                              << suffix
-                              << " hash "
-                              << head_symbol.hash()
-                              << " positive tail "
-                              << r->get_tail_size()
-                              << std::endl;
-                    r->display(m_ctx, std::cout);
+                    unsigned suffix_size = strlen(head_str)-m_pred_symbol_prefix_size;
+                    char * suffix = new char[suffix_size+1];
+                    strcpy_s(suffix, suffix_size+1, &head_str[m_pred_symbol_prefix_size]);
+                    ptr_vector<app> preds;
                     for (unsigned i = 0; i < r->get_tail_size(); ++i)  {
-                        std::cout << "pred app" << i << " " << mk_pp(r->get_tail(i), m)
-                                  << std::endl;
-                        std::cout << "pred func_decl" << i << " " << mk_pp(r->get_decl(i), m)
-                                  << std::endl;
+                        preds.push_back(r->get_tail(i));
                     }
-                    m_pred_abst_map.insert(r->get_decl(), r->get_tail_size());
+                    func_decl * d = r->get_decl();
+                    m_pred_abst_map.insert(m.mk_func_decl(symbol(suffix), d->get_arity(), d->get_domain(), d->get_range()), preds);
                     rules.del_rule(r);
                 }
             }
 
-            std::cout << "number of rules is "<< 
-                rules.get_num_rules() << std::endl;
-            rules.display(std::cout);
-
             for (pred_abst_map::iterator it = m_pred_abst_map.begin(); it != m_pred_abst_map.end(); ++it) {
-                std::cout << "preds:: key " << mk_pp(it->m_key, m) << " val " << it->m_value << std::endl;
-
+                std::cout << "preds:: key " << mk_pp(it->m_key, m) << std::endl;
+                ptr_vector<app> preds = it->m_value;
+                for (ptr_vector<app>::iterator it2 = preds.begin(); it2 != preds.end(); ++it2) {
+                    app * pred = *it2;
+                    std::cout << mk_pp(pred, m) << " ";
+                }
+                std::cout << std::endl;
             }
 
+            std::cout << "remaining rules "<< rules.get_num_rules() << std::endl;
+            rules.display(std::cout);
             return l_true;
         }
            
@@ -169,7 +153,7 @@ namespace datalog {
     };
 
     char const * const predabst::imp::m_pred_symbol_prefix = "__pred__";
-    unsigned const predabst::imp::m_pred_symbol_prefix_size = 8;
+    unsigned const predabst::imp::m_pred_symbol_prefix_size = strlen(m_pred_symbol_prefix);
     
     predabst::predabst(context& ctx):
         engine_base(ctx.get_manager(), "predabst"),
