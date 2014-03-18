@@ -52,10 +52,10 @@ namespace datalog {
         static char const * const m_pred_symbol_prefix; // prefix for predicate containing rules
         static unsigned const m_pred_symbol_prefix_size; // prefix for predicate containing rules
 
-        typedef obj_map<func_decl, ptr_vector<app>> pred_abst_map;
+        typedef obj_map<func_decl, ptr_vector<app> *> pred_abst_map;
 
         pred_abst_map           m_pred_abst_map; // map from predicate declarations to predicates
-
+        ptr_vector<app>         m_empty_preds;  // empty vector predicates
     public:
         imp(context& ctx):
             m_ctx(ctx), 
@@ -80,7 +80,7 @@ namespace datalog {
 
             datalog::rule_set & rules = m_ctx.get_rules();
 
-            // collect predicate definitions
+            // collect predicates and delete corresponding rules
             for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
                 rule * r = *it;
                 char const * head_str = r->get_decl()->get_name().bare_str();
@@ -90,9 +90,9 @@ namespace datalog {
                     unsigned suffix_size = strlen(head_str)-m_pred_symbol_prefix_size;
                     char * suffix = new char[suffix_size+1];
                     strcpy_s(suffix, suffix_size+1, &head_str[m_pred_symbol_prefix_size]);
-                    ptr_vector<app> preds;
+                    ptr_vector<app> * preds = alloc(ptr_vector<app>); // TODO destruct
                     for (unsigned i = 0; i < r->get_tail_size(); ++i)  {
-                        preds.push_back(r->get_tail(i));
+                        preds->push_back(r->get_tail(i));
                     }
                     func_decl * d = r->get_decl();
                     m_pred_abst_map.insert(m.mk_func_decl(symbol(suffix), d->get_arity(), d->get_domain(), d->get_range()), preds);
@@ -100,18 +100,44 @@ namespace datalog {
                 }
             }
 
+            // print collected predicates
             for (pred_abst_map::iterator it = m_pred_abst_map.begin(); it != m_pred_abst_map.end(); ++it) {
                 std::cout << "preds:: key " << mk_pp(it->m_key, m) << std::endl;
-                ptr_vector<app> preds = it->m_value;
-                for (ptr_vector<app>::iterator it2 = preds.begin(); it2 != preds.end(); ++it2) {
-                    app * pred = *it2;
-                    std::cout << mk_pp(pred, m) << " ";
+                ptr_vector<app> * preds = it->m_value;
+                for (ptr_vector<app>::iterator it2 = preds->begin(); it2 != preds->end(); ++it2) {
+                    std::cout << mk_pp(*it2, m) << " ";
                 }
                 std::cout << std::endl;
             }
 
             std::cout << "remaining rules "<< rules.get_num_rules() << std::endl;
             rules.display(std::cout);
+
+            // simulate initial abstract step
+            for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
+                rule * r = *it;
+                if (r->get_uninterpreted_tail_size() != 0) continue;
+                app * head = r->get_head();
+                std::cout << "rule head " << mk_pp(head, m) << "/" << head->get_num_args() << std::endl;
+                pred_abst_map::obj_map_entry * e = m_pred_abst_map.find_core(head->get_decl());
+                ptr_vector<app> const & preds = e ? *e->get_data().m_value : m_empty_preds;
+                std::cout << "found preds " << preds.size() << std::endl;
+
+                std::cout << "sorts:";
+                expr_ref_vector m_ground(m);
+                unsigned arity = head->get_num_args();
+                m_ground.reserve(arity);
+                for (unsigned i = 0; i < arity; ++i) {
+                    std::cout << " " << mk_pp(head->get_decl()->get_domain(i), m);
+                    m_ground[i] = m.mk_fresh_const("c", head->get_decl()->get_domain(i));
+                }
+                expr_ref tmp(head, m);
+                m_var_subst(head, m_ground.size(), m_ground.c_ptr(), tmp);
+
+                std::cout << "after subst " << mk_pp(tmp, m) << std::endl;
+                m_var_subst.reset();
+                std::cout << std::endl;
+            }
             return l_true;
         }
            
@@ -148,7 +174,6 @@ namespace datalog {
         }
 
     private:
-
 
     };
 
