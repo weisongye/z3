@@ -114,8 +114,11 @@ namespace datalog {
                 // create func_decl from suffix and map it to predicates
                 unsigned suffix_size = strlen(head_str)-m_pred_symbol_prefix_size;
                 char * suffix = new char[suffix_size+1];
-		// strcpy_s(suffix, suffix_size+1, &head_str[m_pred_symbol_prefix_size]); // NOT YET AVAILABLE ON OSX
+#ifdef _WINDOWS
+		strcpy_s(suffix, suffix_size+1, &head_str[m_pred_symbol_prefix_size]); // not yet available outside Windows
+#else
                 strncpy(suffix, &head_str[m_pred_symbol_prefix_size], suffix_size+1);
+#endif
                 func_decl * d = r->get_decl();
                 m_pred_abst_map.insert(m.mk_func_decl(symbol(suffix), d->get_arity(), d->get_domain(), d->get_range()), preds);
                 // corresponding rule is not used for inference
