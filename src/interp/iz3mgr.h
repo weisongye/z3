@@ -22,6 +22,7 @@ Revision History:
 
 
 #include <assert.h>
+#include <vector>
 #include "iz3hash.h"
 
 #include"well_sorted.h"
@@ -126,7 +127,7 @@ namespace hash_space {
 }
 
 // to make ast_r hashable in windows
-#ifdef WIN32 
+#ifdef _WINDOWS 
 template <> inline
 size_t stdext::hash_value<ast_r >(const ast_r& s)
 {	
@@ -262,6 +263,7 @@ class iz3mgr  {
     default:;    
     }
     assert(0);
+    return 0;
   }
 
   ast arg(const ast &t, int i){
@@ -606,9 +608,9 @@ class iz3mgr  {
     return d;
   }
   
-  void linear_comb(ast &P, const ast &c, const ast &Q);
+  void linear_comb(ast &P, const ast &c, const ast &Q, bool round_off = false);
 
-  ast sum_inequalities(const std::vector<ast> &coeffs, const std::vector<ast> &ineqs);
+  ast sum_inequalities(const std::vector<ast> &coeffs, const std::vector<ast> &ineqs, bool round_off = false);
 
   ast simplify_ineq(const ast &ineq){
     ast res = make(op(ineq),arg(ineq,0),z3_simplify(arg(ineq,1)));

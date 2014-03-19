@@ -18,6 +18,15 @@ Revision History:
 --*/
 
 
+#ifdef WIN32
+#pragma warning(disable:4996)
+#pragma warning(disable:4800)
+#pragma warning(disable:4267)
+#pragma warning(disable:4101)
+#pragma warning(disable:4805)
+#pragma warning(disable:4800)
+#endif
+
 #include "iz3mgr.h"
 
 #include <stdio.h>
@@ -172,7 +181,7 @@ iz3mgr::ast iz3mgr::make_quant(opr op, const std::vector<ast> &bvs, ast &body){
 
 
   std::vector<symbol> names;
-  std::vector<sort *> types;
+  std::vector<class sort *> types;
   std::vector<expr *>  bound_asts;
   unsigned num_bound = bvs.size();
 
@@ -240,6 +249,9 @@ iz3mgr::ast iz3mgr::clone(const ast &t, const std::vector<ast> &_args){
 
 
 void iz3mgr::show(ast t){
+  if(t.null()){
+    std::cout  << "(null)" << std::endl;
+  }
   params_ref p;
   p.set_bool("flat_assoc",false);
   std::cout  << mk_pp(t.raw(), m(), p) << std::endl;
@@ -485,7 +497,7 @@ void iz3mgr::get_farkas_coeffs(const ast &proof, std::vector<ast>& coeffs){
   get_farkas_coeffs(proof,rats);
   coeffs.resize(rats.size());
   for(unsigned i = 0; i < rats.size(); i++){
-    sort *is = m().mk_sort(m_arith_fid, INT_SORT);
+    class sort *is = m().mk_sort(m_arith_fid, INT_SORT);
     ast coeff = cook(m_arith_util.mk_numeral(rats[i],is));
     coeffs[i] = coeff;
   }
@@ -640,9 +652,9 @@ void iz3mgr::get_assign_bounds_rule_coeffs(const ast &proof, std::vector<rationa
 
   /** Set P to P + cQ, where P and Q are linear inequalities. Assumes P is 0 <= y or 0 < y. */
 
-void iz3mgr::linear_comb(ast &P, const ast &c, const ast &Q){
+void iz3mgr::linear_comb(ast &P, const ast &c, const ast &Q, bool round_off){
   ast Qrhs;
-  bool strict = op(P) == Lt;
+  bool qstrict = false;
   if(is_not(Q)){
     ast nQ = arg(Q,0);
     switch(op(nQ)){
@@ -654,11 +666,11 @@ void iz3mgr::linear_comb(ast &P, const ast &c, const ast &Q){
       break;
     case Geq:
       Qrhs = make(Sub,arg(nQ,1),arg(nQ,0));
-      strict = true;
+      qstrict = true;
       break;
     case Leq: 
       Qrhs = make(Sub,arg(nQ,0),arg(nQ,1));
-      strict = true;
+      qstrict = true;
       break;
     default:
       throw "not an inequality";
@@ -674,28 +686,34 @@ void iz3mgr::linear_comb(ast &P, const ast &c, const ast &Q){
       break;
     case Lt:
       Qrhs = make(Sub,arg(Q,1),arg(Q,0));
-      strict = true;
+      qstrict = true;
       break;
     case Gt: 
       Qrhs = make(Sub,arg(Q,0),arg(Q,1));
-      strict = true;
+      qstrict = true;
       break;
     default:
       throw "not an inequality";
     }
   }
+  bool pstrict = op(P) == Lt;
+  if(qstrict && round_off && (pstrict || !(c == make_int(rational(1))))){
+    Qrhs = make(Sub,Qrhs,make_int(rational(1)));
+    qstrict = false;
+  }
   Qrhs = make(Times,c,Qrhs);
+  bool strict = pstrict || qstrict;
   if(strict)
     P = make(Lt,arg(P,0),make(Plus,arg(P,1),Qrhs));
   else
     P = make(Leq,arg(P,0),make(Plus,arg(P,1),Qrhs));
 }
 
-iz3mgr::ast iz3mgr::sum_inequalities(const std::vector<ast> &coeffs, const std::vector<ast> &ineqs){
+iz3mgr::ast iz3mgr::sum_inequalities(const std::vector<ast> &coeffs, const std::vector<ast> &ineqs, bool round_off){
   ast zero = make_int("0");
   ast thing = make(Leq,zero,zero);
   for(unsigned i = 0; i < ineqs.size(); i++){
-    linear_comb(thing,coeffs[i],ineqs[i]);
+    linear_comb(thing,coeffs[i],ineqs[i], round_off);
   }
   thing = simplify_ineq(thing);
   return thing;
@@ -869,3 +887,14 @@ iz3mgr::ast iz3mgr::apply_quant(opr quantifier, ast var, ast e){
   std::vector<ast> bvs; bvs.push_back(var);
   return make_quant(quantifier,bvs,e);
 }
+
+#if 0
+void iz3mgr::get_bound_substitutes(stl_ext::hash_map<ast,bool> &memo, const ast &e, const ast &var, std::vector<ast> &substs){
+  std::pair<ast,bool> foo(e,false);
+  std::pair<hash_map<ast,bool>::iterator,bool> bar = memo.insert(foo);
+  if(bar.second){
+    if(op(e) == 
+  }
+ 
+}
+#endif

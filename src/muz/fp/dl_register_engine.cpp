@@ -19,6 +19,7 @@ Revision History:
 #include "dl_register_engine.h"
 #include "dl_bmc_engine.h"
 #include "clp_context.h"
+#include "predabst_context.h"
 #include "tab_context.h"
 #include "rel_context.h"
 #include "pdr_dl_interface.h"
@@ -41,6 +42,8 @@ namespace datalog {
             return alloc(tab, *m_ctx);
         case CLP_ENGINE:
             return alloc(clp, *m_ctx);
+        case PREDABST_ENGINE:
+            return alloc(predabst, *m_ctx);
         case DUALITY_ENGINE:
             return alloc(Duality::dl_interface, *m_ctx);
         case LAST_ENGINE:
