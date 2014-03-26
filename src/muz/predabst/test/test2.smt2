@@ -19,7 +19,7 @@
 	)
 
 (assert (forall ((x Int) (y Int) (z Int))
-	(=> (and (> x 10) (< x 0)) (p3 x y z)))
+	(=> (and (p3 x 1 z) (> x 10) (< x 0)) (p3 x 1 z)))
 	)
 
 (declare-fun bs2 (Bool Bool Bool Bool) Bool)

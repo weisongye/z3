@@ -51,13 +51,17 @@ namespace datalog {
         stats                  m_stats;       // statistics information specific to the CLP module.
 
         static char const * const m_pred_symbol_prefix; // prefix for predicate containing rules
-        static unsigned const m_pred_symbol_prefix_size; // prefix for predicate containing rules
+        static unsigned const  m_pred_symbol_prefix_size; // prefix for predicate containing rules
+
+        typedef obj_map<func_decl, unsigned> func_decl2occur_count;
+
+        func_decl2occur_count  m_func_decl2occur_count;
 
         typedef expr_ref_vector pred_vector;
         typedef obj_map<func_decl, pred_vector *> pred_abst_map;
 
-        pred_abst_map           m_pred_abst_map; // map from predicate declarations to predicates
-        pred_vector         m_empty_preds;  // empty vector predicates 
+        pred_abst_map          m_pred_abst_map; // map from predicate declarations to predicates
+        pred_vector            m_empty_preds;  // empty vector predicates 
     public:
         imp(context& ctx):
             m_ctx(ctx), 
@@ -86,6 +90,7 @@ namespace datalog {
 
             datalog::rule_set & rules = m_ctx.get_rules();
 
+            // update func_decl counters
             // collect predicates and delete corresponding rules
             for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
                 rule * r = *it;
@@ -93,7 +98,17 @@ namespace datalog {
                 char const * head_str = head_decl->get_name().bare_str();
                 if (r->get_uninterpreted_tail_size() != 0 
                     || memcmp(head_str, m_pred_symbol_prefix, m_pred_symbol_prefix_size)
-                    ) continue;
+                    ) {
+                    for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) {
+                        func_decl2occur_count::obj_map_entry * e = m_func_decl2occur_count.find_core(r->get_decl(i));
+                        if (e) {
+                            e->get_data().m_value = e->get_data().m_value+1;
+                        } else {
+                            m_func_decl2occur_count.insert(r->get_decl(i), 1);
+                        }
+                    }
+                    continue;
+                }
 
                 // grounding
                 pred_vector m_ground(m); // TODO pointer to heap allocated object
@@ -125,6 +140,12 @@ namespace datalog {
                 rules.del_rule(r);
             }
 
+            // print func_decl occurence counters
+            std::cout << "func_decl occurence counts:" << std::endl;
+            for (func_decl2occur_count::iterator it = m_func_decl2occur_count.begin(); it != m_func_decl2occur_count.end(); ++it) {
+                std::cout << mk_pp(it->m_key, m) << " " << it->m_value << std::endl;
+            }
+
             // print collected predicates
             for (pred_abst_map::iterator it = m_pred_abst_map.begin(); it != m_pred_abst_map.end(); ++it) {
                 std::cout << "preds" << mk_pp(it->m_key, m) << std::endl;
@@ -144,21 +165,24 @@ namespace datalog {
                 rule * r = *it;
                 if (r->get_uninterpreted_tail_size() != 0) continue;
                 app * head = r->get_head();
-                std::cout << "rule head " << mk_pp(head, m) << "/" << head->get_num_args() << head->get_decl()->get_arity() << std::endl;
+                std::cout << "rule head " << mk_pp(head, m) << std::endl;
                 pred_abst_map::obj_map_entry * e = m_pred_abst_map.find_core(head->get_decl());
-                pred_vector const & preds = e ? *e->get_data().m_value : m_empty_preds;
+                pred_vector const & preds = e ? *e->get_data().get_value() : m_empty_preds;
                 std::cout << "found preds " << preds.size() << std::endl;
+                if (preds.size() == 0) {
+                    std::cout << "abstraction is true" << std::endl;
+                    continue;
+                }
+                // ground head
                 /*
-                std::cout << "sorts:";
                 expr_ref_vector m_ground(m);
                 unsigned arity = head->get_num_args();
                 m_ground.reserve(arity);
                 for (unsigned i = 0; i < arity; ++i) {
-                    std::cout << " " << mk_pp(head->get_decl()->get_domain(i), m);
                     m_ground[i] = m.mk_fresh_const("c", head->get_decl()->get_domain(i));
                 }
                 expr_ref tmp(head, m);
-                m_var_subst(head, m_ground.size(), m_ground.c_ptr(), tmp);
+                m_var_subst(head, m_ground.size(), m_ground.c_ptr(), tmp); // NOT NEEDED!
 
                 std::cout << "after subst " << mk_pp(tmp, m) << std::endl;
                 m_var_subst.reset();
@@ -202,6 +226,10 @@ namespace datalog {
         }
 
     private:
+
+        bool is_pred_def_rule(rule const & r) {
+            return true;
+        }
 
     };
 
