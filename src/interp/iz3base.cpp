@@ -18,6 +18,12 @@ Revision History:
 
 --*/
 
+#ifdef _WINDOWS
+#pragma warning(disable:4996)
+#pragma warning(disable:4800)
+#pragma warning(disable:4267)
+#pragma warning(disable:4101)
+#endif
 
 #include "iz3base.h"
 #include <stdio.h>
@@ -28,9 +34,7 @@ Revision History:
 #include "../smt/smt_solver.h"
 
 
-#ifndef WIN32
 using namespace stl_ext;
-#endif
 
 
 iz3base::range &iz3base::ast_range(ast t){
