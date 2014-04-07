@@ -1,3 +1,7 @@
+Now:
+
+adding substitution vector to each expr_ref_vector
+
 The plan:
 
 1. extract predicates from the clauses and keep them on the side.
