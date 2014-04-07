@@ -57,11 +57,17 @@ namespace datalog {
 
         func_decl2occur_count  m_func_decl2occur_count;
 
-        typedef expr_ref_vector pred_vector;
-        typedef obj_map<func_decl, pred_vector *> pred_abst_map;
+        expr_ref_vector            m_empty_preds;  // empty vector predicates 
 
+        typedef obj_map<func_decl, expr_ref_vector *> pred_abst_map;
         pred_abst_map          m_pred_abst_map; // map from predicate declarations to predicates
-        pred_vector            m_empty_preds;  // empty vector predicates 
+
+        typedef ptr_vector<expr_ref_vector> idx_expr_ref_vector;
+        idx_expr_ref_vector        m_empty_idx_expr_ref_vector;
+
+        typedef obj_map<func_decl, idx_expr_ref_vector *> idx_pred_abst_map;
+        idx_pred_abst_map      m_idx_pred_abst_map;
+
     public:
         imp(context& ctx):
             m_ctx(ctx), 
@@ -80,9 +86,13 @@ namespace datalog {
         }
 
         ~imp() {
-            for (pred_abst_map::iterator it = m_pred_abst_map.begin(); it != m_pred_abst_map.end(); ++it) {
+            for (idx_pred_abst_map::iterator it = m_idx_pred_abst_map.begin(); it != m_idx_pred_abst_map.end(); ++it) {
+                for (idx_expr_ref_vector::iterator it2 = it->m_value->begin(); it2 != it->m_value->end(); ++it2) { 
+                    dealloc(*it2);
+                }
                 dealloc(it->m_value);
             }
+            std::cout << "end ~imp" << std::endl;
         }        
 
         lbool query(expr* query) {
@@ -110,8 +120,8 @@ namespace datalog {
                     continue;
                 }
 
-                // grounding
-                pred_vector m_ground(m); // TODO pointer to heap allocated object
+                // prepare grounding
+                expr_ref_vector m_ground(m); // TODO pointer to heap allocated object
                 unsigned arity = head_decl->get_arity();
                 m_ground.reserve(arity);
                 for (unsigned i = 0; i < arity; ++i) {
@@ -119,11 +129,12 @@ namespace datalog {
                 }
 
                 // ground predicates
-                pred_vector * preds = alloc(pred_vector, m); 
-                expr_ref tmp(m);
+                expr_ref_vector * preds = alloc(expr_ref_vector, m); 
+                // TODO put tmp construction into for initialization block
+                expr_ref tmp(m); // TODO what happens to this one?
                 for (unsigned i = 0; i < r->get_tail_size(); ++i)  {
                     m_var_subst(r->get_tail(i), arity, m_ground.c_ptr(), tmp);
-                    preds->push_back(tmp); // TODO who destructs this pointer?
+                    preds->push_back(tmp); 
                 }
 
                 // create func_decl from suffix and map it to predicates
@@ -134,8 +145,11 @@ namespace datalog {
 #else
                 strncpy(suffix, &head_str[m_pred_symbol_prefix_size], suffix_size+1);
 #endif
+                idx_expr_ref_vector * idx_preds = alloc(idx_expr_ref_vector);
+                idx_preds->push_back(preds);
                 func_decl * d = r->get_decl();
-                m_pred_abst_map.insert(m.mk_func_decl(symbol(suffix), d->get_arity(), d->get_domain(), d->get_range()), preds);
+                m_idx_pred_abst_map.insert(m.mk_func_decl(symbol(suffix), d->get_arity(), d->get_domain(), d->get_range()), 
+                                           idx_preds);
                 // corresponding rule is not used for inference
                 rules.del_rule(r);
             }
@@ -147,49 +161,49 @@ namespace datalog {
             }
 
             // print collected predicates
-            for (pred_abst_map::iterator it = m_pred_abst_map.begin(); it != m_pred_abst_map.end(); ++it) {
-                std::cout << "preds" << mk_pp(it->m_key, m) << std::endl;
-                pred_vector * preds = it->m_value;
-
-                for (pred_vector::iterator it2 = preds->begin(); it2 != preds->end(); ++it2) {
-                    std::cout << " " << mk_pp(*it2, m);
-                }
+            for (idx_pred_abst_map::iterator it = m_idx_pred_abst_map.begin(); it != m_idx_pred_abst_map.end(); ++it) {
+                std::cout << "preds " << mk_pp(it->m_key, m) << ":";
+                for (idx_expr_ref_vector::iterator it2 = it->m_value->begin(); it2 != it->m_value->end(); ++it2) 
+                    for (expr_ref_vector::iterator it3 = (*it2)->begin(); it3 != (*it2)->end(); ++it3) 
+                        std::cout << " " << mk_pp(*it3, m);
                 std::cout << std::endl;
             }
+
 
             std::cout << "remaining rules "<< rules.get_num_rules() << std::endl;
             rules.display(std::cout);
 
             // simulate initial abstract step
+            /*
             for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
                 rule * r = *it;
                 if (r->get_uninterpreted_tail_size() != 0) continue;
                 app * head = r->get_head();
                 std::cout << "rule head " << mk_pp(head, m) << std::endl;
                 pred_abst_map::obj_map_entry * e = m_pred_abst_map.find_core(head->get_decl());
-                pred_vector const & preds = e ? *e->get_data().get_value() : m_empty_preds;
+                expr_ref_vector const & preds = e ? *e->get_data().get_value() : m_empty_preds;
                 std::cout << "found preds " << preds.size() << std::endl;
                 if (preds.size() == 0) {
                     std::cout << "abstraction is true" << std::endl;
                     continue;
                 }
                 // ground head
-                /*
-                expr_ref_vector m_ground(m);
-                unsigned arity = head->get_num_args();
-                m_ground.reserve(arity);
-                for (unsigned i = 0; i < arity; ++i) {
-                    m_ground[i] = m.mk_fresh_const("c", head->get_decl()->get_domain(i));
-                }
-                expr_ref tmp(head, m);
-                m_var_subst(head, m_ground.size(), m_ground.c_ptr(), tmp); // NOT NEEDED!
+  
+//                expr_ref_vector m_ground(m);
+//                unsigned arity = head->get_num_args();
+//                m_ground.reserve(arity);
+//                for (unsigned i = 0; i < arity; ++i) {
+//                    m_ground[i] = m.mk_fresh_const("c", head->get_decl()->get_domain(i));
+//                }
+//                expr_ref tmp(head, m);
+//                m_var_subst(head, m_ground.size(), m_ground.c_ptr(), tmp); // NOT NEEDED!
 
-                std::cout << "after subst " << mk_pp(tmp, m) << std::endl;
-                m_var_subst.reset();
-                std::cout << std::endl;
-                */
+//                std::cout << "after subst " << mk_pp(tmp, m) << std::endl;
+//                m_var_subst.reset();
+//                std::cout << std::endl;
+
             }
-
+            */
             return l_true;
         }
            
