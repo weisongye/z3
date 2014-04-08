@@ -129,33 +129,45 @@ namespace datalog {
 #else
                 strncpy(suffix, &head_str[m_pred_symbol_prefix_size], suffix_size+1);
 #endif
-                // prepare grounding constants
-                expr_ref_vector * subst = alloc(expr_ref_vector, m); 
+
+                expr_ref_vector subst_xxx(m);
                 unsigned head_arity = head_decl->get_arity();
-                subst->reserve(head_arity);
+                subst_xxx.resize(head_arity);
                 for (unsigned i = 0; i < head_arity; ++i) 
-                    subst->push_back(m.mk_fresh_const("c", head_decl->get_domain(i)));
-                // ground predicates
+                    subst_xxx[i] = m.mk_fresh_const("c", head_decl->get_domain(i));
+                //                    subst_xxx.push_back(m.mk_fresh_const("c", head_decl->get_domain(i)));
+
+                std::cout << "subst_xxx.size() = " << subst_xxx.size() << std::endl;
 
                 expr_ref_vector ground_preds_xxx(m);
                 ground_preds_xxx.reserve(r->get_tail_size());
                 expr_ref ground_pred_xxx(m);
                 for (unsigned i = 0; i < r->get_tail_size(); ++i) {
-                    m_var_subst(r->get_tail(i), head_arity, subst->c_ptr(), ground_pred_xxx);
+                    m_var_subst(r->get_tail(i), head_arity, subst_xxx.c_ptr(), ground_pred_xxx);
+                    std::cout << "after subst_xxx 1 " << mk_pp(ground_pred_xxx, m) << "#(" << i << ") " << head_arity 
+                              << std::endl;
                     ground_preds_xxx.push_back(ground_pred_xxx); 
-                    std::cout << mk_pp(ground_pred_xxx, m) << "#(" << i << ") ";
                 }
                 std::cout << std::endl;
 
+
+
+                // prepare grounding constants
+                expr_ref_vector * subst = alloc(expr_ref_vector, m); 
+                subst->reserve(head_arity);
+                for (unsigned i = 0; i < head_arity; ++i) 
+                    subst->push_back(m.mk_fresh_const("c", head_decl->get_domain(i)));
+                // ground predicates
+
                 std::cout << "added " << ground_preds_xxx.size() << std::endl;
                 std::cout << "last pred " << mk_pp(ground_pred_xxx, m) << std::endl;
-                std::cout << "stop here\n";
                 for (expr_ref_vector::iterator it = ground_preds_xxx.begin(); it != ground_preds_xxx.end(); ++it) {
                     expr  * pred =  * it;
-                    std::cout << "added pred " << mk_pp(pred, m) << std::endl;
+                    std::cout << "xxx added pred " << mk_pp(pred, m) << std::endl;
                 }
 
-                /*
+                std::cout << "stop here\n";
+
                 expr_ref_vector * ground_preds = alloc(expr_ref_vector, m); 
                 ground_preds->reserve(r->get_tail_size());
                 expr_ref ground_pred(m);
@@ -167,9 +179,11 @@ namespace datalog {
                 std::cout << std::endl;
                 std::cout << "added " << ground_preds->size() << std::endl;
                 std::cout << "last pred " << mk_pp(ground_pred, m) << std::endl;
+                //                std::cout << "ground_pred 0 " << mk_pp((*ground_preds)[0], m) << std::endl;
                 for (expr_ref_vector::iterator it = ground_preds->begin(); it != ground_preds->end(); ++it) {
                     expr  * pred =  * it;
-                    std::cout << "added pred " << mk_pp(pred, m) << std::endl;
+                    //                    std::cout << "added pred " << mk_pp(pred, m) << std::endl;
+                    std::cout << "added pred " << mk_pp(*it, m) << std::endl;
                 }
                 // store in ssa-ish vector and then into map
                 ssa_subst_preds_pairs subst_preds0; 
@@ -181,7 +195,7 @@ namespace datalog {
                 subst_preds0.push_back(std::make_pair(subst, ground_preds));
                 m_func_decl2ssa_subst_preds_pairs.insert(m.mk_func_decl(symbol(suffix), head_arity, head_decl->get_domain(), head_decl->get_range()),
                                                          subst_preds0); 
-                */
+
                 // corresponding rule is not used for inference
                 rules.del_rule(r);
             }
