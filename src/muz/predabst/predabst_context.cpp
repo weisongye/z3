@@ -61,6 +61,9 @@ namespace datalog {
         typedef obj_map<func_decl, ssa_subst_preds_pairs> func_decl2ssa_subst_preds_pairs;
         func_decl2ssa_subst_preds_pairs m_func_decl2ssa_subst_preds_pairs;
 
+        typedef obj_map<rule, expr *> rule2ground_body;
+        rule2ground_body m_rule2ground_body;
+
     public:
         imp(context& ctx):
             m_ctx(ctx), 
@@ -92,16 +95,27 @@ namespace datalog {
 
             datalog::rule_set & rules = m_ctx.get_rules();
 
+            std::cout << "begin original rules\n";
+            rules.display(std::cout);
+            std::cout << "end original rules\n";
+
             // update func_decl counters
             // collect predicates and delete corresponding rules
             for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
                 rule * r = *it;
                 func_decl * head_decl = r->get_decl();
                 char const * head_str = head_decl->get_name().bare_str();
+                std::cout << "---------------------------------------\n";
+                std::cout << " here -1: " << r->get_uninterpreted_tail_size() << std::endl;
+                r->display(m_ctx, std::cout);
+
                 if (r->get_uninterpreted_tail_size() != 0 
                     || memcmp(head_str, m_pred_symbol_prefix, m_pred_symbol_prefix_size)
                     ) {
+                    std::cout << " here0: " << r->get_uninterpreted_tail_size() << std::endl;
+                    r->display(m_ctx, std::cout);
                     for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) {
+                        std::cout << " here1 \n";
                         func_decl2occur_count::obj_map_entry * e = m_func_decl2occur_count.find_core(r->get_decl(i));
                         if (e) {
                             e->get_data().m_value = e->get_data().m_value+1;
@@ -111,7 +125,6 @@ namespace datalog {
                     }
                     continue;
                 }
-
                 // create func_decl from suffix and map it to predicates
                 unsigned suffix_size = strlen(head_str)-m_pred_symbol_prefix_size;
                 char * suffix = new char[suffix_size+1];
@@ -143,7 +156,7 @@ namespace datalog {
                 rules.del_rule(r);
             }
 
-            // OBSOLETE print func_decl occurence counters
+            // print func_decl occurence counters
             std::cout << "func_decl occurence counts:" << std::endl;
             for (func_decl2occur_count::iterator it = m_func_decl2occur_count.begin(); it != m_func_decl2occur_count.end(); ++it) 
                 std::cout << mk_pp(it->m_key, m) << " " << it->m_value << std::endl;

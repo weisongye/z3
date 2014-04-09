@@ -1,6 +1,6 @@
 Now:
 
-adding substitution vector to each expr_ref_vector
+ground rule body
 
 The plan:
 
