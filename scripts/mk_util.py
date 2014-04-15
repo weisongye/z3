@@ -1298,13 +1298,30 @@ class JavaDLLComponent(Component):
             shutil.copy(os.path.join(build_path, 'libz3java.%s' % so), 
                         os.path.join(dist_path, 'bin', 'libz3java.%s' % so))
 
-
 class MLComponent(Component):
     def __init__(self, name, lib_name, path, deps):
         Component.__init__(self, name, path, deps)
         if lib_name == None:
             lib_name = name
-        self.lib_name     = lib_name
+        self.lib_name = lib_name
+
+    def mk_ml_meta(self, ml_meta_in, ml_meta_out, major, minor, build, revision):
+        ver_pat   = re.compile('version = "VERSION"*')
+        fin  = open(ml_meta_in, 'r')
+        fout = open(ml_meta_out, 'w')
+        num_updates = 0
+        for line in fin:
+            if ver_pat.match(line):
+                fout.write('version = "%s.%s.%s.%s"\n' % (major, minor, build, revision))
+                num_updates = num_updates + 1
+            else:
+                fout.write(line)
+        assert num_updates == 1, "unexpected number of version number updates"
+        fin.close()
+        fout.close()
+        if VERBOSE:
+            print("Updated '%s'" % ml_meta_out)
+                        
 
     def mk_makefile(self, out):
         if is_ml_enabled():
@@ -1343,7 +1360,7 @@ class MLComponent(Component):
             out.write('api/ml/libz3ml$(LIB_EXT): api/ml/z3native.c %s$(SO_EXT)\n' % get_component(Z3_DLL_COMPONENT).dll_name)
             out.write('\t$(CXX) $(CXXFLAGS) -I %s -I %s %s/z3native.c $(CXX_OUT_FLAG)api/ml/z3native$(OBJ_EXT)\n' % (OCAML_LIB, api_src, sub_dir))
             out.write('\t$(AR) $(AR_FLAGS) $(AR_OUTFLAG)api/ml/libz3ml$(LIB_EXT) api/ml/z3native$(OBJ_EXT)\n')
-            out.write('api/ml/z3.cmxa: api/ml/libz3ml$(LIB_EXT) %s$(SO_EXT) %s' % (get_component(Z3_DLL_COMPONENT).dll_name, cmis))
+            out.write('%s: api/ml/libz3ml$(LIB_EXT) %s$(SO_EXT) %s' % (os.path.join(sub_dir, 'z3.cmxa'), get_component(Z3_DLL_COMPONENT).dll_name, cmis))
             for mlfile in get_ml_files(self.src_dir):
                 out.write(' %s' % os.path.join(sub_dir, mlfile))
             out.write('\n')
@@ -1351,7 +1368,7 @@ class MLComponent(Component):
             if DEBUG_MODE:
                 out.write('-g ')
             out.write('-cclib "-L../.. -lz3ml" -I %s %s/z3enums.ml %s/z3native.ml %s/z3.ml -a -o api/ml/z3.cmxa -linkall\n' % (sub_dir,sub_dir,sub_dir,sub_dir))
-            out.write('api/ml/z3.cma: api/ml/libz3ml$(LIB_EXT) %s$(SO_EXT) %s' % (get_component(Z3_DLL_COMPONENT).dll_name, cmis))
+            out.write('%s: api/ml/libz3ml$(LIB_EXT) %s$(SO_EXT) %s' % (os.path.join(sub_dir, 'z3.cma'), get_component(Z3_DLL_COMPONENT).dll_name, cmis))
             for mlfile in get_ml_files(self.src_dir):
                 out.write(' %s' % os.path.join(sub_dir, mlfile))
             out.write('\n')
@@ -1361,6 +1378,13 @@ class MLComponent(Component):
             out.write('-cclib "-L../.. -lz3ml" -I %s %s/z3enums.ml %s/z3native.ml %s/z3.ml -a -o api/ml/z3.cma -linkall\n' % (sub_dir,sub_dir,sub_dir,sub_dir))
             out.write('ml: api/ml/z3.cmxa api/ml/z3.cma\n')
             out.write('\n')
+            # Generate META file and package installation commands
+            self.mk_ml_meta(os.path.join('src/api/ml/META'), os.path.join(BUILD_DIR, sub_dir, 'META'), VER_MAJOR, VER_MINOR, VER_BUILD, VER_REVISION)
+            out.write('ocamlfind_install: api/ml/z3.cma api/ml/z3.cmxa\n')
+            out.write('\tocamlfind remove Z3\n')
+            out.write('\tocamlfind install Z3 api/ml/META api/ml/z3.cma api/ml/z3.cmxa api/ml/z3.lib api/ml/libz3ml.lib libz3.lib libz3.dll\n')
+            out.write('\n')
+
     
     def main_component(self):
         return is_ml_enabled()
@@ -1783,7 +1807,10 @@ def mk_config():
                 print('OCaml Library:  %s' % OCAML_LIB)
 
 def mk_install(out):
-    out.write('install:\n')
+    out.write('install: ')
+    if is_ml_enabled():
+        print 'ocamlfind_install'
+    print ('\n')
     out.write('\t@mkdir -p %s\n' % os.path.join('$(PREFIX)', 'bin'))
     out.write('\t@mkdir -p %s\n' % os.path.join('$(PREFIX)', 'include'))
     out.write('\t@mkdir -p %s\n' % os.path.join('$(PREFIX)', 'lib'))
@@ -1804,7 +1831,7 @@ def mk_install(out):
         out.write('\t@echo Z3 shared libraries were installed at \'%s\', make sure this directory is in your %s environment variable.\n' %
                   (os.path.join(PREFIX, 'lib'), LD_LIBRARY_PATH))
         out.write('\t@echo Z3Py was installed at \'%s\', make sure this directory is in your PYTHONPATH environment variable.' % PYTHON_PACKAGE_DIR)
-    out.write('\n')    
+    out.write('\n')
 
 def mk_uninstall(out):
     out.write('uninstall:\n')
