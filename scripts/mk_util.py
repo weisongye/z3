@@ -1812,8 +1812,8 @@ def mk_config():
 def mk_install(out):
     out.write('install: ')
     if is_ml_enabled():
-        print 'ocamlfind_install'
-    print ('\n')
+        out.write'ocamlfind_install'
+    out.write('\n')
     out.write('\t@mkdir -p %s\n' % os.path.join('$(PREFIX)', 'bin'))
     out.write('\t@mkdir -p %s\n' % os.path.join('$(PREFIX)', 'include'))
     out.write('\t@mkdir -p %s\n' % os.path.join('$(PREFIX)', 'lib'))
