@@ -56,7 +56,7 @@ namespace datalog {
         typedef obj_map<func_decl, unsigned> func_decl2occur_count;
         func_decl2occur_count  m_func_decl2occur_count;
 
-        typedef svector<std::pair<expr_ref_vector *, expr_ref_vector *>> ssa_subst_preds_pairs;
+        typedef svector<std::pair<expr_ref_vector *, expr_ref_vector *> > ssa_subst_preds_pairs;
         ssa_subst_preds_pairs m_empty_ssa_subst_preds_pairs;
         typedef obj_map<func_decl, ssa_subst_preds_pairs> func_decl2ssa_subst_preds_pairs;
         func_decl2ssa_subst_preds_pairs m_func_decl2ssa_subst_preds_pairs;
@@ -99,23 +99,17 @@ namespace datalog {
             rules.display(std::cout);
             std::cout << "end original rules\n";
 
-            // update func_decl counters
-            // collect predicates and delete corresponding rules
+            // these rules define predicates
+            ptr_vector<rule> rules_to_delete;
+            // update func_decl counters and collect predicates 
             for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
                 rule * r = *it;
                 func_decl * head_decl = r->get_decl();
                 char const * head_str = head_decl->get_name().bare_str();
-                std::cout << "---------------------------------------\n";
-                std::cout << " here -1: " << r->get_uninterpreted_tail_size() << std::endl;
-                r->display(m_ctx, std::cout);
-
                 if (r->get_uninterpreted_tail_size() != 0 
                     || memcmp(head_str, m_pred_symbol_prefix, m_pred_symbol_prefix_size)
                     ) {
-                    std::cout << " here0: " << r->get_uninterpreted_tail_size() << std::endl;
-                    r->display(m_ctx, std::cout);
                     for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) {
-                        std::cout << " here1 \n";
                         func_decl2occur_count::obj_map_entry * e = m_func_decl2occur_count.find_core(r->get_decl(i));
                         if (e) {
                             e->get_data().m_value = e->get_data().m_value+1;
@@ -153,8 +147,11 @@ namespace datalog {
                 m_func_decl2ssa_subst_preds_pairs.insert(m.mk_func_decl(symbol(suffix), head_arity, head_decl->get_domain(), head_decl->get_range()),
                                                          subst_preds0); 
                 // corresponding rule is not used for inference
-                rules.del_rule(r);
+                rules_to_delete.push_back(r);
             }
+            // delete rules that define predicates
+            for (ptr_vector<rule>::iterator it = rules_to_delete.begin(); it != rules_to_delete.end(); ++it)
+                rules.del_rule(*it);
 
             // print func_decl occurence counters
             std::cout << "func_decl occurence counts:" << std::endl;
