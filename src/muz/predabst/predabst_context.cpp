@@ -45,8 +45,6 @@ namespace datalog {
     smt_params             m_fparams;     // parameters specific to smt solving
     smt::kernel            m_solver;      // basic SMT solver class
     var_subst              m_var_subst;   // substitution object. It gets updated and reset.
-    expr_ref_vector        m_ground;      // vector of ground formulas during a search branch.
-    app_ref_vector         m_goals;       // vector of recursive predicates in the SLD resolution tree.
     volatile bool          m_cancel;      // Boolean flag to track external cancelation.
     stats                  m_stats;       // statistics information specific to the CLP module.
 
@@ -60,7 +58,7 @@ namespace datalog {
     typedef u_map<expr *> id2expr;
     id2expr m_rule2gbody;
 
-    typedef u_map<ptr_vector<expr_ref_vector> > id2preds_vector;
+    typedef u_map<vector<expr_ref_vector> > id2preds_vector;
     id2preds_vector m_rule2gpreds_vector;
 
     ast_ref_vector m_ast_trail;
@@ -72,8 +70,6 @@ namespace datalog {
       rm(ctx.get_rule_manager()),
       m_solver(m, m_fparams),  
       m_var_subst(m, false),
-      m_ground(m),
-      m_goals(m),
       m_cancel(false),
       m_ast_trail(m)
     {
@@ -107,13 +103,6 @@ namespace datalog {
 	if (r->get_uninterpreted_tail_size() != 0 
 	    || memcmp(head_str, m_pred_symbol_prefix, m_pred_symbol_prefix_size)
 	    ) {
-	  /* OBSOLETE
-	    func_decl2occur_count::obj_map_entry * e = m_func_decl2occur_count.find_core(r->get_decl(i));
-	    if (e) {
-	      e->get_data().m_value = e->get_data().m_value+1;
-	    } else {
-	      m_func_decl2occur_count.insert(r->get_decl(i), 1);
-	    } */
 	  continue; 
 	}
 	// create func_decl from suffix and map it to predicates
@@ -135,11 +124,10 @@ namespace datalog {
 	  (*preds)[i] = r->get_tail(i);
 	m_func_decl2vars_preds.
 	  insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
-	// corresponding rule is not used for inference
+	// rule is not used for inference
 	rules.del_rule(r);
       }
 
-      // print collected predicates
       std::cout << "collected predicates:" << std::endl;
       for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
 	     end = m_func_decl2vars_preds.end(); it != end; ++it) {
@@ -168,21 +156,66 @@ namespace datalog {
 	conjs.reserve(r->get_tail_size() - r->get_uninterpreted_tail_size());
 	for (unsigned i = r->get_uninterpreted_tail_size(); 
 	     i < r->get_tail_size(); ++i)
-	  conjs[i] = r->get_tail(i);
+	  conjs[i - r->get_uninterpreted_tail_size()] = r->get_tail(i);
 	expr_ref conj(m.mk_and(conjs.size(), conjs.c_ptr()), m);
 	// apply substitution
 	m_var_subst(conj, free_sorts.size(), rule_subst.c_ptr(), conj);
 	m_ast_trail.push_back(conj);
 	// store ground body
 	m_rule2gbody.insert(r_id, conj);
-	ptr_vector<expr_ref_vector> * gpreds_vector = 
-	  new ptr_vector<expr_ref_vector>;
-	if (!rules.is_output_predicate(r->get_decl())) {
-	  ;
+	// store instantiated predicates
+	vector<expr_ref_vector> gpreds_vector;
+	func_decl & head_decl = *r->get_decl();
+	if (!rules.is_output_predicate(&head_decl)) {
+	  expr * const * vars;
+	  expr_ref_vector preds(m);
+	  std::pair<expr * const *, expr_ref_vector *> vars_preds =
+	    std::make_pair(vars, &preds);
+          m_func_decl2vars_preds.find(r->get_decl(), vars_preds);
+	  if (!vars_preds.second->empty()) {
+	    // ground rule head
+	    expr_ref subst_tmp(m);
+	    m_var_subst(r->get_head(), free_sorts.size(), rule_subst.c_ptr(), 
+			subst_tmp);
+	    // instantiation maps preds variables to head arguments
+	    expr_ref_vector preds_subst(m);
+	    preds_subst.reserve(head_decl.get_arity());
+	    app & ghead_app = *to_app(subst_tmp);
+	    for (unsigned i = 0; i < head_decl.get_arity(); ++i) {
+	      unsigned idx = to_var(vars_preds.first[i])->get_idx();
+	      if (idx >= preds_subst.size()) {
+		preds_subst.resize(idx+1);
+	      }
+	      preds_subst[idx] = ghead_app.get_arg(i);
+	    }
+	    // preds instantiates to gpreds
+	    expr_ref_vector gpreds(m);
+	    gpreds.reserve(vars_preds.second->size());
+	    for (unsigned i = 0; i< vars_preds.second->size(); ++i) {	      
+	      m_var_subst((*vars_preds.second)[i].get(), preds_subst.size(), 
+			  preds_subst.c_ptr(), subst_tmp);
+              gpreds[i] = subst_tmp;
+	    }
+	    gpreds_vector.push_back(gpreds);
+	  } else {
+	    gpreds_vector.push_back(preds);
+	  }
         }
-	gpreds_vector->reserve(r->get_uninterpreted_tail_size() + 
-			       rules.is_output_predicate(r->get_decl())? 1: 0);
+	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
       }
+
+      std::cout << "instantiated predicates" << std::endl;
+      for (unsigned r_id = 0; r_id < m_rule2gpreds_vector.size(); ++r_id) {
+	std::cout << "rule " << r_id << " " << mk_pp(rules.get_rule(r_id)->get_decl(), m) << std::endl;
+	vector<expr_ref_vector> gpreds_vector;
+	m_rule2gpreds_vector.find(r_id, gpreds_vector);
+	for (unsigned i = 0; i < gpreds_vector.size(); ++i) {
+	  std::cout << "     #" << i << "(" << gpreds_vector[i].size() << "): ";
+	  for (unsigned j = 0; j < gpreds_vector[i].size(); ++j) 
+ 	    std::cout << mk_pp(gpreds_vector[i][j].get(), m);
+	  std::cout << std::endl;
+	}
+      } 
 
       // simulate initial abstract step
       /*
@@ -227,7 +260,6 @@ namespace datalog {
     void cleanup() {
       m_cancel = false;
       // TBD hmm?
-      m_goals.reset();
       m_solver.reset_cancel();
     }
 
