@@ -53,25 +53,16 @@ namespace datalog {
     static char const * const m_pred_symbol_prefix; // prefix for predicate containing rules
     static unsigned const  m_pred_symbol_prefix_size; // prefix for predicate containing rules
 
-    typedef obj_map<func_decl, unsigned> func_decl2occur_count;
-    func_decl2occur_count  m_func_decl2occur_count;
-
-    typedef svector<std::pair<expr_ref_vector *, expr_ref_vector *> > ssa_subst_preds_pairs;
-    ssa_subst_preds_pairs m_empty_ssa_subst_preds_pairs;
-    typedef obj_map<func_decl, ssa_subst_preds_pairs> func_decl2ssa_subst_preds_pairs;
-    func_decl2ssa_subst_preds_pairs m_func_decl2ssa_subst_preds_pairs;
-
-    typedef obj_map<app, expr_ref_vector *> app2preds;
-    app2preds m_app2preds;
+    typedef obj_map<func_decl, std::pair<expr * const *, expr_ref_vector *> > 
+    func_decl2vars_preds;
+    func_decl2vars_preds m_func_decl2vars_preds;
 
     typedef u_map<expr *> id2expr;
     id2expr m_rule2gbody;
 
-    // OBSOLETE
-    typedef obj_map<rule, expr *> rule2ground_body; // TODO use unsigned
-    rule2ground_body m_rule2ground_body;
+    typedef u_map<ptr_vector<expr_ref_vector> > id2preds_vector;
+    id2preds_vector m_rule2gpreds_vector;
 
-        
     ast_ref_vector m_ast_trail;
 
   public:
@@ -92,15 +83,9 @@ namespace datalog {
     }
 
     ~imp() {
-      for (func_decl2ssa_subst_preds_pairs::iterator it = m_func_decl2ssa_subst_preds_pairs.begin();
-	   it != m_func_decl2ssa_subst_preds_pairs.end(); ++it) 
-	for (ssa_subst_preds_pairs::iterator it2 = it->m_value.begin(); it2 != it->m_value.end(); ++it2) {
-	  dealloc(it2->first);
-	  dealloc(it2->second);
-	}
-      for (app2preds::iterator it = m_app2preds.begin(), 
-	     end = m_app2preds.end(); it != end; ++it) 
-	dealloc(it->m_value);
+      for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(), 
+	     end = m_func_decl2vars_preds.end(); it != end; ++it) 
+	dealloc(it->m_value.second);
     }        
 
     lbool query(expr* query) {
@@ -112,7 +97,6 @@ namespace datalog {
       rules.display(std::cout);
       std::cout << "end original rules\n";
 
-      // update func_decl counters
       // collect predicates and delete corresponding rules
       for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
 	   rules_it != rules_end; ++rules_it) {
@@ -124,18 +108,12 @@ namespace datalog {
 	    || memcmp(head_str, m_pred_symbol_prefix, m_pred_symbol_prefix_size)
 	    ) {
 	  /* OBSOLETE
-	  std::cout << " here0: " << r->get_uninterpreted_tail_size() << std::endl;
-	  r->display(m_ctx, std::cout);
-	  for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) {
-	    std::cout << " here1 \n";
 	    func_decl2occur_count::obj_map_entry * e = m_func_decl2occur_count.find_core(r->get_decl(i));
 	    if (e) {
 	      e->get_data().m_value = e->get_data().m_value+1;
 	    } else {
 	      m_func_decl2occur_count.insert(r->get_decl(i), 1);
-	    }
-	  }
-	  */
+	    } */
 	  continue; 
 	}
 	// create func_decl from suffix and map it to predicates
@@ -146,73 +124,31 @@ namespace datalog {
 #else   // strncpy_s is not available outside Windows
 	strncpy(suffix, &head_str[m_pred_symbol_prefix_size], suffix_size+1);
 #endif
-	/* OBSOLETE
-	// prepare grounding constants
-	expr_ref_vector * subst = alloc(expr_ref_vector, m); 
-	unsigned head_arity = head_decl->get_arity();
-	subst->reserve(head_arity);
-	for (unsigned i = 0; i < head_arity; ++i) 
-	  (*subst)[i] = m.mk_fresh_const("c", head_decl->get_domain(i));
-	// ground predicates
-	expr_ref_vector * ground_preds = alloc(expr_ref_vector, m); 
-	ground_preds->reserve(r->get_tail_size());
-	expr_ref ground_pred(m);
-	for (unsigned i = 0; i < r->get_tail_size(); ++i) {
-	  m_var_subst(r->get_tail(i), head_arity, subst->c_ptr(), ground_pred);
-	  (*ground_preds)[i] = ground_pred; 
-	}
-	// store in ssa-ish vector and then into map
-	ssa_subst_preds_pairs subst_preds0; 
-	subst_preds0.push_back(std::make_pair(subst, ground_preds));
-	*/
-		
 	func_decl * suffix_decl = 
 	  m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
 			 head_decl->get_domain(), head_decl->get_range());
-
-	app * suffix_app = m.mk_app(suffix_decl, r->get_head()->get_args());
-	m_ast_trail.push_back(suffix_app);
-
-	// OBSOLETE	m_func_decl2ssa_subst_preds_pairs.insert(suffix_decl, subst_preds0); 
-
-	// add predicates to app2preds 
+	m_ast_trail.push_back(suffix_decl);
+	// add predicates to m_func_decl2vars_preds
 	expr_ref_vector * preds = alloc(expr_ref_vector, m);
 	preds->reserve(r->get_tail_size());
 	for (unsigned i = 0; i < r->get_tail_size(); ++i) 
 	  (*preds)[i] = r->get_tail(i);
-	m_app2preds.insert(suffix_app, preds);
-
+	m_func_decl2vars_preds.
+	  insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
 	// corresponding rule is not used for inference
 	rules.del_rule(r);
       }
 
-      /* OBSOLETE
-      // print func_decl occurence counters
-      std::cout << "func_decl occurence counts:" << std::endl;
-      for (func_decl2occur_count::iterator it = m_func_decl2occur_count.begin(); it != m_func_decl2occur_count.end(); ++it) 
-	std::cout << mk_pp(it->m_key, m) << " " << it->m_value << std::endl;
-      */
-
       // print collected predicates
       std::cout << "collected predicates:" << std::endl;
-      for (app2preds::iterator it = m_app2preds.begin(), 
-	     end = m_app2preds.end();  it != end; ++it) {
-	std::cout << "preds " << mk_pp(it->m_key, m) << ":";
-	for (expr_ref_vector::iterator it2 = it->m_value->begin(),
-	       end2 = it->m_value->end(); it2 != end2; ++it2) 
+      for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
+	     end = m_func_decl2vars_preds.end(); it != end; ++it) {
+	std::cout << "preds " << mk_pp(it->m_key, m) << ":"; 
+	for (expr_ref_vector::iterator it2 = it->m_value.second->begin(),
+	       end2 = it->m_value.second->end(); it2 != end2; ++it2) 
 	  std::cout << " " << mk_pp(*it2, m);
 	std::cout << std::endl;
-      }
-      /* OBSOLETE
-      for (func_decl2ssa_subst_preds_pairs::iterator it = m_func_decl2ssa_subst_preds_pairs.begin();
-	   it != m_func_decl2ssa_subst_preds_pairs.end(); ++it) {
-	std::cout << "preds " << mk_pp(it->m_key, m) << ":";
-	for (ssa_subst_preds_pairs::iterator it2 = it->m_value.begin(); it2 != it->m_value.end(); ++it2) 
-	  for (expr_ref_vector::iterator it3 = it2->second->begin(); it3 != it2->second->end(); ++it3) 
-	    std::cout << " " << mk_pp(*it3, m);
-	std::cout << std::endl;
-      }
-      */
+      } 
 
       std::cout << "remaining rules "<< rules.get_num_rules() << std::endl;
       rules.display(std::cout);
@@ -222,14 +158,14 @@ namespace datalog {
 	rule * r = rules.get_rule(r_id);
 	// prepare grounding substitution
 	ptr_vector<sort> free_sorts;
-	r->get_vars(free_sorts);
+	r->get_vars(m, free_sorts);
 	expr_ref_vector rule_subst(m);
 	rule_subst.reserve(free_sorts.size());
 	for (unsigned i = 0; i < free_sorts.size(); ++i) 
 	  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
 	// conjoin constraints in rule body 
 	expr_ref_vector conjs(m);
-	conjs.reserve(r->get_tail_size()-r->get_uninterpreted_tail_size());
+	conjs.reserve(r->get_tail_size() - r->get_uninterpreted_tail_size());
 	for (unsigned i = r->get_uninterpreted_tail_size(); 
 	     i < r->get_tail_size(); ++i)
 	  conjs[i] = r->get_tail(i);
@@ -239,6 +175,13 @@ namespace datalog {
 	m_ast_trail.push_back(conj);
 	// store ground body
 	m_rule2gbody.insert(r_id, conj);
+	ptr_vector<expr_ref_vector> * gpreds_vector = 
+	  new ptr_vector<expr_ref_vector>;
+	if (!rules.is_output_predicate(r->get_decl())) {
+	  ;
+        }
+	gpreds_vector->reserve(r->get_uninterpreted_tail_size() + 
+			       rules.is_output_predicate(r->get_decl())? 1: 0);
       }
 
       // simulate initial abstract step
