@@ -61,6 +61,8 @@ namespace datalog {
     typedef u_map<vector<expr_ref_vector> > id2preds_vector;
     id2preds_vector m_rule2gpreds_vector;
 
+    expr_ref_vector m_empty_preds;
+
     ast_ref_vector m_ast_trail;
 
   public:
@@ -71,6 +73,7 @@ namespace datalog {
       m_solver(m, m_fparams),  
       m_var_subst(m, false),
       m_cancel(false),
+      m_empty_preds(m),
       m_ast_trail(m)
     {
       // m_fparams.m_relevancy_lvl = 0;
@@ -132,9 +135,7 @@ namespace datalog {
       for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
 	     end = m_func_decl2vars_preds.end(); it != end; ++it) {
 	std::cout << "preds " << mk_pp(it->m_key, m) << ":"; 
-	for (expr_ref_vector::iterator it2 = it->m_value.second->begin(),
-	       end2 = it->m_value.second->end(); it2 != end2; ++it2) 
-	  std::cout << " " << mk_pp(*it2, m);
+	print_expr_ref_vector(*(it->m_value.second));
 	std::cout << std::endl;
       } 
 
@@ -149,70 +150,44 @@ namespace datalog {
 	r->get_vars(m, free_sorts);
 	expr_ref_vector rule_subst(m);
 	rule_subst.reserve(free_sorts.size());
-	for (unsigned i = 0; i < free_sorts.size(); ++i) 
+	for (unsigned i = 0; i < rule_subst.size(); ++i) 
 	  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
 	// conjoin constraints in rule body 
 	expr_ref_vector conjs(m);
-	conjs.reserve(r->get_tail_size() - r->get_uninterpreted_tail_size());
-	for (unsigned i = r->get_uninterpreted_tail_size(); 
-	     i < r->get_tail_size(); ++i)
-	  conjs[i - r->get_uninterpreted_tail_size()] = r->get_tail(i);
+	conjs.reserve(r->get_tail_size()-r->get_uninterpreted_tail_size());
+	for (unsigned i=r->get_uninterpreted_tail_size(); 
+	     i<r->get_tail_size(); ++i)
+	  conjs[i-r->get_uninterpreted_tail_size()] = r->get_tail(i);
 	expr_ref conj(m.mk_and(conjs.size(), conjs.c_ptr()), m);
 	// apply substitution
-	m_var_subst(conj, free_sorts.size(), rule_subst.c_ptr(), conj);
+	m_var_subst(conj, rule_subst.size(), rule_subst.c_ptr(), conj);
 	m_ast_trail.push_back(conj);
 	// store ground body
 	m_rule2gbody.insert(r_id, conj);
 	// store instantiated predicates
 	vector<expr_ref_vector> gpreds_vector;
-	func_decl & head_decl = *r->get_decl();
-	if (!rules.is_output_predicate(&head_decl)) {
-	  expr * const * vars;
-	  expr_ref_vector preds(m);
-	  std::pair<expr * const *, expr_ref_vector *> vars_preds =
-	    std::make_pair(vars, &preds);
-          m_func_decl2vars_preds.find(r->get_decl(), vars_preds);
-	  if (!vars_preds.second->empty()) {
-	    // ground rule head
-	    expr_ref subst_tmp(m);
-	    m_var_subst(r->get_head(), free_sorts.size(), rule_subst.c_ptr(), 
-			subst_tmp);
-	    // instantiation maps preds variables to head arguments
-	    expr_ref_vector preds_subst(m);
-	    preds_subst.reserve(head_decl.get_arity());
-	    app & ghead_app = *to_app(subst_tmp);
-	    for (unsigned i = 0; i < head_decl.get_arity(); ++i) {
-	      unsigned idx = to_var(vars_preds.first[i])->get_idx();
-	      if (idx >= preds_subst.size()) {
-		preds_subst.resize(idx+1);
-	      }
-	      preds_subst[idx] = ghead_app.get_arg(i);
-	    }
-	    // preds instantiates to gpreds
-	    expr_ref_vector gpreds(m);
-	    gpreds.reserve(vars_preds.second->size());
-	    for (unsigned i = 0; i< vars_preds.second->size(); ++i) {	      
-	      m_var_subst((*vars_preds.second)[i].get(), preds_subst.size(), 
-			  preds_subst.c_ptr(), subst_tmp);
-              gpreds[i] = subst_tmp;
-	    }
-	    gpreds_vector.push_back(gpreds);
-	  } else {
-	    gpreds_vector.push_back(preds);
-	  }
-        }
+	// store instantiation for body applications
+	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i) 
+	  gpreds_vector.push_back(app_instantiate_preds(r->get_tail(i), 
+							rule_subst));
+	// store instantiation for non-query head
+	if (!rules.is_output_predicate(r->get_decl())) 
+	  gpreds_vector.push_back(app_instantiate_preds(r->get_head(), 
+							rule_subst));
 	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
       }
 
       std::cout << "instantiated predicates" << std::endl;
-      for (unsigned r_id = 0; r_id < m_rule2gpreds_vector.size(); ++r_id) {
-	std::cout << "rule " << r_id << " " << mk_pp(rules.get_rule(r_id)->get_decl(), m) << std::endl;
+      for (unsigned r_id=0; r_id<m_rule2gpreds_vector.size(); ++r_id) {
+	rules.get_rule(r_id)->display(m_ctx, std::cout);
+	expr * gbody;
+	m_rule2gbody.find(r_id, gbody);
+	std::cout << "inst body " << mk_pp(gbody, m) << std::endl;
 	vector<expr_ref_vector> gpreds_vector;
 	m_rule2gpreds_vector.find(r_id, gpreds_vector);
-	for (unsigned i = 0; i < gpreds_vector.size(); ++i) {
-	  std::cout << "     #" << i << "(" << gpreds_vector[i].size() << "): ";
-	  for (unsigned j = 0; j < gpreds_vector[i].size(); ++j) 
- 	    std::cout << mk_pp(gpreds_vector[i][j].get(), m);
+	for (unsigned i=0; i<gpreds_vector.size(); ++i) {
+	  std::cout << "  #" << i << "(" << gpreds_vector[i].size() << "): ";
+	  print_expr_ref_vector(gpreds_vector[i]);
 	  std::cout << std::endl;
 	}
       } 
@@ -250,8 +225,7 @@ namespace datalog {
       */
       return l_true;
     }
-           
-    
+
     void cancel() {
       m_cancel = true;
       m_solver.cancel();
@@ -286,6 +260,69 @@ namespace datalog {
 
     bool is_pred_def_rule(rule const & r) {
       return true;
+    }
+
+    expr_ref_vector app_instantiate_preds(app * app, 
+					  expr_ref_vector const & subst) {
+      expr * const * vars;
+      std::pair<expr * const *, expr_ref_vector *> vars_preds =
+	std::make_pair(vars, &m_empty_preds);
+      m_func_decl2vars_preds.find(app->get_decl(), vars_preds);
+      if (!vars_preds.second->empty()) {
+	std::cout << "start app_instantiate_preds" << std::endl;
+	std::cout << "app " << mk_pp(app, m) << std::endl;
+	std::cout << "vars ";
+	for (unsigned i=0; i<app->get_num_args(); ++i)
+	  std::cout << mk_pp(vars_preds.first[i], m);
+	std::cout << std::endl << "preds " << vars_preds.second->size() << " ";
+	print_expr_ref_vector(vars_preds.second);
+	std::cout << std::endl;
+	// ground app arguments
+	expr_ref subst_tmp(m);
+	m_var_subst(app, subst.size(), subst.c_ptr(), subst_tmp);
+	std::cout << "ground app " << mk_pp(subst_tmp, m) << std::endl;
+	// instantiation maps preds variables to head arguments
+	expr_ref_vector inst(m);
+	inst.reserve(app->get_num_args());
+	//	app & ghead_app = *to_app(subst_tmp);
+	for (unsigned i=0; i<app->get_num_args(); ++i) {
+	  unsigned idx = to_var(vars_preds.first[i])->get_idx();
+	  if (idx>=inst.size())
+	    inst.resize(idx+1);
+	  //	  inst[idx] = ghead_app.get_arg(i);
+	  inst[idx] = to_app(subst_tmp)->get_arg(i);
+	}
+	std::cout << "inst " << inst.size() << " ";
+	print_expr_ref_vector(inst);
+	std::cout << std::endl;
+	// preds instantiates to inst_preds
+	expr_ref_vector inst_preds(m);
+	inst_preds.reserve(vars_preds.second->size());
+	for (unsigned i=0; i<vars_preds.second->size(); ++i) {	      
+	  m_var_subst((*vars_preds.second)[i].get(), inst.size(), inst.c_ptr(), 
+		      subst_tmp);
+	  inst_preds[i] = subst_tmp;
+	}
+	return inst_preds;
+      } else {
+	return m_empty_preds;
+      }
+    }
+
+    void print_expr_ref_vector(expr_ref_vector const & v) {
+      unsigned size = v.size();
+      for (unsigned i = 0; i < size; ++i) {
+	std::cout << mk_pp(v[i], m);
+	if (i < size-1) std::cout << ", ";
+      }
+    }
+
+    void print_expr_ref_vector(expr_ref_vector * v) {
+      unsigned size = v->size();
+      for (unsigned i = 0; i < size; ++i) {
+	std::cout << mk_pp((*v)[i].get(), m);
+	if (i < size-1) std::cout << ", ";
+      }
     }
 
   };
