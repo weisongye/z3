@@ -168,12 +168,10 @@ namespace datalog {
 	vector<expr_ref_vector> gpreds_vector;
 	// store instantiation for body applications
 	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i) 
-	  gpreds_vector.push_back(app_instantiate_preds(r->get_tail(i), 
-							rule_subst));
+	  gpreds_vector.push_back(app_inst_preds(r->get_tail(i), rule_subst));
 	// store instantiation for non-query head
 	if (!rules.is_output_predicate(r->get_decl())) 
-	  gpreds_vector.push_back(app_instantiate_preds(r->get_head(), 
-							rule_subst));
+	  gpreds_vector.push_back(app_inst_preds(r->get_head(), rule_subst));
 	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
       }
 
@@ -182,47 +180,27 @@ namespace datalog {
 	rules.get_rule(r_id)->display(m_ctx, std::cout);
 	expr * gbody;
 	m_rule2gbody.find(r_id, gbody);
-	std::cout << "inst body " << mk_pp(gbody, m) << std::endl;
-	vector<expr_ref_vector> gpreds_vector;
-	m_rule2gpreds_vector.find(r_id, gpreds_vector);
-	for (unsigned i=0; i<gpreds_vector.size(); ++i) {
-	  std::cout << "  #" << i << "(" << gpreds_vector[i].size() << "): ";
-	  print_expr_ref_vector(gpreds_vector[i]);
+	std::cout << "inst " << r_id << ": " << mk_pp(gbody, m) << std::endl;
+	vector<expr_ref_vector> preds_vector;
+	m_rule2gpreds_vector.find(r_id, preds_vector);
+	for (unsigned i=0; i<preds_vector.size(); ++i) {
+	  std::cout << "  #" << i << "(" << preds_vector[i].size() << "): ";
+	  print_expr_ref_vector(preds_vector[i]);
 	  std::cout << std::endl;
 	}
       } 
 
-      // simulate initial abstract step
-      /*
-	for (rule_set::iterator it = rules.begin(); it != rules.end(); ++it) {
-	rule * r = *it;
-	if (r->get_uninterpreted_tail_size() != 0) continue;
-	app * head = r->get_head();
-	std::cout << "rule head " << mk_pp(head, m) << std::endl;
-	pred_abst_map::obj_map_entry * e = m_pred_abst_map.find_core(head->get_decl());
-	expr_ref_vector const & preds = e ? *e->get_data().get_value() : m_empty_preds;
-	std::cout << "found preds " << preds.size() << std::endl;
-	if (preds.size() == 0) {
-	std::cout << "abstraction is true" << std::endl;
-	continue;
+      // initial abstract inference
+      for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
+	if (rules.get_rule(r_id)->get_uninterpreted_tail_size() != 0) continue;
+	std::cout << "abstact rule " << r_id << std::endl;
+	vector<expr_ref_vector> preds_vector;
+	m_rule2gpreds_vector.find(r_id, preds_vector);
+	if (preds_vector[0].empty()) {
+	  std::cout << "true" << std::endl;
+	  continue;
 	}
-	// ground head
-  
-	//                expr_ref_vector m_ground(m);
-	//                unsigned arity = head->get_num_args();
-	//                m_ground.reserve(arity);
-	//                for (unsigned i = 0; i < arity; ++i) {
-	//                    m_ground[i] = m.mk_fresh_const("c", head->get_decl()->get_domain(i));
-	//                }
-	//                expr_ref tmp(head, m);
-	//                m_var_subst(head, m_ground.size(), m_ground.c_ptr(), tmp); // NOT NEEDED!
-
-	//                std::cout << "after subst " << mk_pp(tmp, m) << std::endl;
-	//                m_var_subst.reset();
-	//                std::cout << std::endl;
-
-	}
-      */
+      }
       return l_true;
     }
 
@@ -262,14 +240,15 @@ namespace datalog {
       return true;
     }
 
-    expr_ref_vector app_instantiate_preds(app * app, 
-					  expr_ref_vector const & subst) {
+    // ground arguments of app using subst, and then instantiate each predicate
+    // by replacing its free variables with grounded arguments of app
+    expr_ref_vector app_inst_preds(app * app, expr_ref_vector const & subst) {
       expr * const * vars;
       std::pair<expr * const *, expr_ref_vector *> vars_preds =
 	std::make_pair(vars, &m_empty_preds);
       m_func_decl2vars_preds.find(app->get_decl(), vars_preds);
       if (!vars_preds.second->empty()) {
-	std::cout << "start app_instantiate_preds" << std::endl;
+	std::cout << "start app_inst_preds" << std::endl;
 	std::cout << "app " << mk_pp(app, m) << std::endl;
 	std::cout << "vars ";
 	for (unsigned i=0; i<app->get_num_args(); ++i)
