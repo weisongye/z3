@@ -65,6 +65,20 @@ namespace datalog {
 
     ast_ref_vector m_ast_trail;
 
+    unsigned m_node_counter;
+    typedef vector<bool> cube_t;
+
+    typedef u_map<cube_t> node2cube;
+    node2cube m_node2cube;
+
+    typedef vector<unsigned> node_vector;
+
+    typedef u_map<unsigned> node2rule;
+    node2rule m_node2parent_rule;
+
+    typedef u_map<node_vector> node2nodes;
+    node2nodes m_node2parent_nodes;
+
   public:
     imp(context& ctx):
       m_ctx(ctx), 
@@ -74,7 +88,8 @@ namespace datalog {
       m_var_subst(m, false),
       m_cancel(false),
       m_empty_preds(m),
-      m_ast_trail(m)
+      m_ast_trail(m),
+      m_node_counter(0)
     {
       // m_fparams.m_relevancy_lvl = 0;
       m_fparams.m_mbqi = false;
@@ -199,7 +214,11 @@ namespace datalog {
       // initial abstract inference
       for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
 	if (rules.get_rule(r_id)->get_uninterpreted_tail_size() != 0) continue;
-	cart_pred_abst_rule(r_id);
+	cube_t const & cube = cart_pred_abst_rule(r_id);
+        std::cout << "cube ";
+        print_cube(cube);
+        std::cout << std::endl;
+	add_cube(cube, r_id);
       }
       return l_true;
     }
@@ -277,13 +296,15 @@ namespace datalog {
       }
       return inst_preds;
     }
-
-    vector<bool> cart_pred_abst_rule(unsigned r_id) {
-      vector<bool> cube;
+    
+    cube_t cart_pred_abst_rule(unsigned r_id, 
+			       node_vector const & nodes = node_vector()) {
+      cube_t cube;
       std::cout << "pred_abst_rule " << r_id << std::endl;
       // get instantiated predicates
       vector<expr_ref_vector> preds_vector = 
 	m_rule2gpreds_vector.find_core(r_id)->get_data().m_value;
+      // TODO load abstract states for nodes
       expr_ref_vector head_preds = preds_vector.back();
       if (head_preds.empty()) return cube;
       m_solver.push();
@@ -298,6 +319,22 @@ namespace datalog {
       }
       m_solver.pop(1);
       return cube;
+    }
+
+    bool add_cube(cube_t const & cube, 
+		  unsigned r_id, node_vector const & nodes = node_vector()) {
+      m_node_counter++;
+      m_node2cube.insert(m_node_counter, cube);
+      m_node2parent_rule.insert(m_node_counter, r_id);
+      m_node2parent_nodes.insert(m_node_counter, nodes);
+      return true;
+    }
+
+    void print_cube(cube_t const & c) {
+      for (unsigned i=0; i<c.size(); ++i) {
+        std::cout << i;
+        if (i<c.size()-1) std::cout << ", ";
+      }
     }
 
     void print_expr_ref_vector(expr_ref_vector const & v) {
