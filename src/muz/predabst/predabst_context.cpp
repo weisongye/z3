@@ -48,8 +48,9 @@ namespace datalog {
     volatile bool          m_cancel;      // Boolean flag to track external cancelation.
     stats                  m_stats;       // statistics information specific to the CLP module.
 
-    static char const * const m_pred_symbol_prefix; // prefix for predicate containing rules
-    static unsigned const  m_pred_symbol_prefix_size; // prefix for predicate containing rules
+    // predicate that track abstraction: predix and its size
+    static char const * const m_pred_symbol_prefix; 
+    static unsigned const m_pred_symbol_prefix_size; 
 
     typedef obj_map<func_decl, std::pair<expr * const *, expr_ref_vector *> > 
     func_decl2vars_preds;
@@ -68,16 +69,23 @@ namespace datalog {
     unsigned m_node_counter;
     typedef vector<bool> cube_t;
 
+    typedef u_map<func_decl *> node2func_decl;
+    node2func_decl m_node2func_decl;
+
     typedef u_map<cube_t> node2cube;
     node2cube m_node2cube;
 
     typedef vector<unsigned> node_vector;
+    typedef uint_set node_set;
 
     typedef u_map<unsigned> node2rule;
     node2rule m_node2parent_rule;
 
     typedef u_map<node_vector> node2nodes;
     node2nodes m_node2parent_nodes;
+
+    typedef obj_map<func_decl, uint_set > func_decl2node_set;
+    func_decl2node_set m_func_decl2max_reach_node_set;
 
   public:
     imp(context& ctx):
@@ -213,13 +221,15 @@ namespace datalog {
 
       // initial abstract inference
       for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
-	if (rules.get_rule(r_id)->get_uninterpreted_tail_size() != 0) continue;
+	rule * r = rules.get_rule(r_id);
+	if (r->get_uninterpreted_tail_size() != 0) continue;
 	cube_t const & cube = cart_pred_abst_rule(r_id);
         std::cout << "cube ";
         print_cube(cube);
         std::cout << std::endl;
-	add_cube(cube, r_id);
+	add_cube(r->get_decl(), cube, r_id);
       }
+      print_inference_state();
       return l_true;
     }
 
@@ -321,13 +331,71 @@ namespace datalog {
       return cube;
     }
 
-    bool add_cube(cube_t const & cube, 
+    bool add_cube(func_decl * sym, cube_t const & cube, 
 		  unsigned r_id, node_vector const & nodes = node_vector()) {
-      m_node_counter++;
+      func_decl2node_set::obj_map_entry * sym_nodes_entry =
+	m_func_decl2max_reach_node_set.find_core(sym);
+      if (sym_nodes_entry) { 
+	// nodes exist at this sym
+	node_set & sym_nodes = sym_nodes_entry->get_data().m_value;
+	node_vector old_lt_nodes;
+	for (uint_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
+	     it != end; ++it) {
+	  cube_t const & old_cube =
+	    m_node2cube.find_core(*it)->get_data().m_value;
+	  // if cube implies existing cube then nothing to add
+	  if (cube_leq(cube, old_cube)) return false;
+	  // stronger old cubes will not be considered maximal
+	  if (cube_leq(old_cube, cube)) old_lt_nodes.push_back(*it);
+	}
+	// remove subsumed, previously maximal cubes
+	for (node_vector::iterator it = old_lt_nodes.begin(), 
+	       end = old_lt_nodes.end(); it != end; ++it)
+	  sym_nodes.remove(*it);
+	sym_nodes.insert(m_node_counter);
+      } else {
+	node_set sym_nodes;
+	sym_nodes.insert(m_node_counter);
+	m_func_decl2max_reach_node_set.insert(sym, sym_nodes);
+      }
+      m_node2func_decl.insert(m_node_counter, sym);
       m_node2cube.insert(m_node_counter, cube);
       m_node2parent_rule.insert(m_node_counter, r_id);
       m_node2parent_nodes.insert(m_node_counter, nodes);
+      m_node_counter++;
       return true;
+    }
+
+    // return whether c1 implies c2
+    bool cube_leq(cube_t const & c1, cube_t const & c2) {
+      unsigned size = c1.size();
+      for (unsigned i=0; i<size; ++i) 
+	if ( c2[i] && !c1[i]) return false;
+      return true;
+    }
+
+    void print_inference_state() {
+      printf("m_node_counter %d\n", m_node_counter);
+      for (unsigned i=0; i<m_node_counter; ++i) {
+	std::cout << "node " << i << " " <<
+	  mk_pp(m_node2func_decl.find_core(i)->get_data().m_value, m) << " [";
+	print_cube(m_node2cube.find_core(i)->get_data().m_value);
+	std::cout << "] " << 
+	  m_node2parent_rule.find_core(i)->get_data().m_value << " (";
+	node_vector const & parent_nodes = 
+	  m_node2parent_nodes.find_core(i)->get_data().m_value;
+	for (unsigned j=0; j<parent_nodes.size(); ++j) {
+	  std::cout << j;
+	  if (j<parent_nodes.size()-1) std::cout << ", ";
+	}
+	std::cout << ")" << std::endl;
+      }
+      for (func_decl2node_set::iterator 
+	     it = m_func_decl2max_reach_node_set.begin(),
+	     end = m_func_decl2max_reach_node_set.end();
+	   it != end; ++it) 
+	std::cout << "max reached nodes " << mk_pp(it->m_key, m) 
+		  << " " << it->m_value << std::endl;
     }
 
     void print_cube(cube_t const & c) {
@@ -352,7 +420,6 @@ namespace datalog {
 	if (i < size-1) std::cout << ", ";
       }
     }
-
   };
 
   char const * const predabst::imp::m_pred_symbol_prefix = "__pred__";
