@@ -62,6 +62,9 @@ namespace datalog {
     typedef u_map<vector<expr_ref_vector> > id2preds_vector;
     id2preds_vector m_rule2gpreds_vector;
 
+    typedef u_map<func_decl_set *> id2func_decl_set;
+    id2func_decl_set m_rule2body_func_decls;
+
     expr_ref_vector m_empty_preds;
 
     ast_ref_vector m_ast_trail;
@@ -87,6 +90,8 @@ namespace datalog {
     typedef obj_map<func_decl, uint_set > func_decl2node_set;
     func_decl2node_set m_func_decl2max_reach_node_set;
 
+    uint_set m_node_worklist;
+
   public:
     imp(context& ctx):
       m_ctx(ctx), 
@@ -108,6 +113,9 @@ namespace datalog {
       for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(), 
 	     end = m_func_decl2vars_preds.end(); it != end; ++it) 
 	dealloc(it->m_value.second);
+      for (id2func_decl_set::iterator it = m_rule2body_func_decls.begin(),
+	     end = m_rule2body_func_decls.end(); it != end; ++it) 
+	dealloc(it->m_value);
     }        
 
     lbool query(expr* query) {
@@ -202,6 +210,11 @@ namespace datalog {
 	  gpreds_vector.push_back(npreds);
 	}
 	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
+	// map rule to its body func_decls
+	func_decl_set * body_func_decls = alloc(func_decl_set);
+	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i) 
+	  body_func_decls->insert(r->get_decl(i));
+	m_rule2body_func_decls.insert(r_id, body_func_decls);
       }
 
       std::cout << "instantiated predicates" << std::endl;
@@ -218,7 +231,7 @@ namespace datalog {
 	  std::cout << std::endl;
 	}
       } 
-
+      print_inference_state();
       // initial abstract inference
       for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
 	rule * r = rules.get_rule(r_id);
@@ -227,9 +240,18 @@ namespace datalog {
         std::cout << "cube ";
         print_cube(cube);
         std::cout << std::endl;
-	add_cube(r->get_decl(), cube, r_id);
+	if (add_cube(r->get_decl(), cube, r_id))
+	  m_node_worklist.insert(m_node_counter-1);
       }
       print_inference_state();
+      unsigned current_id = *m_node_worklist.begin();
+      m_node_worklist.remove(current_id);
+      func_decl * current_func_decl = 
+	m_node2func_decl.find_core(current_id)->get_data().m_value;
+      for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
+	rule *r = rules.get_rule(r_id);
+	//	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i)
+      }
       return l_true;
     }
 
@@ -348,10 +370,12 @@ namespace datalog {
 	  // stronger old cubes will not be considered maximal
 	  if (cube_leq(old_cube, cube)) old_lt_nodes.push_back(*it);
 	}
-	// remove subsumed, previously maximal cubes
+	// remove subsumed maximal nodes
 	for (node_vector::iterator it = old_lt_nodes.begin(), 
-	       end = old_lt_nodes.end(); it != end; ++it)
+	       end = old_lt_nodes.end(); it != end; ++it) {
 	  sym_nodes.remove(*it);
+	  m_node_worklist.remove(*it); // removing non-existent element is ok
+	}
 	sym_nodes.insert(m_node_counter);
       } else {
 	node_set sym_nodes;
@@ -375,6 +399,7 @@ namespace datalog {
     }
 
     void print_inference_state() {
+      printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
       printf("m_node_counter %d\n", m_node_counter);
       for (unsigned i=0; i<m_node_counter; ++i) {
 	std::cout << "node " << i << " " <<
@@ -396,6 +421,8 @@ namespace datalog {
 	   it != end; ++it) 
 	std::cout << "max reached nodes " << mk_pp(it->m_key, m) 
 		  << " " << it->m_value << std::endl;
+      std::cout << "worklist " << m_node_worklist << std::endl;
+      printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n");
     }
 
     void print_cube(cube_t const & c) {
