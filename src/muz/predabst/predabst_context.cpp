@@ -62,8 +62,8 @@ namespace datalog {
     typedef u_map<vector<expr_ref_vector> > id2preds_vector;
     id2preds_vector m_rule2gpreds_vector;
 
-    typedef u_map<func_decl_set *> id2func_decl_set;
-    id2func_decl_set m_rule2body_func_decls;
+    typedef obj_map<func_decl, uint_set> func_decl2uints;
+    func_decl2uints m_func_decl_body2rules;
 
     expr_ref_vector m_empty_preds;
 
@@ -87,7 +87,7 @@ namespace datalog {
     typedef u_map<node_vector> node2nodes;
     node2nodes m_node2parent_nodes;
 
-    typedef obj_map<func_decl, uint_set > func_decl2node_set;
+    typedef obj_map<func_decl, uint_set> func_decl2node_set;
     func_decl2node_set m_func_decl2max_reach_node_set;
 
     uint_set m_node_worklist;
@@ -113,9 +113,6 @@ namespace datalog {
       for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(), 
 	     end = m_func_decl2vars_preds.end(); it != end; ++it) 
 	dealloc(it->m_value.second);
-      for (id2func_decl_set::iterator it = m_rule2body_func_decls.begin(),
-	     end = m_rule2body_func_decls.end(); it != end; ++it) 
-	dealloc(it->m_value);
     }        
 
     lbool query(expr* query) {
@@ -210,12 +207,17 @@ namespace datalog {
 	  gpreds_vector.push_back(npreds);
 	}
 	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
-	// map rule to its body func_decls
-	func_decl_set * body_func_decls = alloc(func_decl_set);
-	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i) 
-	  body_func_decls->insert(r->get_decl(i));
-	m_rule2body_func_decls.insert(r_id, body_func_decls);
+	// map body func_decls to rule
+	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i)
+	  m_func_decl_body2rules.
+	    insert_if_not_there2(r->get_decl(i), uint_set())->get_data().
+	    m_value.insert(r_id);
       }
+
+      std::cout << "rule dependency" << std::endl;
+      for (func_decl2uints::iterator it = m_func_decl_body2rules.begin(),
+	     end = m_func_decl_body2rules.end(); it != end; ++it) 
+	std::cout << mk_pp(it->m_key, m) << ": " << it->m_value << std::endl;
 
       std::cout << "instantiated predicates" << std::endl;
       for (unsigned r_id=0; r_id<m_rule2gpreds_vector.size(); ++r_id) {
@@ -244,13 +246,49 @@ namespace datalog {
 	  m_node_worklist.insert(m_node_counter-1);
       }
       print_inference_state();
+      // process worklist item
       unsigned current_id = *m_node_worklist.begin();
       m_node_worklist.remove(current_id);
       func_decl * current_func_decl = 
 	m_node2func_decl.find_core(current_id)->get_data().m_value;
-      for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
-	rule *r = rules.get_rule(r_id);
-	//	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i)
+      uint_set current_rules = m_func_decl_body2rules.
+	find_core(current_func_decl)->get_data().m_value;
+      for (uint_set::iterator r_id = current_rules.begin(),
+	     r_id_end = current_rules.end(); r_id != r_id_end; ++r_id) {
+	std::cout << "apply " << current_id << " " << 
+	  mk_pp(current_func_decl, m) << " on " << std::endl;
+	rules.get_rule(*r_id)->display(m_ctx, std::cout);
+	// positions of current_id among body func_decls
+	uint_set current_poss;
+	rule * r = rules.get_rule(*r_id);
+	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i)
+	  if (r->get_decl(i) == current_func_decl) 
+	    current_poss.insert(i);
+	std::cout << "current_id_idxs " << current_poss << std::endl;
+	vector<node_vector> nodes_set;
+	nodes_set.push_back(node_vector());
+	for (uint_set::iterator current_pos = current_poss.begin(),
+	       current_pos_end = current_poss.end();
+	     current_pos != current_pos_end; ++current_pos) 
+	  for (unsigned pos=0; pos<r->get_uninterpreted_tail_size(); ++pos)
+	    if (*current_pos == pos) {
+	      for (vector<node_vector>::iterator nodes = nodes_set.begin(),
+		     nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes)
+		nodes->push_back(current_id);
+	    } else {
+	      m_func_decl2max_reach_node_set.find_core(r->get_decl(pos));
+
+	    }
+	std::cout << "nodes set" << std::endl;
+	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
+	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
+	  for (unsigned i=0; i<nodes->size(); ++i) {
+	    std::cout << (*nodes)[i];
+	    if (i<nodes->size()-1) std::cout << ", ";
+	  }
+	  std::cout << std::endl;
+	}
+	//	cart_pred_abst_rule(*r_id);
       }
       return l_true;
     }
