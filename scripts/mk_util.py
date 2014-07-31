@@ -764,7 +764,7 @@ class Component:
         out.write('\n')
         mk_dir(os.path.join(BUILD_DIR, self.build_dir))
         if VS_PAR and IS_WINDOWS:
-            cppfiles = get_cpp_files(self.src_dir)
+            cppfiles = list(get_cpp_files(self.src_dir))
             dependencies = set()
             for cppfile in cppfiles:
                 dependencies.add(os.path.join(self.to_src_dir, cppfile))
@@ -2592,7 +2592,7 @@ def mk_win_dist(build_path, dist_path):
     for c in get_components():
         c.mk_win_dist(build_path, dist_path)
     # Add Z3Py to bin directory
-    print "Adding to %s\n" % dist_path
+    print("Adding to %s\n" % dist_path)
     for pyc in filter(lambda f: f.endswith('.pyc') or f.endswith('.py'), os.listdir(build_path)):
         shutil.copy(os.path.join(build_path, pyc),
                     os.path.join(dist_path, 'bin', pyc))
