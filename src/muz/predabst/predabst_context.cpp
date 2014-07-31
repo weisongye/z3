@@ -60,7 +60,7 @@ namespace datalog {
     id2expr m_rule2gbody;
 
     typedef u_map<vector<expr_ref_vector> > id2preds_vector;
-    id2preds_vector m_rule2gpreds_vector;
+    id2preds_vector m_rule2gpreds_vector; 
 
     typedef obj_map<func_decl, uint_set> func_decl2uints;
     func_decl2uints m_func_decl_body2rules;
@@ -87,10 +87,10 @@ namespace datalog {
     typedef u_map<node_vector> node2nodes;
     node2nodes m_node2parent_nodes;
 
-    typedef obj_map<func_decl, uint_set> func_decl2node_set;
+    typedef obj_map<func_decl, node_set> func_decl2node_set;
     func_decl2node_set m_func_decl2max_reach_node_set;
 
-    uint_set m_node_worklist;
+    node_set m_node_worklist;
 
   public:
     imp(context& ctx):
@@ -223,8 +223,7 @@ namespace datalog {
       for (unsigned r_id=0; r_id<m_rule2gpreds_vector.size(); ++r_id) {
 	rules.get_rule(r_id)->display(m_ctx, std::cout);
 	std::cout << "inst " << r_id << ": " << 
-	  mk_pp(m_rule2gbody.find_core(r_id)->get_data().m_value, m) << 
-	  std::endl;
+	  mk_pp(m_rule2gbody[r_id], m) << std::endl;
 	vector<expr_ref_vector> preds_vector;
 	m_rule2gpreds_vector.find(r_id, preds_vector);
 	for (unsigned i=0; i<preds_vector.size(); ++i) {
@@ -247,16 +246,20 @@ namespace datalog {
       }
       print_inference_state();
       // process worklist item
+
+    INFERENCE_LOOP: 
+      if (m_cancel) throw default_exception("predabst canceled");
+      if (m_node_worklist.empty()) goto INFERENCE_END;
       unsigned current_id = *m_node_worklist.begin();
+      std::cout << "worklist before " << m_node_worklist << std::endl;
       m_node_worklist.remove(current_id);
-      func_decl * current_func_decl = 
-	m_node2func_decl.find_core(current_id)->get_data().m_value;
-      uint_set current_rules = m_func_decl_body2rules.
-	find_core(current_func_decl)->get_data().m_value;
+      std::cout << "worklist after  " << m_node_worklist << std::endl;
+      func_decl * current_func_decl = m_node2func_decl[current_id];
+      uint_set & current_rules = m_func_decl_body2rules[current_func_decl];
       for (uint_set::iterator r_id = current_rules.begin(),
 	     r_id_end = current_rules.end(); r_id != r_id_end; ++r_id) {
 	std::cout << "apply " << current_id << " " << 
-	  mk_pp(current_func_decl, m) << " on " << std::endl;
+	  mk_pp(current_func_decl, m) << " on " << *r_id << std::endl;
 	rules.get_rule(*r_id)->display(m_ctx, std::cout);
 	// positions of current_id among body func_decls
 	uint_set current_poss;
@@ -273,24 +276,22 @@ namespace datalog {
 	       current_pos_end = current_poss.end();
 	     current_pos != current_pos_end; ++current_pos) {
 	  node_set current_pos_singleton;
-	  current_pos_singleton.insert(*current_pos);
+	  current_pos_singleton.insert(current_id);
 	  // grow node combinations as cartesian product with nodes at pos
 	  for (unsigned pos=0; pos<r->get_uninterpreted_tail_size(); ++pos) {
 	    node_set & pos_nodes =
 	      (*current_pos == pos) ? 
 	      current_pos_singleton :
-	      m_func_decl2max_reach_node_set.find_core(r->get_decl(pos))->
-	      get_data().m_value;
+	      m_func_decl2max_reach_node_set[r->get_decl(pos)];
 	    unsigned orig_nodes_set_size = nodes_set.size();
 	    // compute cartesian product
-
-	    // store the product with first node in place
+	    // first, store the product with first node in place
 	    node_set::iterator pos_node = pos_nodes.begin();
 	    for (unsigned nodes_set_offset=0; 
 		 nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) 
 	      nodes_set[nodes_set_offset].push_back(*pos_node);
 	    ++pos_node;
-	    // product for rest nodes goes into additional vectors
+	    // then, product for rest nodes goes into additional vectors
 	    for (node_set::iterator pos_node_end = pos_nodes.end(); 
 		 pos_node != pos_node_end; ++pos_node) 
 	      for (unsigned nodes_set_offset=0; 
@@ -310,14 +311,16 @@ namespace datalog {
 	  std::cout << std::endl;
 	}
 	// apply rule on each node combination
-	cube_t const & cube = cart_pred_abst_rule(*r_id, nodes_set[0]);
+	cube_t & cube = cart_pred_abst_rule(*r_id, nodes_set[0]);
         std::cout << "cube ";
         print_cube(cube);
-        std::cout << std::endl;
-	if (add_cube(r->get_decl(), cube, *r_id))
+	std::cout << std::endl;
+	if (add_cube(r->get_decl(), cube, *r_id, nodes_set[0]))
 	  m_node_worklist.insert(m_node_counter-1);
 	print_inference_state();
       }
+      goto INFERENCE_LOOP;
+    INFERENCE_END:
       return l_true;
     }
 
@@ -381,7 +384,7 @@ namespace datalog {
 	if (idx>=inst.size())
 	  inst.resize(idx+1);
 	inst[idx] = gappl->get_arg(i);
-      }
+      } 
       std::cout << "inst " << inst.size() << " ";
       print_expr_ref_vector(inst);
       std::cout << std::endl;
@@ -395,18 +398,24 @@ namespace datalog {
       return inst_preds;
     }
     
+    // TODO return reference?
     cube_t cart_pred_abst_rule(unsigned r_id, 
 			       node_vector const & nodes = node_vector()) {
       cube_t cube;
       std::cout << "pred_abst_rule " << r_id << std::endl;
       // get instantiated predicates
-      vector<expr_ref_vector> preds_vector = 
-	m_rule2gpreds_vector.find_core(r_id)->get_data().m_value;
-      // TODO load abstract states for nodes
-      expr_ref_vector head_preds = preds_vector.back();
+      vector<expr_ref_vector> & preds_vector = m_rule2gpreds_vector[r_id];
+      expr_ref_vector & head_preds = preds_vector.back();
       if (head_preds.empty()) return cube;
       m_solver.push();
-      m_solver.assert_expr(m_rule2gbody.find_core(r_id)->get_data().m_value);
+      m_solver.assert_expr(m_rule2gbody[r_id]);
+      // load abstract states for nodes
+      for (unsigned pos=0; pos<nodes.size(); ++pos) {
+	cube_t & pos_cube = m_node2cube[nodes[pos]];
+	for (unsigned i=0; i<preds_vector[pos].size(); ++i) 
+	  if (pos_cube[i]) 
+	    m_solver.assert_expr(preds_vector[pos][i].get());
+      }
       // collect abstract cube
       cube.resize(head_preds.size());
       for (unsigned i=0; i<head_preds.size(); ++i) {
@@ -427,10 +436,9 @@ namespace datalog {
 	// nodes exist at this sym
 	node_set & sym_nodes = sym_nodes_entry->get_data().m_value;
 	node_vector old_lt_nodes;
-	for (uint_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
+	for (node_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
 	     it != end; ++it) {
-	  cube_t const & old_cube =
-	    m_node2cube.find_core(*it)->get_data().m_value;
+	  cube_t const & old_cube = m_node2cube[*it];
 	  // if cube implies existing cube then nothing to add
 	  if (cube_leq(cube, old_cube)) return false;
 	  // stronger old cubes will not be considered maximal
@@ -444,9 +452,8 @@ namespace datalog {
 	}
 	sym_nodes.insert(m_node_counter);
       } else {
-	node_set sym_nodes;
-	sym_nodes.insert(m_node_counter);
-	m_func_decl2max_reach_node_set.insert(sym, sym_nodes);
+	m_func_decl2max_reach_node_set.insert_if_not_there2(sym, node_set())->
+	  get_data().m_value.insert(m_node_counter);
       }
       m_node2func_decl.insert(m_node_counter, sym);
       m_node2cube.insert(m_node_counter, cube);
@@ -468,13 +475,11 @@ namespace datalog {
       printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
       printf("m_node_counter %d\n", m_node_counter);
       for (unsigned i=0; i<m_node_counter; ++i) {
-	std::cout << "node " << i << " " <<
-	  mk_pp(m_node2func_decl.find_core(i)->get_data().m_value, m) << " [";
-	print_cube(m_node2cube.find_core(i)->get_data().m_value);
-	std::cout << "] " << 
-	  m_node2parent_rule.find_core(i)->get_data().m_value << " (";
-	node_vector const & parent_nodes = 
-	  m_node2parent_nodes.find_core(i)->get_data().m_value;
+	std::cout << "node " << i << " " << 
+	  mk_pp(m_node2func_decl[i], m) << " [";
+	print_cube(m_node2cube[i]);
+	std::cout << "] " << m_node2parent_rule[i] << " (";
+	node_vector & parent_nodes = m_node2parent_nodes[i];
 	for (unsigned j=0; j<parent_nodes.size(); ++j) {
 	  std::cout << j;
 	  if (j<parent_nodes.size()-1) std::cout << ", ";
@@ -493,7 +498,7 @@ namespace datalog {
 
     void print_cube(cube_t const & c) {
       for (unsigned i=0; i<c.size(); ++i) {
-        std::cout << i;
+        std::cout << c[i];
         if (i<c.size()-1) std::cout << ", ";
       }
     }

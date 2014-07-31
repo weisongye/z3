@@ -29,7 +29,7 @@
 	(p2 x y z))))
 
 (assert (forall ((x Int) (y Int) (z Int))
-	(=> (and (>= y z) (p2 x y z) (p3 x y z))
+	(=> (and (>= y z) (p2 x y z))
 	(p2 (+ x 1) y z))))
 
 (assert (forall ((x Int) (y Int) (z Int))
