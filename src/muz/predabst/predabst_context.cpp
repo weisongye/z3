@@ -265,20 +265,41 @@ namespace datalog {
 	  if (r->get_decl(i) == current_func_decl) 
 	    current_poss.insert(i);
 	std::cout << "current_id_idxs " << current_poss << std::endl;
+	// create set of combinations of nodes to apply the rule
 	vector<node_vector> nodes_set;
 	nodes_set.push_back(node_vector());
+	// current_id is put on each appropriate position
 	for (uint_set::iterator current_pos = current_poss.begin(),
 	       current_pos_end = current_poss.end();
-	     current_pos != current_pos_end; ++current_pos) 
-	  for (unsigned pos=0; pos<r->get_uninterpreted_tail_size(); ++pos)
-	    if (*current_pos == pos) {
-	      for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-		     nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes)
-		nodes->push_back(current_id);
-	    } else {
-	      m_func_decl2max_reach_node_set.find_core(r->get_decl(pos));
+	     current_pos != current_pos_end; ++current_pos) {
+	  node_set current_pos_singleton;
+	  current_pos_singleton.insert(*current_pos);
+	  // grow node combinations as cartesian product with nodes at pos
+	  for (unsigned pos=0; pos<r->get_uninterpreted_tail_size(); ++pos) {
+	    node_set & pos_nodes =
+	      (*current_pos == pos) ? 
+	      current_pos_singleton :
+	      m_func_decl2max_reach_node_set.find_core(r->get_decl(pos))->
+	      get_data().m_value;
+	    unsigned orig_nodes_set_size = nodes_set.size();
+	    // compute cartesian product
 
-	    }
+	    // store the product with first node in place
+	    node_set::iterator pos_node = pos_nodes.begin();
+	    for (unsigned nodes_set_offset=0; 
+		 nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) 
+	      nodes_set[nodes_set_offset].push_back(*pos_node);
+	    ++pos_node;
+	    // product for rest nodes goes into additional vectors
+	    for (node_set::iterator pos_node_end = pos_nodes.end(); 
+		 pos_node != pos_node_end; ++pos_node) 
+	      for (unsigned nodes_set_offset=0; 
+		   nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) {
+		nodes_set.push_back(nodes_set[nodes_set_offset]);
+		nodes_set.back().push_back(*pos_node);
+	      }
+	  }
+	}
 	std::cout << "nodes set" << std::endl;
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
 	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
@@ -288,7 +309,14 @@ namespace datalog {
 	  }
 	  std::cout << std::endl;
 	}
-	//	cart_pred_abst_rule(*r_id);
+	// apply rule on each node combination
+	cube_t const & cube = cart_pred_abst_rule(*r_id, nodes_set[0]);
+        std::cout << "cube ";
+        print_cube(cube);
+        std::cout << std::endl;
+	if (add_cube(r->get_decl(), cube, *r_id))
+	  m_node_worklist.insert(m_node_counter-1);
+	print_inference_state();
       }
       return l_true;
     }
