@@ -238,23 +238,15 @@ namespace datalog {
       for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
 	rule * r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
-	cube_t * cube = cart_pred_abst_rule(r_id);
-        std::cout << "cube ";
-	print_cube(cube);
-	if (cube) 
-	  if (add_node(r->get_decl(), cube, r_id)) {
-	    m_node_worklist.insert(m_node_counter-1);
-	  } else {
-	    dealloc(cube);
-	  }
+	add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
       }
       // process worklist
     INFERENCE_LOOP: 
-
+      /*
       print_inference_state();
       char name[256];
       std::cin.getline(name, 256);
-
+      */
       if (m_cancel) throw default_exception("predabst canceled");
       if (m_node_worklist.empty()) goto INFERENCE_END;
       unsigned current_id = *m_node_worklist.begin();
@@ -316,17 +308,9 @@ namespace datalog {
 	  print_node_vector(*nodes);
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
-	  cube_t * cube = cart_pred_abst_rule(*r_id, *nodes);
-	  std::cout << "cube ";
-	  print_cube(cube);
-	  if (cube)
-	    if (add_node(r->get_decl(), cube, *r_id, *nodes)) {
-	      m_node_worklist.insert(m_node_counter-1);
-	    } else {
-	      dealloc(cube);
-	    }
-	}
+	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
+	  add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), 
+		   *r_id, *nodes);
       }
       goto INFERENCE_LOOP;
     INFERENCE_END:
@@ -444,10 +428,11 @@ namespace datalog {
       return cube;
     }
 
-    bool add_node(func_decl * sym, cube_t * cube, 
-		  unsigned r_id, node_vector const & nodes = node_vector()) {
+    void add_node(func_decl* sym, cube_t* cube, 
+		  unsigned r_id, const node_vector& nodes = node_vector()) {
       std::cout << "add_node " << m_node_counter << " via " << r_id << " ";
       print_node_vector(nodes);
+      if (!cube) return;
       func_decl2node_set::obj_map_entry * sym_nodes_entry =
 	m_func_decl2max_reach_node_set.find_core(sym);
       if (sym_nodes_entry) { 
@@ -456,11 +441,14 @@ namespace datalog {
 	node_vector old_lt_nodes;
 	for (node_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
 	     it != end; ++it) {
-	  cube_t * old_cube = m_node2cube[*it];
+	  cube_t & old_cube = *m_node2cube[*it];
 	  // if cube implies existing cube then nothing to add
-	  if (cube_leq(cube, old_cube)) return false;
+	  if (cube_leq(*cube, old_cube)) {
+	    dealloc(cube);
+	    return;
+	  }
 	  // stronger old cubes will not be considered maximal
-	  if (cube_leq(old_cube, cube)) old_lt_nodes.push_back(*it);
+	  if (cube_leq(old_cube, *cube)) old_lt_nodes.push_back(*it);
 	}
 	// remove subsumed maximal nodes
 	for (node_vector::iterator it = old_lt_nodes.begin(), 
@@ -477,15 +465,15 @@ namespace datalog {
       m_node2cube.insert(m_node_counter, cube);
       m_node2parent_rule.insert(m_node_counter, r_id);
       m_node2parent_nodes.insert(m_node_counter, nodes);
+      m_node_worklist.insert(m_node_counter);
       m_node_counter++;
-      return true;
     }
 
     // return whether c1 implies c2
-    bool cube_leq(cube_t const * c1, cube_t const * c2) {
-      unsigned size = c1->size();
+    bool cube_leq(const cube_t & c1, const cube_t & c2) {
+      unsigned size = c1.size();
       for (unsigned i=0; i<size; ++i) 
-	if ( (*c2)[i] && !(*c1)[i]) return false;
+	if ( c2[i] && !c1[i]) return false;
       return true;
     }
 
@@ -493,13 +481,9 @@ namespace datalog {
       printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
       printf("m_node_counter %d\n", m_node_counter);
       for (unsigned i=0; i<m_node_counter; ++i) {
-	vector<bool> test;
-	test.push_back(true);
-	test.push_back(false);
 	std::cout << "node " << i << " " << 
-	  mk_pp(m_node2func_decl[i], m) << " [";
-	print_cube(m_node2cube[i], false);
-	std::cout << "] " << m_node2parent_rule[i] << " (";
+	  mk_pp(m_node2func_decl[i], m) << " [" << *m_node2cube[i] << 
+	  "] " << m_node2parent_rule[i] << " (";
 	print_node_vector(m_node2parent_nodes[i], false);
 	std::cout << ")" << std::endl;
       }
@@ -513,7 +497,7 @@ namespace datalog {
       printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n");
     }
 
-    void print_cube(cube_t const & c, bool newline = true) {
+    void print_cube(const cube_t & c, bool newline = true) {
       for (unsigned i=0; i<c.size(); ++i) {
         std::cout << c[i];
         if (i<c.size()-1) std::cout << ", ";
@@ -521,7 +505,7 @@ namespace datalog {
       if (newline) std::cout << std::endl;
     }
 
-    void print_cube(cube_t const * c, bool newline = true) {
+    void print_cube(const cube_t * c, bool newline = true) {
       if (!c) {
 	std::cout << "false";
 	return;
@@ -533,7 +517,7 @@ namespace datalog {
       if (newline) std::cout << std::endl;
     }
 
-    void print_node_vector(node_vector const & v, bool newline = true) {
+    void print_node_vector(const node_vector & v, bool newline = true) {
       for (unsigned i=0; i<v.size(); ++i) {
         std::cout << v[i];
         if (i<v.size()-1) std::cout << ", ";
@@ -541,7 +525,7 @@ namespace datalog {
       if (newline) std::cout << std::endl;
     }
 
-    void print_expr_ref_vector(expr_ref_vector const & v, bool newline = true) {
+    void print_expr_ref_vector(const expr_ref_vector& v, bool newline = true) {
       unsigned size = v.size();
       for (unsigned i = 0; i < size; ++i) {
 	std::cout << mk_pp(v[i], m);
@@ -550,10 +534,10 @@ namespace datalog {
       if (newline) std::cout << std::endl;
     }
 
-    void print_expr_ref_vector(expr_ref_vector * v, bool newline = true) {
+    void print_expr_ref_vector(const expr_ref_vector * v, bool newline = true) {
       unsigned size = v->size();
       for (unsigned i = 0; i < size; ++i) {
-	std::cout << mk_pp((*v)[i].get(), m);
+	std::cout << mk_pp((*v)[i], m);
 	if (i < size-1) std::cout << ", ";
       }
       if (newline) std::cout << std::endl;
@@ -594,20 +578,28 @@ namespace datalog {
 
 };
 
-inline std::ostream & operator<<(std::ostream & out, vector<bool> * v) {
-      out << ">>>";
-      if (v) {
-	unsigned size = v->size();
-	if (size == 0) {
-	  out << "empty";
-	} else {
-	  out << (*v)[0];
-	  for (unsigned i=1; i<size; ++i) 
-	    out << ", " << (*v)[i];
-	}
-      } else {
-	out << "nil";
-      }
-      out << "<<<";
-      return out;
+inline std::ostream & operator<<(std::ostream& out, vector<bool>* v) {
+  if (v) {
+    unsigned size = v->size();
+    if (size == 0) {
+      out << "empty";
+    } else {
+      out << (*v)[0];
+      for (unsigned i=1; i<size; ++i) 
+	out << ", " << (*v)[i];
     }
+  } else {
+    out << "nil";
+  }
+  return out;
+}
+
+inline std::ostream & operator<<(std::ostream & out, const vector<bool>& v) {
+  unsigned size = v.size();
+  if (size > 0) {
+    out << v[0];
+    for (unsigned i=1; i<size; ++i) 
+      out << "," << v[i];
+  }
+  return out;
+}
