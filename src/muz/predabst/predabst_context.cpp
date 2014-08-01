@@ -48,10 +48,6 @@ namespace datalog {
     volatile bool          m_cancel;      // Boolean flag to track external cancelation.
     stats                  m_stats;       // statistics information specific to the CLP module.
 
-    // predicate that track abstraction: predix and its size
-    static char const * const m_pred_symbol_prefix; 
-    static unsigned const m_pred_symbol_prefix_size; 
-
     typedef obj_map<func_decl, std::pair<expr * const *, expr_ref_vector *> > 
     func_decl2vars_preds;
     func_decl2vars_preds m_func_decl2vars_preds;
@@ -133,19 +129,15 @@ namespace datalog {
 	func_decl* head_decl = r->get_decl();
 	char const * head_str = head_decl->get_name().bare_str();
 
+	std::string sym(head_decl->get_name().bare_str());
+
 	if (r->get_uninterpreted_tail_size() != 0 
-	    || memcmp(head_str, m_pred_symbol_prefix, m_pred_symbol_prefix_size)
-	    ) {
-	  continue; 
-	}
-	// create func_decl from suffix and map it to predicates
-	unsigned suffix_size = strlen(head_str)-m_pred_symbol_prefix_size;
-	char* suffix = new char[suffix_size+1];
-#ifdef _WINDOWS
-	strcpy_s(suffix, suffix_size+1, &head_str[m_pred_symbol_prefix_size]); 
-#else   // strncpy_s is not available outside Windows
-	strncpy(suffix, &head_str[m_pred_symbol_prefix_size], suffix_size+1);
-#endif
+	    || sym.substr(0, 8) != "__pred__") continue;
+	char* suffix = new char[sym.size()-8+1];
+#pragma warning(push)
+#pragma warning(disable:4996)
+	strcpy(suffix, sym.substr(8).c_str());
+#pragma warning(pop)
 	func_decl* suffix_decl = 
 	  m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
 			 head_decl->get_domain(), head_decl->get_range());
@@ -160,7 +152,6 @@ namespace datalog {
 	// rule is not used for inference
 	rules.del_rule(r);
       }
-
       std::cout << "collected predicates:" << std::endl;
       for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
 	     end = m_func_decl2vars_preds.end(); it != end; ++it) {
@@ -503,9 +494,6 @@ namespace datalog {
     }
   };
 
-  char const * const predabst::imp::m_pred_symbol_prefix = "__pred__";
-  unsigned const predabst::imp::m_pred_symbol_prefix_size = strlen(m_pred_symbol_prefix);
-    
   predabst::predabst(context& ctx):
     engine_base(ctx.get_manager(), "predabst"),
     m_imp(alloc(imp, ctx)) {        
@@ -537,7 +525,7 @@ namespace datalog {
 
 };
 
-inline std::ostream & operator<<(std::ostream& out, const vector<bool>& v) {
+inline std::ostream& operator<<(std::ostream& out, const vector<bool>& v) {
   unsigned size = v.size();
   if (size > 0) {
     out << v[0];
@@ -547,7 +535,7 @@ inline std::ostream & operator<<(std::ostream& out, const vector<bool>& v) {
   return out;
 }
 
-inline std::ostream & operator<<(std::ostream& out, const vector<unsigned>& v) {
+inline std::ostream& operator<<(std::ostream& out, const vector<unsigned>& v) {
   unsigned size = v.size();
   if (size > 0) {
     out << v[0];
