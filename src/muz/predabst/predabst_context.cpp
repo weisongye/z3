@@ -120,8 +120,7 @@ namespace datalog {
 
     lbool query(expr* query) {
       m_ctx.ensure_opened();
-
-      datalog::rule_set & rules = m_ctx.get_rules();
+      rule_set& rules = m_ctx.get_rules();
 
       std::cout << "begin original rules\n";
       rules.display(std::cout);
@@ -130,8 +129,8 @@ namespace datalog {
       // collect predicates and delete corresponding rules
       for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
 	   rules_it != rules_end; ++rules_it) {
-	rule * r = *rules_it;
-	func_decl * head_decl = r->get_decl();
+	rule* r = *rules_it;
+	func_decl* head_decl = r->get_decl();
 	char const * head_str = head_decl->get_name().bare_str();
 
 	if (r->get_uninterpreted_tail_size() != 0 
@@ -141,20 +140,20 @@ namespace datalog {
 	}
 	// create func_decl from suffix and map it to predicates
 	unsigned suffix_size = strlen(head_str)-m_pred_symbol_prefix_size;
-	char * suffix = new char[suffix_size+1];
+	char* suffix = new char[suffix_size+1];
 #ifdef _WINDOWS
 	strcpy_s(suffix, suffix_size+1, &head_str[m_pred_symbol_prefix_size]); 
 #else   // strncpy_s is not available outside Windows
 	strncpy(suffix, &head_str[m_pred_symbol_prefix_size], suffix_size+1);
 #endif
-	func_decl * suffix_decl = 
+	func_decl* suffix_decl = 
 	  m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
 			 head_decl->get_domain(), head_decl->get_range());
 	m_ast_trail.push_back(suffix_decl);
 	// add predicates to m_func_decl2vars_preds
-	expr_ref_vector * preds = alloc(expr_ref_vector, m);
+	expr_ref_vector* preds = alloc(expr_ref_vector, m);
 	preds->reserve(r->get_tail_size());
-	for (unsigned i = 0; i < r->get_tail_size(); ++i) 
+	for (unsigned i = 0; i<r->get_tail_size(); ++i) 
 	  (*preds)[i] = r->get_tail(i);
 	m_func_decl2vars_preds.
 	  insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
@@ -173,19 +172,19 @@ namespace datalog {
       rules.display(std::cout);
 
       // for each rule: ground body and instantiate predicates for applications
-      for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
-	rule * r = rules.get_rule(r_id);
+      for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
+	rule* r = rules.get_rule(r_id);
 	// prepare grounding substitution
 	ptr_vector<sort> free_sorts;
 	r->get_vars(m, free_sorts);
 	expr_ref_vector rule_subst(m);
 	rule_subst.reserve(free_sorts.size());
-	for (unsigned i = 0; i < rule_subst.size(); ++i) 
+	for (unsigned i = 0; i<rule_subst.size(); ++i) 
 	  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
 	// conjoin constraints in rule body 
 	expr_ref_vector conjs(m);
 	conjs.reserve(r->get_tail_size()-r->get_uninterpreted_tail_size());
-	for (unsigned i=r->get_uninterpreted_tail_size(); 
+	for (unsigned i = r->get_uninterpreted_tail_size(); 
 	     i<r->get_tail_size(); ++i)
 	  conjs[i-r->get_uninterpreted_tail_size()] = r->get_tail(i);
 	expr_ref conj(m.mk_and(conjs.size(), conjs.c_ptr()), m);
@@ -222,7 +221,7 @@ namespace datalog {
 	std::cout << mk_pp(it->m_key, m) << ": " << it->m_value << std::endl;
 
       std::cout << "instantiated predicates" << std::endl;
-      for (unsigned r_id=0; r_id<m_rule2gpreds_vector.size(); ++r_id) {
+      for (unsigned r_id = 0; r_id<m_rule2gpreds_vector.size(); ++r_id) {
 	rules.get_rule(r_id)->display(m_ctx, std::cout);
 	std::cout << "inst " << r_id << ": " << 
 	  mk_pp(m_rule2gbody[r_id], m) << std::endl;
@@ -236,84 +235,22 @@ namespace datalog {
       print_inference_state();
       // initial abstract inference
       for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
-	rule * r = rules.get_rule(r_id);
+	rule* r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
 	add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
       }
       // process worklist
-    INFERENCE_LOOP: 
-      /*
-      print_inference_state();
-      char name[256];
-      std::cin.getline(name, 256);
-      */
-      if (m_cancel) throw default_exception("predabst canceled");
-      if (m_node_worklist.empty()) goto INFERENCE_END;
-      unsigned current_id = *m_node_worklist.begin();
-      m_node_worklist.remove(current_id);
-      func_decl * current_func_decl = m_node2func_decl[current_id];
-      func_decl2uints::obj_map_entry * e_current_rules = 
-	m_func_decl_body2rules.find_core(current_func_decl);
-      if (!e_current_rules) goto INFERENCE_LOOP;
-      uint_set & current_rules = e_current_rules->get_data().m_value;
-      std::cout << "rules " << current_rules << std::endl;
-      for (uint_set::iterator r_id = current_rules.begin(),
-	     r_id_end = current_rules.end(); r_id != r_id_end; ++r_id) {
-	std::cout << "apply " << current_id << " " << 
-	  mk_pp(current_func_decl, m) << " on " << *r_id << std::endl;
-	rules.get_rule(*r_id)->display(m_ctx, std::cout);
-	// positions of current_id among body func_decls
-	uint_set current_poss;
-	rule * r = rules.get_rule(*r_id);
-	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i)
-	  if (r->get_decl(i) == current_func_decl) 
-	    current_poss.insert(i);
-	std::cout << "current_id_idxs " << current_poss << std::endl;
-	// create set of combinations of nodes to apply the rule
-	vector<node_vector> nodes_set;
-	nodes_set.push_back(node_vector());
-	// current_id is put on each appropriate position
-	for (uint_set::iterator current_pos = current_poss.begin(),
-	       current_pos_end = current_poss.end();
-	     current_pos != current_pos_end; ++current_pos) {
-	  node_set current_pos_singleton;
-	  current_pos_singleton.insert(current_id);
-	  // grow node combinations as cartesian product with nodes at pos
-	  for (unsigned pos=0; pos<r->get_uninterpreted_tail_size(); ++pos) {
-	    node_set & pos_nodes =
-	      (*current_pos == pos) ? 
-	      current_pos_singleton :
-	      m_func_decl2max_reach_node_set[r->get_decl(pos)];
-	    unsigned orig_nodes_set_size = nodes_set.size();
-	    // compute cartesian product
-	    // first, store the product with first node in place
-	    node_set::iterator pos_node = pos_nodes.begin();
-	    for (unsigned nodes_set_offset=0; 
-		 nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) 
-	      nodes_set[nodes_set_offset].push_back(*pos_node);
-	    ++pos_node;
-	    // then, product for rest nodes goes into additional vectors
-	    for (node_set::iterator pos_node_end = pos_nodes.end(); 
-		 pos_node != pos_node_end; ++pos_node) 
-	      for (unsigned nodes_set_offset=0; 
-		   nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) {
-		nodes_set.push_back(nodes_set[nodes_set_offset]);
-		nodes_set.back().push_back(*pos_node);
-	      }
-	  }
-	}
-	std::cout << "nodes set" << std::endl;
-	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
-	  print_node_vector(*nodes);
-	// apply rule on each node combination
-	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
-	  add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), 
-		   *r_id, *nodes);
+      while(!m_node_worklist.empty()) {
+	/*
+	print_inference_state();
+	char name[256];
+	std::cin.getline(name, 256);
+	*/
+	if (m_cancel) throw default_exception("predabst canceled");
+	unsigned current_id = *m_node_worklist.begin();
+	m_node_worklist.remove(current_id);
+	inference_step(rules, current_id);
       }
-      goto INFERENCE_LOOP;
-    INFERENCE_END:
       print_inference_state();
       return l_true;
     }
@@ -351,16 +288,16 @@ namespace datalog {
   private:
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
-    expr_ref_vector app_inst_preds(app * appl, expr_ref_vector const & subst) {
+    expr_ref_vector app_inst_preds(app* appl, const expr_ref_vector& subst) {
       func_decl2vars_preds::obj_map_entry * e = 
 	m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return m_empty_preds;
-      expr * const * vars = e->get_data().get_value().first;
+      expr* const * vars = e->get_data().get_value().first;
       expr_ref_vector const & preds = *e->get_data().get_value().second;
       std::cout << "start app_inst_preds" << std::endl;
       std::cout << "app " << mk_pp(appl, m) << std::endl;
       std::cout << "vars ";
-      for (unsigned i=0; i<appl->get_num_args(); ++i)
+      for (unsigned i = 0; i<appl->get_num_args(); ++i)
 	std::cout << mk_pp(vars[i], m);
       std::cout << std::endl << "preds " << preds.size() << " ";
       print_expr_ref_vector(preds);
@@ -371,8 +308,8 @@ namespace datalog {
       // instantiation maps preds variables to head arguments
       expr_ref_vector inst(m);
       inst.reserve(appl->get_num_args());
-      app * gappl = to_app(subst_tmp);
-      for (unsigned i=0; i<appl->get_num_args(); ++i) {
+      app* gappl = to_app(subst_tmp);
+      for (unsigned i = 0; i<appl->get_num_args(); ++i) {
 	unsigned idx = to_var(vars[i])->get_idx();
 	if (idx>=inst.size())
 	  inst.resize(idx+1);
@@ -390,23 +327,19 @@ namespace datalog {
       return inst_preds;
     }
     
-    cube_t * cart_pred_abst_rule(unsigned r_id, 
-				 node_vector const & nodes = node_vector()) {
+    cube_t* cart_pred_abst_rule(unsigned r_id, 
+				const node_vector& nodes = node_vector()) {
       std::cout << "pred_abst_rule " << r_id << std::endl;
       // get instantiated predicates
-      vector<expr_ref_vector> & preds_vector = m_rule2gpreds_vector[r_id];
+      vector<expr_ref_vector>& preds_vector = m_rule2gpreds_vector[r_id];
       m_solver.push();
       m_solver.assert_expr(m_rule2gbody[r_id]);
       std::cout << "assert body " << mk_pp(m_rule2gbody[r_id], m) << std::endl;
       // load abstract states for nodes
       for (unsigned pos=0; pos<nodes.size(); ++pos) {
-	cube_t & pos_cube = *m_node2cube[nodes[pos]];
-	for (unsigned i=0; i<preds_vector[pos].size(); ++i) 
-	  if (pos_cube[i]) {
-	    std::cout << "assert " << pos << " " << i << " " << 
-	      mk_pp(preds_vector[pos][i].get(), m) << std::endl;
-	    m_solver.assert_expr(preds_vector[pos][i].get());
-	  }
+	cube_t& pos_cube = *m_node2cube[nodes[pos]];
+	for (unsigned i = 0; i<preds_vector[pos].size(); ++i) 
+	  if (pos_cube[i]) m_solver.assert_expr(preds_vector[pos][i].get());
       }
       if (m_solver.check() == l_false) {
 	// unsat body
@@ -414,11 +347,11 @@ namespace datalog {
 	return 0; // null pointer denotes unsat cube
       }
       // collect abstract cube
-      cube_t * cube = alloc(cube_t);
-      expr_ref_vector & head_preds = preds_vector.back();
+      cube_t* cube = alloc(cube_t);
+      expr_ref_vector& head_preds = preds_vector.back();
       if (head_preds.empty()) return cube;
       cube->resize(head_preds.size());
-      for (unsigned i=0; i<head_preds.size(); ++i) {
+      for (unsigned i = 0; i<head_preds.size(); ++i) {
 	m_solver.push();
 	m_solver.assert_expr(head_preds[i].get());
 	(*cube)[i] = (m_solver.check() == l_false);
@@ -430,18 +363,19 @@ namespace datalog {
 
     void add_node(func_decl* sym, cube_t* cube, 
 		  unsigned r_id, const node_vector& nodes = node_vector()) {
-      std::cout << "add_node " << m_node_counter << " via " << r_id << " ";
-      print_node_vector(nodes);
+      std::cout << "add_node " << m_node_counter << " [" << 
+	(cube ? *cube : 0) << "]" << " via " << r_id << 
+	" (" << nodes << ")" << std::endl;
       if (!cube) return;
       func_decl2node_set::obj_map_entry * sym_nodes_entry =
 	m_func_decl2max_reach_node_set.find_core(sym);
       if (sym_nodes_entry) { 
 	// nodes exist at this sym
-	node_set & sym_nodes = sym_nodes_entry->get_data().m_value;
+	node_set& sym_nodes = sym_nodes_entry->get_data().m_value;
 	node_vector old_lt_nodes;
 	for (node_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
 	     it != end; ++it) {
-	  cube_t & old_cube = *m_node2cube[*it];
+	  cube_t& old_cube = *m_node2cube[*it];
 	  // if cube implies existing cube then nothing to add
 	  if (cube_leq(*cube, old_cube)) {
 	    dealloc(cube);
@@ -470,74 +404,99 @@ namespace datalog {
     }
 
     // return whether c1 implies c2
-    bool cube_leq(const cube_t & c1, const cube_t & c2) {
+    bool cube_leq(const cube_t& c1, const cube_t& c2) {
       unsigned size = c1.size();
       for (unsigned i=0; i<size; ++i) 
 	if ( c2[i] && !c1[i]) return false;
       return true;
     }
+    
+    void inference_step(const rule_set& rules, unsigned current_id) {
+      func_decl* current_func_decl = m_node2func_decl[current_id];
+      func_decl2uints::obj_map_entry * e_current_rules = 
+	m_func_decl_body2rules.find_core(current_func_decl);
+      if (!e_current_rules) return;
+      uint_set& current_rules = e_current_rules->get_data().m_value;
+      std::cout << "rules " << current_rules << std::endl;
+      for (uint_set::iterator r_id = current_rules.begin(),
+	     r_id_end = current_rules.end(); r_id != r_id_end; ++r_id) {
+	std::cout << "apply " << current_id << " " << 
+	  mk_pp(current_func_decl, m) << " on " << *r_id << std::endl;
+	rules.get_rule(*r_id)->display(m_ctx, std::cout);
+	// positions of current_id among body func_decls
+	uint_set current_poss;
+	rule* r = rules.get_rule(*r_id);
+	for (unsigned i = 0; i<r->get_uninterpreted_tail_size(); ++i)
+	  if (r->get_decl(i) == current_func_decl) 
+	    current_poss.insert(i);
+	std::cout << "current_id_idxs " << current_poss << std::endl;
+	// create set of combinations of nodes to apply the rule
+	vector<node_vector> nodes_set;
+	nodes_set.push_back(node_vector());
+	// current_id is put on each appropriate position
+	for (uint_set::iterator current_pos = current_poss.begin(),
+	       current_pos_end = current_poss.end();
+	     current_pos != current_pos_end; ++current_pos) {
+	  node_set current_pos_singleton;
+	  current_pos_singleton.insert(current_id);
+	  // grow node combinations as cartesian product with nodes at pos
+	  for (unsigned pos = 0; pos<r->get_uninterpreted_tail_size(); ++pos) {
+	    node_set& pos_nodes =
+	      (*current_pos == pos) ? 
+	      current_pos_singleton :
+	      m_func_decl2max_reach_node_set[r->get_decl(pos)];
+	    unsigned orig_nodes_set_size = nodes_set.size();
+	    // compute cartesian product
+	    // first, store the product with first node in place
+	    node_set::iterator pos_node = pos_nodes.begin();
+	    for (unsigned nodes_set_offset=0; 
+		 nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) 
+	      nodes_set[nodes_set_offset].push_back(*pos_node);
+	    ++pos_node;
+	    // then, product for rest nodes goes into additional vectors
+	    for (node_set::iterator pos_node_end = pos_nodes.end(); 
+		 pos_node != pos_node_end; ++pos_node) 
+	      for (unsigned nodes_set_offset=0; 
+		   nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) {
+		nodes_set.push_back(nodes_set[nodes_set_offset]);
+		nodes_set.back().push_back(*pos_node);
+	      }
+	  }
+	}
+	std::cout << "nodes set" << std::endl;
+	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
+	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
+	  std::cout << *nodes << std::endl;
+	// apply rule on each node combination
+	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
+	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
+	  add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), 
+		   *r_id, *nodes);
+      }
+    }
 
     void print_inference_state() {
-      printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-      printf("m_node_counter %d\n", m_node_counter);
-      for (unsigned i=0; i<m_node_counter; ++i) {
+      std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << 
+	std::endl << "m_node_counter " << m_node_counter << std::endl;
+      for (unsigned i=0; i<m_node_counter; ++i) 
 	std::cout << "node " << i << " " << 
-	  mk_pp(m_node2func_decl[i], m) << " [" << *m_node2cube[i] << 
-	  "] " << m_node2parent_rule[i] << " (";
-	print_node_vector(m_node2parent_nodes[i], false);
-	std::cout << ")" << std::endl;
-      }
+	  mk_pp(m_node2func_decl[i], m) << " [" << *m_node2cube[i] << "] " << 
+	  m_node2parent_rule[i] << " (" << m_node2parent_nodes[i] << ")" << 
+	  std::endl;
       for (func_decl2node_set::iterator 
 	     it = m_func_decl2max_reach_node_set.begin(),
 	     end = m_func_decl2max_reach_node_set.end();
 	   it != end; ++it) 
 	std::cout << "max reached nodes " << mk_pp(it->m_key, m) 
 		  << " " << it->m_value << std::endl;
-      std::cout << "worklist " << m_node_worklist << std::endl;
-      printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n");
-    }
-
-    void print_cube(const cube_t & c, bool newline = true) {
-      for (unsigned i=0; i<c.size(); ++i) {
-        std::cout << c[i];
-        if (i<c.size()-1) std::cout << ", ";
-      }
-      if (newline) std::cout << std::endl;
-    }
-
-    void print_cube(const cube_t * c, bool newline = true) {
-      if (!c) {
-	std::cout << "false";
-	return;
-      }
-      for (unsigned i=0; i<c->size(); ++i) {
-        std::cout << (*c)[i];
-        if (i<c->size()-1) std::cout << ", ";
-      }
-      if (newline) std::cout << std::endl;
-    }
-
-    void print_node_vector(const node_vector & v, bool newline = true) {
-      for (unsigned i=0; i<v.size(); ++i) {
-        std::cout << v[i];
-        if (i<v.size()-1) std::cout << ", ";
-      }
-      if (newline) std::cout << std::endl;
+      std::cout << "worklist " << m_node_worklist << std::endl <<
+	"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
     }
 
     void print_expr_ref_vector(const expr_ref_vector& v, bool newline = true) {
       unsigned size = v.size();
       for (unsigned i = 0; i < size; ++i) {
 	std::cout << mk_pp(v[i], m);
-	if (i < size-1) std::cout << ", ";
-      }
-      if (newline) std::cout << std::endl;
-    }
-
-    void print_expr_ref_vector(const expr_ref_vector * v, bool newline = true) {
-      unsigned size = v->size();
-      for (unsigned i = 0; i < size; ++i) {
-	std::cout << mk_pp((*v)[i], m);
 	if (i < size-1) std::cout << ", ";
       }
       if (newline) std::cout << std::endl;
@@ -578,23 +537,17 @@ namespace datalog {
 
 };
 
-inline std::ostream & operator<<(std::ostream& out, vector<bool>* v) {
-  if (v) {
-    unsigned size = v->size();
-    if (size == 0) {
-      out << "empty";
-    } else {
-      out << (*v)[0];
-      for (unsigned i=1; i<size; ++i) 
-	out << ", " << (*v)[i];
-    }
-  } else {
-    out << "nil";
+inline std::ostream & operator<<(std::ostream& out, const vector<bool>& v) {
+  unsigned size = v.size();
+  if (size > 0) {
+    out << v[0];
+    for (unsigned i=1; i<size; ++i) 
+      out << "," << v[i];
   }
   return out;
 }
 
-inline std::ostream & operator<<(std::ostream & out, const vector<bool>& v) {
+inline std::ostream & operator<<(std::ostream& out, const vector<unsigned>& v) {
   unsigned size = v.size();
   if (size > 0) {
     out << v[0];
