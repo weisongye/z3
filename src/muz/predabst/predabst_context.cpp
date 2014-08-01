@@ -75,7 +75,7 @@ namespace datalog {
     typedef u_map<func_decl *> node2func_decl;
     node2func_decl m_node2func_decl;
 
-    typedef u_map<cube_t> node2cube;
+    typedef u_map<cube_t *> node2cube;
     node2cube m_node2cube;
 
     typedef vector<unsigned> node_vector;
@@ -113,6 +113,9 @@ namespace datalog {
       for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(), 
 	     end = m_func_decl2vars_preds.end(); it != end; ++it) 
 	dealloc(it->m_value.second);
+      for (node2cube::iterator it = m_node2cube.begin(), 
+	     end = m_node2cube.end(); it != end; ++it)
+	dealloc(it->m_value);
     }        
 
     lbool query(expr* query) {
@@ -235,19 +238,23 @@ namespace datalog {
       for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
 	rule * r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
-	cube_t const & cube = cart_pred_abst_rule(r_id);
+	cube_t * cube = cart_pred_abst_rule(r_id);
         std::cout << "cube ";
-        print_cube(cube);
-	if (add_node(r->get_decl(), cube, r_id))
-	  m_node_worklist.insert(m_node_counter-1);
+	print_cube(cube);
+	if (cube) 
+	  if (add_node(r->get_decl(), cube, r_id)) {
+	    m_node_worklist.insert(m_node_counter-1);
+	  } else {
+	    dealloc(cube);
+	  }
       }
       // process worklist
     INFERENCE_LOOP: 
-      /*
+
       print_inference_state();
       char name[256];
       std::cin.getline(name, 256);
-      */
+
       if (m_cancel) throw default_exception("predabst canceled");
       if (m_node_worklist.empty()) goto INFERENCE_END;
       unsigned current_id = *m_node_worklist.begin();
@@ -310,11 +317,15 @@ namespace datalog {
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
 	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
-	  cube_t & cube = cart_pred_abst_rule(*r_id, *nodes);
+	  cube_t * cube = cart_pred_abst_rule(*r_id, *nodes);
 	  std::cout << "cube ";
 	  print_cube(cube);
-	  if (add_node(r->get_decl(), cube, *r_id, *nodes))
-	    m_node_worklist.insert(m_node_counter-1);
+	  if (cube)
+	    if (add_node(r->get_decl(), cube, *r_id, *nodes)) {
+	      m_node_worklist.insert(m_node_counter-1);
+	    } else {
+	      dealloc(cube);
+	    }
 	}
       }
       goto INFERENCE_LOOP;
@@ -395,38 +406,45 @@ namespace datalog {
       return inst_preds;
     }
     
-    // TODO return reference?
-    cube_t cart_pred_abst_rule(unsigned r_id, 
-			       node_vector const & nodes = node_vector()) {
-      cube_t cube;
+    cube_t * cart_pred_abst_rule(unsigned r_id, 
+				 node_vector const & nodes = node_vector()) {
       std::cout << "pred_abst_rule " << r_id << std::endl;
       // get instantiated predicates
       vector<expr_ref_vector> & preds_vector = m_rule2gpreds_vector[r_id];
-      expr_ref_vector & head_preds = preds_vector.back();
-      if (head_preds.empty()) return cube;
       m_solver.push();
       m_solver.assert_expr(m_rule2gbody[r_id]);
+      std::cout << "assert body " << mk_pp(m_rule2gbody[r_id], m) << std::endl;
       // load abstract states for nodes
       for (unsigned pos=0; pos<nodes.size(); ++pos) {
-	cube_t & pos_cube = m_node2cube[nodes[pos]];
+	cube_t & pos_cube = *m_node2cube[nodes[pos]];
 	for (unsigned i=0; i<preds_vector[pos].size(); ++i) 
-	  if (pos_cube[i]) 
+	  if (pos_cube[i]) {
+	    std::cout << "assert " << pos << " " << i << " " << 
+	      mk_pp(preds_vector[pos][i].get(), m) << std::endl;
 	    m_solver.assert_expr(preds_vector[pos][i].get());
+	  }
       }
-      // TODO check satisfiability
+      if (m_solver.check() == l_false) {
+	// unsat body
+	m_solver.pop(1);
+	return 0; // null pointer denotes unsat cube
+      }
       // collect abstract cube
-      cube.resize(head_preds.size());
+      cube_t * cube = alloc(cube_t);
+      expr_ref_vector & head_preds = preds_vector.back();
+      if (head_preds.empty()) return cube;
+      cube->resize(head_preds.size());
       for (unsigned i=0; i<head_preds.size(); ++i) {
 	m_solver.push();
 	m_solver.assert_expr(head_preds[i].get());
-	cube[i] = (m_solver.check() == l_false);
+	(*cube)[i] = (m_solver.check() == l_false);
 	m_solver.pop(1);
       }
       m_solver.pop(1);
       return cube;
     }
 
-    bool add_node(func_decl * sym, cube_t const & cube, 
+    bool add_node(func_decl * sym, cube_t * cube, 
 		  unsigned r_id, node_vector const & nodes = node_vector()) {
       std::cout << "add_node " << m_node_counter << " via " << r_id << " ";
       print_node_vector(nodes);
@@ -438,7 +456,7 @@ namespace datalog {
 	node_vector old_lt_nodes;
 	for (node_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
 	     it != end; ++it) {
-	  cube_t const & old_cube = m_node2cube[*it];
+	  cube_t * old_cube = m_node2cube[*it];
 	  // if cube implies existing cube then nothing to add
 	  if (cube_leq(cube, old_cube)) return false;
 	  // stronger old cubes will not be considered maximal
@@ -464,10 +482,10 @@ namespace datalog {
     }
 
     // return whether c1 implies c2
-    bool cube_leq(cube_t const & c1, cube_t const & c2) {
-      unsigned size = c1.size();
+    bool cube_leq(cube_t const * c1, cube_t const * c2) {
+      unsigned size = c1->size();
       for (unsigned i=0; i<size; ++i) 
-	if ( c2[i] && !c1[i]) return false;
+	if ( (*c2)[i] && !(*c1)[i]) return false;
       return true;
     }
 
@@ -475,6 +493,9 @@ namespace datalog {
       printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
       printf("m_node_counter %d\n", m_node_counter);
       for (unsigned i=0; i<m_node_counter; ++i) {
+	vector<bool> test;
+	test.push_back(true);
+	test.push_back(false);
 	std::cout << "node " << i << " " << 
 	  mk_pp(m_node2func_decl[i], m) << " [";
 	print_cube(m_node2cube[i], false);
@@ -496,6 +517,18 @@ namespace datalog {
       for (unsigned i=0; i<c.size(); ++i) {
         std::cout << c[i];
         if (i<c.size()-1) std::cout << ", ";
+      }
+      if (newline) std::cout << std::endl;
+    }
+
+    void print_cube(cube_t const * c, bool newline = true) {
+      if (!c) {
+	std::cout << "false";
+	return;
+      }
+      for (unsigned i=0; i<c->size(); ++i) {
+        std::cout << (*c)[i];
+        if (i<c->size()-1) std::cout << ", ";
       }
       if (newline) std::cout << std::endl;
     }
@@ -560,3 +593,21 @@ namespace datalog {
   }
 
 };
+
+inline std::ostream & operator<<(std::ostream & out, vector<bool> * v) {
+      out << ">>>";
+      if (v) {
+	unsigned size = v->size();
+	if (size == 0) {
+	  out << "empty";
+	} else {
+	  out << (*v)[0];
+	  for (unsigned i=1; i<size; ++i) 
+	    out << ", " << (*v)[i];
+	}
+      } else {
+	out << "nil";
+      }
+      out << "<<<";
+      return out;
+    }
