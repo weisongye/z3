@@ -26,8 +26,6 @@
 #include "smt_kernel.h"
 #include "dl_transforms.h"
 
-#include <cstring>
-
 namespace datalog {
 
   class predabst::imp {
@@ -118,6 +116,8 @@ namespace datalog {
       m_ctx.ensure_opened();
       rule_set& rules = m_ctx.get_rules();
 
+      rm.mk_query(query, rules);
+
       std::cout << "begin original rules\n";
       rules.display(std::cout);
       std::cout << "end original rules\n";
@@ -160,7 +160,12 @@ namespace datalog {
       } 
 
       std::cout << "remaining rules "<< rules.get_num_rules() << std::endl;
-      rules.display(std::cout);
+      for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
+	rule* r = rules.get_rule(r_id);
+	std::cout << "rule " << r_id << " is output " <<
+	  rules.is_output_predicate(r->get_decl()) << std::endl;
+	r->display(m_ctx, std::cout);
+      }
 
       // for each rule: ground body and instantiate predicates for applications
       for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
@@ -228,7 +233,9 @@ namespace datalog {
       for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
-	add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
+	optional<unsigned> added_id =
+	  add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
+	if (added_id) check_node_property(rules, *added_id);
       }
       // process worklist
       while(!m_node_worklist.empty()) {
@@ -352,12 +359,14 @@ namespace datalog {
       return cube;
     }
 
-    void add_node(func_decl* sym, cube_t* cube, 
-		  unsigned r_id, const node_vector& nodes = node_vector()) {
+    optional<unsigned>
+    add_node(func_decl* sym, cube_t* cube, 
+	     unsigned r_id, const node_vector& nodes = node_vector()) {
+      optional<unsigned> added_id;
       std::cout << "add_node " << m_node_counter << " [" << 
 	(cube ? *cube : 0) << "]" << " via " << r_id << 
 	" (" << nodes << ")" << std::endl;
-      if (!cube) return;
+      if (!cube) return added_id;
       func_decl2node_set::obj_map_entry * sym_nodes_entry =
 	m_func_decl2max_reach_node_set.find_core(sym);
       if (sym_nodes_entry) { 
@@ -370,7 +379,7 @@ namespace datalog {
 	  // if cube implies existing cube then nothing to add
 	  if (cube_leq(*cube, old_cube)) {
 	    dealloc(cube);
-	    return;
+	    return added_id;
 	  }
 	  // stronger old cubes will not be considered maximal
 	  if (cube_leq(old_cube, *cube)) old_lt_nodes.push_back(*it);
@@ -391,7 +400,16 @@ namespace datalog {
       m_node2parent_rule.insert(m_node_counter, r_id);
       m_node2parent_nodes.insert(m_node_counter, nodes);
       m_node_worklist.insert(m_node_counter);
+      added_id = m_node_counter;
       m_node_counter++;
+      return added_id;
+    }
+
+    void check_node_property(const rule_set& rules, unsigned id) {
+      if (rules.is_output_predicate(m_node2func_decl[id])) {
+	std::cout << "property violation " << id;
+	exit(1);
+      }
     }
 
     // return whether c1 implies c2
@@ -460,9 +478,12 @@ namespace datalog {
 	  std::cout << *nodes << std::endl;
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
-	  add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), 
-		   *r_id, *nodes);
+	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
+	  optional<unsigned>& added_id =
+	    add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), *r_id,
+		     *nodes);
+	  if (added_id) check_node_property(rules, *added_id);
+	}
       }
     }
 

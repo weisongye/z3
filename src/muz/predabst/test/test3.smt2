@@ -46,6 +46,4 @@
 
 (assert (forall ((x Int) (y Int) (z Int)) (=> (p5 x y z) (= x y))))
 
-;(assert (=> (exists ((x Int) (y Int) (z Int)) (p5 x y z)) false))
-
 (check-sat)
