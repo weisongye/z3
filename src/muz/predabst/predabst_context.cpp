@@ -175,13 +175,13 @@ namespace datalog {
 	r->get_vars(m, free_sorts);
 	expr_ref_vector rule_subst(m);
 	rule_subst.reserve(free_sorts.size());
-	for (unsigned i = 0; i<rule_subst.size(); ++i) 
+	for (unsigned i = 0; i < rule_subst.size(); ++i) 
 	  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
 	// conjoin constraints in rule body 
 	expr_ref_vector conjs(m);
 	conjs.reserve(r->get_tail_size()-r->get_uninterpreted_tail_size());
 	for (unsigned i = r->get_uninterpreted_tail_size(); 
-	     i<r->get_tail_size(); ++i)
+	     i < r->get_tail_size(); ++i)
 	  conjs[i-r->get_uninterpreted_tail_size()] = r->get_tail(i);
 	expr_ref conj(m.mk_and(conjs.size(), conjs.c_ptr()), m);
 	// apply substitution
@@ -192,7 +192,7 @@ namespace datalog {
 	// store instantiated predicates
 	vector<expr_ref_vector> gpreds_vector;
 	// store instantiation for body applications
-	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i) 
+	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) 
 	  gpreds_vector.push_back(app_inst_preds(r->get_tail(i), rule_subst));
 	// store instantiation for non-query head
 	if (!rules.is_output_predicate(r->get_decl())) {
@@ -205,7 +205,7 @@ namespace datalog {
 	}
 	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
 	// map body func_decls to rule
-	for (unsigned i=0; i<r->get_uninterpreted_tail_size(); ++i)
+	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i)
 	  m_func_decl_body2rules.
 	    insert_if_not_there2(r->get_decl(i), uint_set())->get_data().
 	    m_value.insert(r_id);
@@ -230,7 +230,7 @@ namespace datalog {
       } 
       print_inference_state();
       // initial abstract inference
-      for (unsigned r_id=0; r_id<rules.get_num_rules(); ++r_id) {
+      for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
 	optional<unsigned> added_id =
@@ -250,7 +250,7 @@ namespace datalog {
 	inference_step(rules, current_id);
       }
       print_inference_state();
-      return l_true;
+      return l_false;
     }
 
     void cancel() {
@@ -274,6 +274,7 @@ namespace datalog {
 
     void display_certificate(std::ostream& out) const {
       // TBD hmm?
+      std::cout << "inside display_certificate" << std::endl;
       expr_ref ans = get_answer();
       out << mk_pp(ans, m) << "\n";    
     }
@@ -283,6 +284,49 @@ namespace datalog {
       return expr_ref(m.mk_true(), m);
     }
 
+    model_ref get_model() const {
+      model_ref md = alloc(model, m);
+      for (func_decl2node_set::iterator 
+	     it_decl = m_func_decl2max_reach_node_set.begin(),
+	     end_decl = m_func_decl2max_reach_node_set.end();
+	   it_decl != end_decl; ++it_decl) {
+	if (it_decl->m_key->get_arity() == 0)
+	  throw("predabst::get_model uknown arity");
+	func_decl2vars_preds::obj_map_entry * e = 
+	  m_func_decl2vars_preds.find_core(it_decl->m_key);
+	optional<expr*> disj;
+	if (e) {
+	  expr_ref_vector& preds = *e->get_data().get_value().second;
+	  for (node_set::iterator it_node = it_decl->m_value.begin(),
+		 end_node = it_decl->m_value.end(); it_node != end_node;
+	       ++it_node) {
+	    cube_t& cube = *m_node2cube[*it_node];
+	    optional<expr*> conj;
+	    for (unsigned i = 0; i < cube.size(); ++i) 
+	      if (cube[i]) 
+		conj = conj ? to_expr(m.mk_and(preds[i].get(), *conj))
+		  : preds[i].get();
+	    disj = disj ? to_expr(m.mk_or(*conj, *disj)) : *conj;
+	  }
+	} else {
+	  disj = to_expr(m.mk_true());
+	}
+	func_interp* fi = alloc(func_interp, m, it_decl->m_key->get_arity());
+	fi->set_else(expr_ref(*disj, m));
+	md->register_decl(it_decl->m_key, fi);
+      }
+      for (func_decl2uints::iterator
+	     it_decl = m_func_decl_body2rules.begin(),
+	     end_decl = m_func_decl_body2rules.end();
+	   it_decl != end_decl; ++it_decl) 
+	if (!m_func_decl2max_reach_node_set.contains(it_decl->m_key)) {
+	  func_interp* fi = alloc(func_interp, m, it_decl->m_key->get_arity());
+	  fi->set_else(expr_ref(m.mk_false(), m));
+	  md->register_decl(it_decl->m_key, fi);
+	}
+      return md;
+    }
+
   private:
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
@@ -290,12 +334,12 @@ namespace datalog {
       func_decl2vars_preds::obj_map_entry * e = 
 	m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return m_empty_preds;
-      expr* const * vars = e->get_data().get_value().first;
-      expr_ref_vector const & preds = *e->get_data().get_value().second;
+      expr * const * vars = e->get_data().get_value().first;
+      const expr_ref_vector& preds = *e->get_data().get_value().second;
       std::cout << "start app_inst_preds" << std::endl;
       std::cout << "app " << mk_pp(appl, m) << std::endl;
       std::cout << "vars ";
-      for (unsigned i = 0; i<appl->get_num_args(); ++i)
+      for (unsigned i = 0; i < appl->get_num_args(); ++i)
 	std::cout << mk_pp(vars[i], m);
       std::cout << std::endl << "preds " << preds.size() << " ";
       print_expr_ref_vector(preds);
@@ -307,7 +351,7 @@ namespace datalog {
       expr_ref_vector inst(m);
       inst.reserve(appl->get_num_args());
       app* gappl = to_app(subst_tmp);
-      for (unsigned i = 0; i<appl->get_num_args(); ++i) {
+      for (unsigned i = 0; i < appl->get_num_args(); ++i) {
 	unsigned idx = to_var(vars[i])->get_idx();
 	if (idx>=inst.size())
 	  inst.resize(idx+1);
@@ -318,7 +362,7 @@ namespace datalog {
       // preds instantiates to inst_preds
       expr_ref_vector inst_preds(m);
       inst_preds.reserve(preds.size());
-      for (unsigned i=0; i<preds.size(); ++i) {	      
+      for (unsigned i = 0; i < preds.size(); ++i) {	      
 	m_var_subst(preds[i], inst.size(), inst.c_ptr(), subst_tmp);
 	inst_preds[i] = subst_tmp;
       }
@@ -334,9 +378,9 @@ namespace datalog {
       m_solver.assert_expr(m_rule2gbody[r_id]);
       std::cout << "assert body " << mk_pp(m_rule2gbody[r_id], m) << std::endl;
       // load abstract states for nodes
-      for (unsigned pos=0; pos<nodes.size(); ++pos) {
+      for (unsigned pos = 0; pos < nodes.size(); ++pos) {
 	cube_t& pos_cube = *m_node2cube[nodes[pos]];
-	for (unsigned i = 0; i<preds_vector[pos].size(); ++i) 
+	for (unsigned i = 0; i < preds_vector[pos].size(); ++i) 
 	  if (pos_cube[i]) m_solver.assert_expr(preds_vector[pos][i].get());
       }
       if (m_solver.check() == l_false) {
@@ -349,7 +393,7 @@ namespace datalog {
       expr_ref_vector& head_preds = preds_vector.back();
       if (head_preds.empty()) return cube;
       cube->resize(head_preds.size());
-      for (unsigned i = 0; i<head_preds.size(); ++i) {
+      for (unsigned i = 0; i < head_preds.size(); ++i) {
 	m_solver.push();
 	m_solver.assert_expr(head_preds[i].get());
 	(*cube)[i] = (m_solver.check() == l_false);
@@ -415,7 +459,7 @@ namespace datalog {
     // return whether c1 implies c2
     bool cube_leq(const cube_t& c1, const cube_t& c2) {
       unsigned size = c1.size();
-      for (unsigned i=0; i<size; ++i) 
+      for (unsigned i = 0; i < size; ++i) 
 	if ( c2[i] && !c1[i]) return false;
       return true;
     }
@@ -435,7 +479,7 @@ namespace datalog {
 	// positions of current_id among body func_decls
 	uint_set current_poss;
 	rule* r = rules.get_rule(*r_id);
-	for (unsigned i = 0; i<r->get_uninterpreted_tail_size(); ++i)
+	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i)
 	  if (r->get_decl(i) == current_func_decl) 
 	    current_poss.insert(i);
 	std::cout << "current_id_idxs " << current_poss << std::endl;
@@ -449,7 +493,8 @@ namespace datalog {
 	  node_set current_pos_singleton;
 	  current_pos_singleton.insert(current_id);
 	  // grow node combinations as cartesian product with nodes at pos
-	  for (unsigned pos = 0; pos<r->get_uninterpreted_tail_size(); ++pos) {
+	  for (unsigned pos = 0; pos < r->get_uninterpreted_tail_size();
+	       ++pos) {
 	    node_set& pos_nodes =
 	      (*current_pos == pos) ? 
 	      current_pos_singleton :
@@ -490,7 +535,7 @@ namespace datalog {
     void print_inference_state() {
       std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << 
 	std::endl << "m_node_counter " << m_node_counter << std::endl;
-      for (unsigned i=0; i<m_node_counter; ++i) 
+      for (unsigned i = 0; i < m_node_counter; ++i) 
 	std::cout << "node " << i << " " << 
 	  mk_pp(m_node2func_decl[i], m) << " [" << *m_node2cube[i] << "] " << 
 	  m_node2parent_rule[i] << " (" << m_node2parent_nodes[i] << ")" << 
@@ -507,9 +552,9 @@ namespace datalog {
 
     void print_expr_ref_vector(const expr_ref_vector& v, bool newline = true) {
       unsigned size = v.size();
-      for (unsigned i = 0; i < size; ++i) {
-	std::cout << mk_pp(v[i], m);
-	if (i < size-1) std::cout << ", ";
+      if (size > 0) {
+	std::cout << mk_pp(v[0], m);
+	for (unsigned i = 1; i < size; ++i) std::cout << ", " << mk_pp(v[i], m);
       }
       if (newline) std::cout << std::endl;
     }
@@ -543,15 +588,22 @@ namespace datalog {
   expr_ref predabst::get_answer() {
     return m_imp->get_answer();
   }
-
+  model_ref predabst::get_model() {
+    return m_imp->get_model();
+  }
+  /*
+  proof_ref predabst::get_proof() {
+    std::cout << "predabst get proof" << std::endl;
+    throw default_exception("predabst get proof");
+    }
+  */
 };
 
 inline std::ostream& operator<<(std::ostream& out, const vector<bool>& v) {
   unsigned size = v.size();
   if (size > 0) {
     out << v[0];
-    for (unsigned i=1; i<size; ++i) 
-      out << "," << v[i];
+    for (unsigned i = 1; i < size; ++i) out << "," << v[i];
   }
   return out;
 }
@@ -560,8 +612,7 @@ inline std::ostream& operator<<(std::ostream& out, const vector<unsigned>& v) {
   unsigned size = v.size();
   if (size > 0) {
     out << v[0];
-    for (unsigned i=1; i<size; ++i) 
-      out << "," << v[i];
+    for (unsigned i = 1; i < size; ++i) out << "," << v[i];
   }
   return out;
 }

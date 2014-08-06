@@ -1,5 +1,6 @@
 (set-logic HORN)
 (set-option :fixedpoint.engine predabst)
+;(set-option :produce-proofs true)
 
 (declare-fun __pred__p1 (Int Int Int) Bool)
 (declare-fun __pred__p2 (Int Int Int) Bool)
@@ -47,3 +48,4 @@
 (assert (forall ((x Int) (y Int) (z Int)) (=> (p5 x y z) (= x y))))
 
 (check-sat)
+(get-model)
