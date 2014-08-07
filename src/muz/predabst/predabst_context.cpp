@@ -168,16 +168,16 @@ namespace datalog {
 	// store instantiated predicates
 	vector<expr_ref_vector> gpreds_vector;
 	// store instantiation for body applications
-	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) 
-	  gpreds_vector.push_back(app_inst_preds(r->get_tail(i), rule_subst));
+	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) {
+	  gpreds_vector.push_back(expr_ref_vector(m));
+	  app_inst_preds(r->get_tail(i), rule_subst, gpreds_vector[i]);
+	}
 	// store instantiation for non-query head
 	if (!rules.is_output_predicate(r->get_decl())) {
-	  expr_ref_vector& hpreds = app_inst_preds(r->get_head(), rule_subst);
-	  expr_ref_vector npreds(m);
-	  npreds.reserve(hpreds.size());
-	  for (unsigned i=0; i<hpreds.size(); ++i) 
-	    npreds[i] = m.mk_not(hpreds[i].get());
-	  gpreds_vector.push_back(npreds);
+	  gpreds_vector.push_back(expr_ref_vector(m));
+	  app_inst_preds(r->get_head(), rule_subst, gpreds_vector.back());
+	  for (unsigned i=0; i<gpreds_vector.back().size(); ++i) 
+	    gpreds_vector.back()[i] = m.mk_not(gpreds_vector.back()[i].get());
 	}
 	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
 	// map body func_decls to rule
@@ -284,7 +284,8 @@ namespace datalog {
       }
       // unreachable head predicates are false
       rule_set& rules = m_ctx.get_rules();
-      for (rule_set::iterator it = rules.begin(), end = rules.end(); it != end; ++it) {
+      for (rule_set::iterator it = rules.begin(), end = rules.end(); it != end;
+	   ++it) {
 	func_decl* head_decl = (*it)->get_decl();
 	if (rules.is_output_predicate(head_decl)) continue;
 	if (head_decl->get_arity() == 0)
@@ -304,11 +305,39 @@ namespace datalog {
   private:
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
-    expr_ref_vector app_inst_preds(app* appl, const expr_ref_vector& subst) {
+    void app_inst_preds(app* appl, expr_ref_vector const& subst,
+			expr_ref_vector& inst_preds) {
+      func_decl2vars_preds::obj_map_entry* e = 
+	m_func_decl2vars_preds.find_core(appl->get_decl());
+      if (!e) return;
+      expr* const* vars = e->get_data().get_value().first;
+      expr_ref_vector& preds = *e->get_data().get_value().second;
+      // ground appl arguments
+      expr_ref subst_tmp(m);
+      m_var_subst(appl, subst.size(), subst.c_ptr(), subst_tmp);
+      // instantiation maps preds variables to head arguments
+      expr_ref_vector inst(m);
+      inst.reserve(appl->get_num_args());
+      app* gappl = to_app(subst_tmp);
+      for (unsigned i = 0; i < appl->get_num_args(); ++i) {
+	unsigned idx = to_var(vars[i])->get_idx();
+	if (idx>=inst.size())
+	  inst.resize(idx+1);
+	inst[idx] = gappl->get_arg(i);
+      } 
+      // preds instantiates to inst_preds
+      inst_preds.reserve(preds.size());
+      for (unsigned i = 0; i < preds.size(); ++i) {
+	m_var_subst(preds[i].get(), inst.size(), inst.c_ptr(), subst_tmp);
+	inst_preds[i] = subst_tmp;
+      }
+    }
+
+    expr_ref_vector app_inst_preds(app* appl, expr_ref_vector const& subst) {
       func_decl2vars_preds::obj_map_entry* e = 
 	m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return m_empty_preds;
-      expr* const * vars = e->get_data().get_value().first;
+      expr* const* vars = e->get_data().get_value().first;
       expr_ref_vector& preds = *e->get_data().get_value().second;
       // ground appl arguments
       expr_ref subst_tmp(m);
@@ -326,13 +355,13 @@ namespace datalog {
       // preds instantiates to inst_preds
       expr_ref_vector inst_preds(m);
       inst_preds.reserve(preds.size());
-      for (unsigned i = 0; i < preds.size(); ++i) {	      
+      for (unsigned i = 0; i < preds.size(); ++i) {
 	m_var_subst(preds[i].get(), inst.size(), inst.c_ptr(), subst_tmp);
 	inst_preds[i] = subst_tmp;
       }
       return inst_preds;
     }
-
+    
     cube_t* cart_pred_abst_rule(unsigned r_id, 
 				const node_vector& nodes = node_vector()) {
       // get instantiated predicates
