@@ -309,7 +309,6 @@ namespace datalog {
 	m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return m_empty_preds;
       expr* const * vars = e->get_data().get_value().first;
-      // TODO const needed?
       expr_ref_vector& preds = *e->get_data().get_value().second;
       // ground appl arguments
       expr_ref subst_tmp(m);
