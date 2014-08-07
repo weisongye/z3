@@ -191,10 +191,9 @@ namespace datalog {
       for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
-	// TODO avoid copying
-	optional<unsigned> added_id =
-	  add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
-	if (added_id) check_node_property(rules, *added_id);
+	unsigned added_id = add_node(r->get_decl(), cart_pred_abst_rule(r_id),
+				     r_id);
+	if (added_id != UINT_MAX) check_node_property(rules, added_id);
       }
       // process worklist
       while(!m_node_worklist.empty()) {
@@ -398,10 +397,9 @@ namespace datalog {
       return cube;
     }
 
-    optional<unsigned>
-    add_node(func_decl* sym, cube_t* cube, 
-	     unsigned r_id, const node_vector& nodes = node_vector()) {
-      optional<unsigned> added_id;
+    unsigned add_node(func_decl* sym, cube_t* cube, 
+		      unsigned r_id, const node_vector& nodes = node_vector()) {
+      unsigned added_id = UINT_MAX;
       if (!cube) return added_id;
       func_decl2node_set::obj_map_entry * sym_nodes_entry =
 	m_func_decl2max_reach_node_set.find_core(sym);
@@ -516,11 +514,10 @@ namespace datalog {
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
 	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
-	  // TODO avoid copying
-	  optional<unsigned> added_id =
+	  unsigned added_id =
 	    add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), *r_id,
 		     *nodes);
-	  if (added_id) check_node_property(rules, *added_id);
+	  if (added_id != UINT_MAX) check_node_property(rules, added_id);
 	}
       }
     }
