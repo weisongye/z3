@@ -438,16 +438,25 @@ namespace datalog {
       return added_id;
     }
 
-    void check_node_property(const rule_set& rules, unsigned id) {
+    void check_node_property(rule_set const& rules, unsigned id) {
       // TODO add proof construction
-      if (rules.is_output_predicate(m_node2func_decl[id])) {
-	std::cout << "property violation " << id;
-	exit(1);
+      if (!rules.is_output_predicate(m_node2func_decl[id])) return;
+      node_set todo_nodes;
+      todo_nodes.insert(id);
+      while (!todo_nodes.empty()) {
+	unsigned curr_id = *todo_nodes.begin();
+	todo_nodes.remove(curr_id);
+	node_vector& parent_nodes = m_node2parent_nodes[curr_id];
+	std::cout << "([" << parent_nodes << "], " <<
+	  m_node2parent_rule[curr_id] << ", " << curr_id << ")" << std::endl;
+	for (unsigned i = 0; i < parent_nodes.size(); ++i)
+	  todo_nodes.insert(parent_nodes[i]);
       }
+      throw("counterexample found");
     }
 
     // return whether c1 implies c2
-    bool cube_leq(const cube_t& c1, const cube_t& c2) const {
+    bool cube_leq(cube_t const& c1, cube_t const& c2) const {
       unsigned size = c1.size();
       for (unsigned i = 0; i < size; ++i) if ( c2[i] && !c1[i]) return false;
       return true;
