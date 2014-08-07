@@ -310,7 +310,7 @@ namespace datalog {
       if (!e) return m_empty_preds;
       expr* const * vars = e->get_data().get_value().first;
       // TODO const needed?
-      const expr_ref_vector& preds = *e->get_data().get_value().second;
+      expr_ref_vector& preds = *e->get_data().get_value().second;
       // ground appl arguments
       expr_ref subst_tmp(m);
       m_var_subst(appl, subst.size(), subst.c_ptr(), subst_tmp);
@@ -328,7 +328,7 @@ namespace datalog {
       expr_ref_vector inst_preds(m);
       inst_preds.reserve(preds.size());
       for (unsigned i = 0; i < preds.size(); ++i) {	      
-	m_var_subst(preds[i], inst.size(), inst.c_ptr(), subst_tmp);
+	m_var_subst(preds[i].get(), inst.size(), inst.c_ptr(), subst_tmp);
 	inst_preds[i] = subst_tmp;
       }
       return inst_preds;
