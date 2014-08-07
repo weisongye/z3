@@ -334,7 +334,6 @@ namespace datalog {
       return inst_preds;
     }
 
-    // TODO use optional return type
     cube_t* cart_pred_abst_rule(unsigned r_id, 
 				const node_vector& nodes = node_vector()) {
       // get instantiated predicates
