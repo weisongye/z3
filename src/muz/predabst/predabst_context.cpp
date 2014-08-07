@@ -262,12 +262,12 @@ namespace datalog {
 	       ++it_node) {
 	    cube_t& cube = *m_node2cube[*it_node];
 	    // TODO use null
-	    optional<expr*> conj;
+	    expr* conj = 0;
 	    for (unsigned i = 0; i < cube.size(); ++i) 
 	      if (cube[i]) 
-		conj = conj ? to_expr(m.mk_and(preds[i].get(), *conj))
+		conj = conj ? to_expr(m.mk_and(preds[i].get(), conj))
 		  : preds[i].get();
-	    disj = disj ? to_expr(m.mk_or(*conj, *disj)) : *conj;
+	    disj = disj ? to_expr(m.mk_or(conj, *disj)) : conj;
 	  }
 	} else {
 	  disj = to_expr(m.mk_true());
