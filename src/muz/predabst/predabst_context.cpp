@@ -191,7 +191,8 @@ namespace datalog {
       for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
-	optional<unsigned> const& added_id =
+	// TODO avoid copying
+	optional<unsigned> added_id =
 	  add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
 	if (added_id) check_node_property(rules, *added_id);
       }
@@ -253,6 +254,7 @@ namespace datalog {
 	  throw("predabst::get_model zero arity");
 	func_decl2vars_preds::obj_map_entry* e = 
 	  m_func_decl2vars_preds.find_core(it_decl->m_key);
+	// TODO use null
 	optional<expr*> disj;
 	if (e) {
 	  expr_ref_vector& preds = *e->get_data().get_value().second;
@@ -260,6 +262,7 @@ namespace datalog {
 		 end_node = it_decl->m_value.end(); it_node != end_node;
 	       ++it_node) {
 	    cube_t& cube = *m_node2cube[*it_node];
+	    // TODO use null
 	    optional<expr*> conj;
 	    for (unsigned i = 0; i < cube.size(); ++i) 
 	      if (cube[i]) 
@@ -513,7 +516,8 @@ namespace datalog {
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
 	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
-	  optional<unsigned> const& added_id =
+	  // TODO avoid copying
+	  optional<unsigned> added_id =
 	    add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), *r_id,
 		     *nodes);
 	  if (added_id) check_node_property(rules, *added_id);
