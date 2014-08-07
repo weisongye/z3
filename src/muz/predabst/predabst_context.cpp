@@ -116,7 +116,6 @@ namespace datalog {
       m_ctx.ensure_opened();
       rule_set& rules = m_ctx.get_rules();
       rm.mk_query(query, rules);
-      std::cout << "original rules" << std::endl << rules;
       // collect predicates and delete corresponding rules
       for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
 	   rules_it != rules_end; ++rules_it) {
@@ -144,21 +143,6 @@ namespace datalog {
 	// rule is not used for inference
 	rules.del_rule(r);
       }
-      std::cout << "collected predicates:" << std::endl;
-      for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
-	     end = m_func_decl2vars_preds.end(); it != end; ++it) {
-	std::cout << "preds " << mk_pp(it->m_key, m) << ":"; 
-	print_expr_ref_vector(*(it->m_value.second));
-      } 
-
-      std::cout << "remaining rules "<< rules.get_num_rules() << std::endl;
-      for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
-	rule* r = rules.get_rule(r_id);
-	std::cout << "rule " << r_id << " is output " <<
-	  rules.is_output_predicate(r->get_decl()) << std::endl;
-	r->display(m_ctx, std::cout);
-      }
-
       // for each rule: ground body and instantiate predicates for applications
       for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
@@ -188,7 +172,7 @@ namespace datalog {
 	  gpreds_vector.push_back(app_inst_preds(r->get_tail(i), rule_subst));
 	// store instantiation for non-query head
 	if (!rules.is_output_predicate(r->get_decl())) {
-	  expr_ref_vector hpreds = app_inst_preds(r->get_head(), rule_subst);
+	  expr_ref_vector& hpreds = app_inst_preds(r->get_head(), rule_subst);
 	  expr_ref_vector npreds(m);
 	  npreds.reserve(hpreds.size());
 	  for (unsigned i=0; i<hpreds.size(); ++i) 
@@ -202,30 +186,11 @@ namespace datalog {
 	    insert_if_not_there2(r->get_decl(i), uint_set())->get_data().
 	    m_value.insert(r_id);
       }
-
-      std::cout << "rule dependency" << std::endl;
-      for (func_decl2uints::iterator it = m_func_decl_body2rules.begin(),
-	     end = m_func_decl_body2rules.end(); it != end; ++it) 
-	std::cout << mk_pp(it->m_key, m) << ": " << it->m_value << std::endl;
-
-      std::cout << "instantiated predicates" << std::endl;
-      for (unsigned r_id = 0; r_id<m_rule2gpreds_vector.size(); ++r_id) {
-	rules.get_rule(r_id)->display(m_ctx, std::cout);
-	std::cout << "inst " << r_id << ": " << 
-	  mk_pp(m_rule2gbody[r_id], m) << std::endl;
-	vector<expr_ref_vector> preds_vector;
-	m_rule2gpreds_vector.find(r_id, preds_vector);
-	for (unsigned i=0; i<preds_vector.size(); ++i) {
-	  std::cout << "  #" << i << "(" << preds_vector[i].size() << "): ";
-	  print_expr_ref_vector(preds_vector[i]);
-	}
-      } 
-      print_inference_state();
       // initial abstract inference
       for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
-	optional<unsigned> added_id =
+	optional<unsigned>& added_id =
 	  add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
 	if (added_id) check_node_property(rules, *added_id);
       }
@@ -241,7 +206,7 @@ namespace datalog {
 	m_node_worklist.remove(current_id);
 	inference_step(rules, current_id);
       }
-      print_inference_state();
+      //      print_inference_state();
       return l_false;
     }
 
@@ -344,18 +309,11 @@ namespace datalog {
 	m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return m_empty_preds;
       expr* const * vars = e->get_data().get_value().first;
+      // TODO const needed?
       const expr_ref_vector& preds = *e->get_data().get_value().second;
-      std::cout << "start app_inst_preds" << std::endl;
-      std::cout << "app " << mk_pp(appl, m) << std::endl;
-      std::cout << "vars ";
-      for (unsigned i = 0; i < appl->get_num_args(); ++i)
-	std::cout << mk_pp(vars[i], m);
-      std::cout << std::endl << "preds " << preds.size() << " ";
-      print_expr_ref_vector(preds);
       // ground appl arguments
       expr_ref subst_tmp(m);
       m_var_subst(appl, subst.size(), subst.c_ptr(), subst_tmp);
-      std::cout << "ground appl " << mk_pp(subst_tmp, m) << std::endl;
       // instantiation maps preds variables to head arguments
       expr_ref_vector inst(m);
       inst.reserve(appl->get_num_args());
@@ -366,8 +324,6 @@ namespace datalog {
 	  inst.resize(idx+1);
 	inst[idx] = gappl->get_arg(i);
       } 
-      std::cout << "inst " << inst.size() << " ";
-      print_expr_ref_vector(inst);
       // preds instantiates to inst_preds
       expr_ref_vector inst_preds(m);
       inst_preds.reserve(preds.size());
@@ -377,15 +333,14 @@ namespace datalog {
       }
       return inst_preds;
     }
-    
+
+    // TODO use optional return type
     cube_t* cart_pred_abst_rule(unsigned r_id, 
 				const node_vector& nodes = node_vector()) {
-      std::cout << "pred_abst_rule " << r_id << std::endl;
       // get instantiated predicates
       vector<expr_ref_vector>& preds_vector = m_rule2gpreds_vector[r_id];
       m_solver.push();
       m_solver.assert_expr(m_rule2gbody[r_id]);
-      std::cout << "assert body " << mk_pp(m_rule2gbody[r_id], m) << std::endl;
       // load abstract states for nodes
       for (unsigned pos = 0; pos < nodes.size(); ++pos) {
 	cube_t& pos_cube = *m_node2cube[nodes[pos]];
@@ -416,9 +371,6 @@ namespace datalog {
     add_node(func_decl* sym, cube_t* cube, 
 	     unsigned r_id, const node_vector& nodes = node_vector()) {
       optional<unsigned> added_id;
-      std::cout << "add_node " << m_node_counter << " [" << 
-	(cube ? *cube : 0) << "]" << " via " << r_id << 
-	" (" << nodes << ")" << std::endl;
       if (!cube) return added_id;
       func_decl2node_set::obj_map_entry * sym_nodes_entry =
 	m_func_decl2max_reach_node_set.find_core(sym);
@@ -479,19 +431,14 @@ namespace datalog {
 	m_func_decl_body2rules.find_core(current_func_decl);
       if (!e_current_rules) return;
       uint_set& current_rules = e_current_rules->get_data().m_value;
-      std::cout << "rules " << current_rules << std::endl;
       for (uint_set::iterator r_id = current_rules.begin(),
 	     r_id_end = current_rules.end(); r_id != r_id_end; ++r_id) {
-	std::cout << "apply " << current_id << " " << 
-	  mk_pp(current_func_decl, m) << " on " << *r_id << std::endl;
-	rules.get_rule(*r_id)->display(m_ctx, std::cout);
 	// positions of current_id among body func_decls
 	uint_set current_poss;
 	rule* r = rules.get_rule(*r_id);
 	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i)
 	  if (r->get_decl(i) == current_func_decl) 
 	    current_poss.insert(i);
-	std::cout << "current_id_idxs " << current_poss << std::endl;
 	// create set of combinations of nodes to apply the rule
 	vector<node_vector> nodes_set;
 	nodes_set.push_back(node_vector());
@@ -526,10 +473,6 @@ namespace datalog {
 	      }
 	  }
 	}
-	std::cout << "nodes set" << std::endl;
-	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
-	  std::cout << *nodes << std::endl;
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
 	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
@@ -539,6 +482,31 @@ namespace datalog {
 	  if (added_id) check_node_property(rules, *added_id);
 	}
       }
+    }
+
+    void print_predabst_state() const {
+      std::cout << "collected predicates:" << std::endl;
+      for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
+	     end = m_func_decl2vars_preds.end(); it != end; ++it) {
+	std::cout << "preds " << mk_pp(it->m_key, m) << " " <<
+	  it->m_value.second->size() << " :"; 
+	print_expr_ref_vector(*(it->m_value.second));
+      }
+      std::cout << "instantiated predicates" << std::endl;
+      for (unsigned r_id = 0; r_id < m_rule2gpreds_vector.size(); ++r_id) {
+	std::cout << "inst " << r_id << ": " << 
+	  mk_pp(m_rule2gbody[r_id], m) << std::endl;
+	vector<expr_ref_vector> preds_vector;
+	m_rule2gpreds_vector.find(r_id, preds_vector);
+	for (unsigned i=0; i < preds_vector.size(); ++i) {
+	  std::cout << "  #" << i << "(" << preds_vector[i].size() << "): ";
+	  print_expr_ref_vector(preds_vector[i]);
+	}
+      } 
+      std::cout << "rule dependency" << std::endl;
+      for (func_decl2uints::iterator it = m_func_decl_body2rules.begin(),
+	     end = m_func_decl_body2rules.end(); it != end; ++it) 
+	std::cout << mk_pp(it->m_key, m) << ": " << it->m_value << std::endl;
     }
 
     void print_inference_state() const {
