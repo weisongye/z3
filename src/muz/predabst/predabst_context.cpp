@@ -115,22 +115,14 @@ namespace datalog {
     lbool query(expr* query) {
       m_ctx.ensure_opened();
       rule_set& rules = m_ctx.get_rules();
-
       rm.mk_query(query, rules);
-
-      std::cout << "begin original rules\n";
-      rules.display(std::cout);
-      std::cout << "end original rules\n";
-
+      std::cout << "original rules" << std::endl << rules;
       // collect predicates and delete corresponding rules
       for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
 	   rules_it != rules_end; ++rules_it) {
 	rule* r = *rules_it;
 	func_decl* head_decl = r->get_decl();
-	char const * head_str = head_decl->get_name().bare_str();
-
 	std::string sym(head_decl->get_name().bare_str());
-
 	if (r->get_uninterpreted_tail_size() != 0 
 	    || sym.substr(0, 8) != "__pred__") continue;
 	char* suffix = new char[sym.size()-8+1];
@@ -145,7 +137,7 @@ namespace datalog {
 	// add predicates to m_func_decl2vars_preds
 	expr_ref_vector* preds = alloc(expr_ref_vector, m);
 	preds->reserve(r->get_tail_size());
-	for (unsigned i = 0; i<r->get_tail_size(); ++i) 
+	for (unsigned i = 0; i < r->get_tail_size(); ++i)
 	  (*preds)[i] = r->get_tail(i);
 	m_func_decl2vars_preds.
 	  insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
@@ -160,7 +152,7 @@ namespace datalog {
       } 
 
       std::cout << "remaining rules "<< rules.get_num_rules() << std::endl;
-      for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
+      for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
 	std::cout << "rule " << r_id << " is output " <<
 	  rules.is_output_predicate(r->get_decl()) << std::endl;
@@ -286,13 +278,14 @@ namespace datalog {
 
     model_ref get_model() const {
       model_ref md = alloc(model, m);
+      // reachable predicates are concretized
       for (func_decl2node_set::iterator 
 	     it_decl = m_func_decl2max_reach_node_set.begin(),
 	     end_decl = m_func_decl2max_reach_node_set.end();
 	   it_decl != end_decl; ++it_decl) {
 	if (it_decl->m_key->get_arity() == 0)
-	  throw("predabst::get_model uknown arity");
-	func_decl2vars_preds::obj_map_entry * e = 
+	  throw("predabst::get_model zero arity");
+	func_decl2vars_preds::obj_map_entry* e = 
 	  m_func_decl2vars_preds.find_core(it_decl->m_key);
 	optional<expr*> disj;
 	if (e) {
@@ -315,15 +308,31 @@ namespace datalog {
 	fi->set_else(expr_ref(*disj, m));
 	md->register_decl(it_decl->m_key, fi);
       }
-      for (func_decl2uints::iterator
-	     it_decl = m_func_decl_body2rules.begin(),
-	     end_decl = m_func_decl_body2rules.end();
-	   it_decl != end_decl; ++it_decl) 
-	if (!m_func_decl2max_reach_node_set.contains(it_decl->m_key)) {
-	  func_interp* fi = alloc(func_interp, m, it_decl->m_key->get_arity());
-	  fi->set_else(expr_ref(m.mk_false(), m));
-	  md->register_decl(it_decl->m_key, fi);
-	}
+      func_decl_set false_func_decls;
+      // unreachable body predicates are false
+      for (func_decl2uints::iterator it = m_func_decl_body2rules.begin(),
+	     end = m_func_decl_body2rules.end(); it != end; ++it) {
+	if (it->m_key->get_arity() == 0)
+	  throw("predabst::get_model zero arity");
+	if (!m_func_decl2max_reach_node_set.contains(it->m_key)) 
+	  false_func_decls.insert(it->m_key);
+      }
+      // unreachable head predicates are false
+      rule_set& rules = m_ctx.get_rules();
+      for (rule_set::iterator it = rules.begin(), end = rules.end(); it != end; ++it) {
+	func_decl* head_decl = (*it)->get_decl();
+	if (rules.is_output_predicate(head_decl)) continue;
+	if (head_decl->get_arity() == 0)
+	  throw("predabst::get_model zero arity");
+	if (!m_func_decl2max_reach_node_set.contains(head_decl)) 
+	  false_func_decls.insert(head_decl);
+      }
+      for (func_decl_set::iterator it = false_func_decls.begin(),
+	     end = false_func_decls.end(); it != end; ++it) {
+	func_interp* fi = alloc(func_interp, m, (*it)->get_arity());
+	fi->set_else(expr_ref(m.mk_false(), m));
+	md->register_decl(*it, fi);
+      }
       return md;
     }
 
@@ -331,10 +340,10 @@ namespace datalog {
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
     expr_ref_vector app_inst_preds(app* appl, const expr_ref_vector& subst) {
-      func_decl2vars_preds::obj_map_entry * e = 
+      func_decl2vars_preds::obj_map_entry* e = 
 	m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return m_empty_preds;
-      expr * const * vars = e->get_data().get_value().first;
+      expr* const * vars = e->get_data().get_value().first;
       const expr_ref_vector& preds = *e->get_data().get_value().second;
       std::cout << "start app_inst_preds" << std::endl;
       std::cout << "app " << mk_pp(appl, m) << std::endl;
@@ -450,6 +459,7 @@ namespace datalog {
     }
 
     void check_node_property(const rule_set& rules, unsigned id) {
+      // TODO add proof construction
       if (rules.is_output_predicate(m_node2func_decl[id])) {
 	std::cout << "property violation " << id;
 	exit(1);
@@ -457,16 +467,15 @@ namespace datalog {
     }
 
     // return whether c1 implies c2
-    bool cube_leq(const cube_t& c1, const cube_t& c2) {
+    bool cube_leq(const cube_t& c1, const cube_t& c2) const {
       unsigned size = c1.size();
-      for (unsigned i = 0; i < size; ++i) 
-	if ( c2[i] && !c1[i]) return false;
+      for (unsigned i = 0; i < size; ++i) if ( c2[i] && !c1[i]) return false;
       return true;
     }
     
     void inference_step(const rule_set& rules, unsigned current_id) {
       func_decl* current_func_decl = m_node2func_decl[current_id];
-      func_decl2uints::obj_map_entry * e_current_rules = 
+      func_decl2uints::obj_map_entry* e_current_rules = 
 	m_func_decl_body2rules.find_core(current_func_decl);
       if (!e_current_rules) return;
       uint_set& current_rules = e_current_rules->get_data().m_value;
@@ -532,7 +541,7 @@ namespace datalog {
       }
     }
 
-    void print_inference_state() {
+    void print_inference_state() const {
       std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << 
 	std::endl << "m_node_counter " << m_node_counter << std::endl;
       for (unsigned i = 0; i < m_node_counter; ++i) 
@@ -550,7 +559,8 @@ namespace datalog {
 	"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
     }
 
-    void print_expr_ref_vector(const expr_ref_vector& v, bool newline = true) {
+    void print_expr_ref_vector(const expr_ref_vector& v, bool newline = true)
+      const {
       unsigned size = v.size();
       if (size > 0) {
 	std::cout << mk_pp(v[0], m);

@@ -1,6 +1,6 @@
 (set-logic HORN)
-(set-option :fixedpoint.engine predabst)
-;(set-option :produce-proofs true)
+;(set-option :fixedpoint.engine predabst)
+(set-option :produce-proofs true)
 
 (declare-fun __pred__p1 (Int Int Int) Bool)
 (declare-fun __pred__p2 (Int Int Int) Bool)
@@ -45,7 +45,7 @@
 	(=> (and (not (>= x z)) (p3 x y z))
 	(p5 x y z))))
 
-(assert (forall ((x Int) (y Int) (z Int)) (=> (p5 x y z) (= x y))))
+(assert (forall ((x Int) (y Int) (z Int)) (=> (p3 x y z) false)))
 
 (check-sat)
-(get-model)
+(get-proof)
