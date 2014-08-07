@@ -153,7 +153,7 @@ namespace datalog {
 	rule_subst.reserve(free_sorts.size());
 	for (unsigned i = 0; i < rule_subst.size(); ++i) 
 	  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
-	// conjoin constraints in rule body 
+	// conjoin constraints in rule body
 	expr_ref_vector conjs(m);
 	conjs.reserve(r->get_tail_size()-r->get_uninterpreted_tail_size());
 	for (unsigned i = r->get_uninterpreted_tail_size(); 
@@ -179,6 +179,7 @@ namespace datalog {
 	  for (unsigned i=0; i<gpreds_vector.back().size(); ++i) 
 	    gpreds_vector.back()[i] = m.mk_not(gpreds_vector.back()[i].get());
 	}
+	// TODO avoid copying
 	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
 	// map body func_decls to rule
 	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i)
