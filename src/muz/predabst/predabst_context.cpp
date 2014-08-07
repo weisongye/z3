@@ -187,27 +187,32 @@ namespace datalog {
 	    insert_if_not_there2(r->get_decl(i), uint_set())->get_data().
 	    m_value.insert(r_id);
       }
-      // initial abstract inference
-      for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
-	rule* r = rules.get_rule(r_id);
-	if (r->get_uninterpreted_tail_size() != 0) continue;
-	unsigned added_id = add_node(r->get_decl(), cart_pred_abst_rule(r_id),
-				     r_id);
-	if (added_id != UINT_MAX) check_node_property(rules, added_id);
+      try {
+	// initial abstract inference
+	for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
+	  if (m_cancel) throw default_exception("predabst canceled");
+	  rule* r = rules.get_rule(r_id);
+	  if (r->get_uninterpreted_tail_size() != 0) continue;
+	  check_node_property(rules,
+			      add_node(r->get_decl(),
+				       cart_pred_abst_rule(r_id),
+				       r_id));
+	}
+	// process worklist
+	while (!m_node_worklist.empty()) {
+	  /*
+	    print_inference_state();
+	    char name[256];
+	    std::cin.getline(name, 256);
+	  */
+	  if (m_cancel) throw default_exception("predabst canceled");
+	  unsigned current_id = *m_node_worklist.begin();
+	  m_node_worklist.remove(current_id);
+	  inference_step(rules, current_id);
+	}
+      } catch (reached_query& ) {
+	return l_true;
       }
-      // process worklist
-      while(!m_node_worklist.empty()) {
-	/*
-	print_inference_state();
-	char name[256];
-	std::cin.getline(name, 256);
-	*/
-	if (m_cancel) throw default_exception("predabst canceled");
-	unsigned current_id = *m_node_worklist.begin();
-	m_node_worklist.remove(current_id);
-	inference_step(rules, current_id);
-      }
-      //      print_inference_state();
       return l_false;
     }
 
@@ -253,27 +258,25 @@ namespace datalog {
 	  throw("predabst::get_model zero arity");
 	func_decl2vars_preds::obj_map_entry* e = 
 	  m_func_decl2vars_preds.find_core(it_decl->m_key);
-	// TODO use null
-	optional<expr*> disj;
+	expr* disj = 0;
 	if (e) {
 	  expr_ref_vector& preds = *e->get_data().get_value().second;
 	  for (node_set::iterator it_node = it_decl->m_value.begin(),
 		 end_node = it_decl->m_value.end(); it_node != end_node;
 	       ++it_node) {
 	    cube_t& cube = *m_node2cube[*it_node];
-	    // TODO use null
 	    expr* conj = 0;
 	    for (unsigned i = 0; i < cube.size(); ++i) 
 	      if (cube[i]) 
 		conj = conj ? to_expr(m.mk_and(preds[i].get(), conj))
 		  : preds[i].get();
-	    disj = disj ? to_expr(m.mk_or(conj, *disj)) : conj;
+	    disj = disj ? to_expr(m.mk_or(conj, disj)) : conj;
 	  }
 	} else {
 	  disj = to_expr(m.mk_true());
 	}
 	func_interp* fi = alloc(func_interp, m, it_decl->m_key->get_arity());
-	fi->set_else(expr_ref(*disj, m));
+	fi->set_else(expr_ref(disj, m));
 	md->register_decl(it_decl->m_key, fi);
       }
       func_decl_set false_func_decls;
@@ -306,6 +309,11 @@ namespace datalog {
     }
 
   private:
+
+    static const unsigned NON_NODE = UINT_MAX;
+
+    struct reached_query {};
+    
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
     void app_inst_preds(app* appl, expr_ref_vector const& subst,
@@ -399,7 +407,7 @@ namespace datalog {
 
     unsigned add_node(func_decl* sym, cube_t* cube, 
 		      unsigned r_id, const node_vector& nodes = node_vector()) {
-      unsigned added_id = UINT_MAX;
+      unsigned added_id = NON_NODE;
       if (!cube) return added_id;
       func_decl2node_set::obj_map_entry * sym_nodes_entry =
 	m_func_decl2max_reach_node_set.find_core(sym);
@@ -441,7 +449,8 @@ namespace datalog {
 
     void check_node_property(rule_set const& rules, unsigned id) {
       // TODO add proof construction
-      if (!rules.is_output_predicate(m_node2func_decl[id])) return;
+      if (id == NON_NODE ||
+	  !rules.is_output_predicate(m_node2func_decl[id])) return;
       node_set todo_nodes;
       todo_nodes.insert(id);
       while (!todo_nodes.empty()) {
@@ -453,7 +462,7 @@ namespace datalog {
 	for (unsigned i = 0; i < parent_nodes.size(); ++i)
 	  todo_nodes.insert(parent_nodes[i]);
       }
-      throw("counterexample found");
+      throw reached_query ();
     }
 
     // return whether c1 implies c2
@@ -513,12 +522,11 @@ namespace datalog {
 	}
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
-	  unsigned added_id =
-	    add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), *r_id,
-		     *nodes);
-	  if (added_id != UINT_MAX) check_node_property(rules, added_id);
-	}
+	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
+	  check_node_property(rules,
+			      add_node(r->get_decl(),
+				       cart_pred_abst_rule(*r_id, *nodes),
+				       *r_id, *nodes));
       }
     }
 
