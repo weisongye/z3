@@ -191,7 +191,7 @@ namespace datalog {
       for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
 	if (r->get_uninterpreted_tail_size() != 0) continue;
-	optional<unsigned>& added_id =
+	optional<unsigned> const& added_id =
 	  add_node(r->get_decl(), cart_pred_abst_rule(r_id), r_id);
 	if (added_id) check_node_property(rules, *added_id);
       }
@@ -513,7 +513,7 @@ namespace datalog {
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
 	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
-	  optional<unsigned>& added_id =
+	  optional<unsigned> const& added_id =
 	    add_node(r->get_decl(), cart_pred_abst_rule(*r_id, *nodes), *r_id,
 		     *nodes);
 	  if (added_id) check_node_property(rules, *added_id);
