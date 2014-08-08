@@ -116,32 +116,7 @@ namespace datalog {
       rule_set& rules = m_ctx.get_rules();
       rm.mk_query(query, rules);
       // collect predicates and delete corresponding rules
-      for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
-	   rules_it != rules_end; ++rules_it) {
-	rule* r = *rules_it;
-	func_decl* head_decl = r->get_decl();
-	std::string sym(head_decl->get_name().bare_str());
-	if (r->get_uninterpreted_tail_size() != 0 
-	    || sym.substr(0, 8) != "__pred__") continue;
-	char* suffix = new char[sym.size()-8+1];
-#pragma warning(push)
-#pragma warning(disable:4996)
-	strcpy(suffix, sym.substr(8).c_str());
-#pragma warning(pop)
-	func_decl* suffix_decl = 
-	  m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
-			 head_decl->get_domain(), head_decl->get_range());
-	m_ast_trail.push_back(suffix_decl);
-	// add predicates to m_func_decl2vars_preds
-	expr_ref_vector* preds = alloc(expr_ref_vector, m);
-	preds->reserve(r->get_tail_size());
-	for (unsigned i = 0; i < r->get_tail_size(); ++i)
-	  (*preds)[i] = r->get_tail(i);
-	m_func_decl2vars_preds.
-	  insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
-	// rule is not used for inference
-	rules.del_rule(r);
-      }
+      collect_predicates(rules);
       // for each rule: ground body and instantiate predicates for applications
       for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
 	rule* r = rules.get_rule(r_id);
@@ -308,6 +283,41 @@ namespace datalog {
     }
 
   private:
+
+      void collect_predicates(rule_set& rules) {
+          for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
+               rules_it != rules_end; ++rules_it) {
+              collect_predicates(rules, *rules_it);
+          }
+      }
+
+      void collect_predicates(rule_set& rules, rule* r) {          
+          func_decl* head_decl = r->get_decl();
+          if (!is_pred_abst(r)) {
+              return;
+          }
+          symbol suffix(head_decl->get_name().str().substr(8).c_str());
+          func_decl* suffix_decl = 
+              m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
+                             head_decl->get_domain(), head_decl->get_range());
+          m_ast_trail.push_back(suffix_decl);
+          // add predicates to m_func_decl2vars_preds
+          expr_ref_vector* preds = alloc(expr_ref_vector, m);
+          preds->reserve(r->get_tail_size());
+          for (unsigned i = 0; i < r->get_tail_size(); ++i)
+              (*preds)[i] = r->get_tail(i);
+          m_func_decl2vars_preds.
+              insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
+          // rule is not used for inference
+          rules.del_rule(r);
+      }
+
+      bool is_pred_abst(rule *r) {
+          func_decl* head = r->get_decl();
+          return 
+              r->get_uninterpreted_tail_size() == 0 &&
+              head->get_name().str().substr(0, 8) == "__pred__";
+      }
 
     static const unsigned NON_NODE = UINT_MAX;
 
