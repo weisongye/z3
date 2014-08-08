@@ -47,7 +47,7 @@ namespace datalog {
     };
 };
 
-inline std::ostream& operator<<(std::ostream&, const vector<bool>&);
-inline std::ostream& operator<<(std::ostream&, const vector<unsigned>&);
+template<class T>
+inline std::ostream& operator<<(std::ostream&, const vector<T>&);
 
 #endif
