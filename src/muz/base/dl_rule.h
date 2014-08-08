@@ -282,6 +282,9 @@ namespace datalog {
         */
         app * get_tail(unsigned i) const { SASSERT(i < m_tail_size); return UNTAG(app *, m_tail[i]); }
 
+        app * const * get_tail() const { return m_tail; }
+        expr* const * get_expr_tail() const { return (expr*const*) get_tail(); }
+
         func_decl* get_decl(unsigned i) const { SASSERT(i < get_uninterpreted_tail_size()); return get_tail(i)->get_decl(); }
 
         bool is_neg_tail(unsigned i) const { SASSERT(i < m_tail_size); return GET_TAG(m_tail[i]) == 1; }

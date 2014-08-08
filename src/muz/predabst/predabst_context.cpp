@@ -28,13 +28,19 @@
 namespace datalog {
 
   class predabst::imp {
-    struct stats {
-      stats() { reset(); }
-      void reset() { memset(this, 0, sizeof(*this)); }
-      unsigned m_num_unfold;
-      unsigned m_num_no_unfold;
-      unsigned m_num_subsumed;
-    };
+      struct stats {
+          stats() { reset(); }
+          void reset() { memset(this, 0, sizeof(*this)); }
+          unsigned m_num_unfold;
+          unsigned m_num_no_unfold;
+          unsigned m_num_subsumed;
+      };
+
+      struct rule_info {
+          expr_ref                m_body;
+          vector<expr_ref_vector> m_preds;
+          rule_info(expr_ref& body): m_body(body) {}
+      };
 
     context&               m_ctx;         // main context where (fixedpoint) constraints are stored.
     ast_manager&           m;             // manager for ASTs. It is used for managing expressions
@@ -49,8 +55,7 @@ namespace datalog {
     func_decl2vars_preds;
     func_decl2vars_preds m_func_decl2vars_preds;
 
-    typedef u_map<expr *> id2expr;
-    id2expr m_rule2gbody;
+      vector<rule_info> m_rule2info;
 
     typedef u_map<vector<expr_ref_vector> > id2preds_vector;
     id2preds_vector m_rule2gpreds_vector; 
@@ -59,10 +64,8 @@ namespace datalog {
     func_decl2uints m_func_decl_body2rules;
 
     expr_ref_vector m_empty_preds;
-
-    ast_ref_vector m_ast_trail;
-
-    unsigned m_node_counter;
+    ast_ref_vector  m_ast_trail;
+    unsigned        m_node_counter;
     typedef vector<bool> cube_t;
 
     typedef u_map<func_decl *> node2func_decl;
@@ -118,49 +121,7 @@ namespace datalog {
       // collect predicates and delete corresponding rules
       collect_predicates(rules);
       // for each rule: ground body and instantiate predicates for applications
-      for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
-	rule* r = rules.get_rule(r_id);
-	// prepare grounding substitution
-	ptr_vector<sort> free_sorts;
-	r->get_vars(m, free_sorts);
-	expr_ref_vector rule_subst(m);
-	rule_subst.reserve(free_sorts.size());
-	for (unsigned i = 0; i < rule_subst.size(); ++i) 
-	  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
-	// conjoin constraints in rule body
-	expr_ref_vector conjs(m);
-	conjs.reserve(r->get_tail_size()-r->get_uninterpreted_tail_size());
-	for (unsigned i = r->get_uninterpreted_tail_size(); 
-	     i < r->get_tail_size(); ++i)
-	  conjs[i-r->get_uninterpreted_tail_size()] = r->get_tail(i);
-	expr_ref conj(m.mk_and(conjs.size(), conjs.c_ptr()), m);
-	// apply substitution
-	m_var_subst(conj, rule_subst.size(), rule_subst.c_ptr(), conj);
-	m_ast_trail.push_back(conj);
-	// store ground body
-	m_rule2gbody.insert(r_id, conj);
-	// store instantiated predicates
-	vector<expr_ref_vector> gpreds_vector;
-	// store instantiation for body applications
-	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) {
-	  gpreds_vector.push_back(expr_ref_vector(m));
-	  app_inst_preds(r->get_tail(i), rule_subst, gpreds_vector[i]);
-	}
-	// store instantiation for non-query head
-	if (!rules.is_output_predicate(r->get_decl())) {
-	  gpreds_vector.push_back(expr_ref_vector(m));
-	  app_inst_preds(r->get_head(), rule_subst, gpreds_vector.back());
-	  for (unsigned i=0; i<gpreds_vector.back().size(); ++i) 
-	    gpreds_vector.back()[i] = m.mk_not(gpreds_vector.back()[i].get());
-	}
-	// TODO avoid copying
-	m_rule2gpreds_vector.insert(r_id, gpreds_vector);
-	// map body func_decls to rule
-	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i)
-	  m_func_decl_body2rules.
-	    insert_if_not_there2(r->get_decl(i), uint_set())->get_data().
-	    m_value.insert(r_id);
-      }
+      instantiate_rules(rules);
       try {
 	// initial abstract inference
 	for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
@@ -284,6 +245,49 @@ namespace datalog {
 
   private:
 
+      void instantiate_rules(rule_set& rules) {
+          for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
+              rule* r = rules.get_rule(r_id);
+              // prepare grounding substitution
+              ptr_vector<sort> free_sorts;
+              r->get_vars(m, free_sorts);
+              expr_ref_vector rule_subst(m);
+              rule_subst.reserve(free_sorts.size());
+              for (unsigned i = 0; i < rule_subst.size(); ++i) 
+                  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
+              // conjoin constraints in rule body
+              unsigned usz = r->get_uninterpreted_tail_size();
+              unsigned tsz = r->get_tail_size();
+              expr_ref conj(m.mk_and(tsz - usz, r->get_expr_tail() + usz), m);
+              // apply substitution
+              m_var_subst(conj, rule_subst.size(), rule_subst.c_ptr(), conj);
+              // store ground body and instantiations
+              rule_info info(conj);              
+              vector<expr_ref_vector>& preds = info.m_preds;
+
+              // store instantiation for body applications
+              for (unsigned i = 0; i < usz; ++i) {
+                  preds.push_back(expr_ref_vector(m));
+                  app_inst_preds(r->get_tail(i), rule_subst, preds[i]);
+              }
+              // store instantiation for non-query head
+              if (!rules.is_output_predicate(r->get_decl())) {
+                  expr_ref_vector outs(m);
+                  app_inst_preds(r->get_head(), rule_subst, outs);
+                  for (unsigned i = 0; i < outs.size(); ++i) 
+                      outs[i] = m.mk_not(outs[i].get());
+                  preds.push_back(outs);
+              }
+              m_rule2info.push_back(info);
+
+              // map body func_decls to rule
+              for (unsigned i = 0; i < usz; ++i)
+                  m_func_decl_body2rules.
+                      insert_if_not_there2(r->get_decl(i), uint_set())->get_data().
+                      m_value.insert(r_id);
+          }
+      }
+
       void collect_predicates(rule_set& rules) {
           for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
                rules_it != rules_end; ++rules_it) {
@@ -385,9 +389,9 @@ namespace datalog {
     cube_t* cart_pred_abst_rule(unsigned r_id, 
 				const node_vector& nodes = node_vector()) {
       // get instantiated predicates
-      vector<expr_ref_vector>& preds_vector = m_rule2gpreds_vector[r_id];
+        vector<expr_ref_vector>& preds_vector = m_rule2info[r_id].m_preds;
       m_solver.push();
-      m_solver.assert_expr(m_rule2gbody[r_id]);
+      m_solver.assert_expr(m_rule2info[r_id].m_body);
       // load abstract states for nodes
       for (unsigned pos = 0; pos < nodes.size(); ++pos) {
 	cube_t& pos_cube = *m_node2cube[nodes[pos]];
@@ -548,11 +552,10 @@ namespace datalog {
               print_expr_ref_vector(out, *(it->m_value.second));
           }
           out << "instantiated predicates" << std::endl;
-          for (unsigned r_id = 0; r_id < m_rule2gpreds_vector.size(); ++r_id) {
+          for (unsigned r_id = 0; r_id < m_rule2info.size(); ++r_id) {
               out << "inst " << r_id << ": " << 
-                  mk_pp(m_rule2gbody[r_id], m) << std::endl;
-              vector<expr_ref_vector> preds_vector;
-              m_rule2gpreds_vector.find(r_id, preds_vector);
+                  mk_pp(m_rule2info[r_id].m_body, m) << std::endl;
+              vector<expr_ref_vector> const& preds_vector = m_rule2info[r_id].m_preds;
               for (unsigned i = 0; i < preds_vector.size(); ++i) {
                   out << "  #" << i << "(" << preds_vector[i].size() << "): ";
                   print_expr_ref_vector(out, preds_vector[i]);
