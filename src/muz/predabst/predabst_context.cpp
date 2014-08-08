@@ -11,12 +11,11 @@
 
   Author:
 
-  Nikolaj Bjorner (nbjorner) 2013-04-26
   Modified by Andrey Rybalchenko (rybal) 2014-3-7.
 
   Revision History:
 
-  --*/
+--*/
 
 #include "predabst_context.h"
 #include "dl_context.h"
@@ -201,7 +200,7 @@ namespace datalog {
 	// process worklist
 	while (!m_node_worklist.empty()) {
 	  /*
-	    print_inference_state();
+	    print_inference_state(std::cout);
 	    char name[256];
 	    std::cin.getline(name, 256);
 	  */
@@ -530,58 +529,58 @@ namespace datalog {
       }
     }
 
-    void print_predabst_state() const {
-      std::cout << "collected predicates:" << std::endl;
-      for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
-	     end = m_func_decl2vars_preds.end(); it != end; ++it) {
-	std::cout << "preds " << mk_pp(it->m_key, m) << " " <<
-	  it->m_value.second->size() << " :"; 
-	print_expr_ref_vector(*(it->m_value.second));
+      void print_predabst_state(std::ostream& out) const {
+          out << "collected predicates:" << std::endl;
+          for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(),
+                   end = m_func_decl2vars_preds.end(); it != end; ++it) {
+              out << "preds " << mk_pp(it->m_key, m) << " " <<
+                  it->m_value.second->size() << " :"; 
+              print_expr_ref_vector(out, *(it->m_value.second));
+          }
+          out << "instantiated predicates" << std::endl;
+          for (unsigned r_id = 0; r_id < m_rule2gpreds_vector.size(); ++r_id) {
+              out << "inst " << r_id << ": " << 
+                  mk_pp(m_rule2gbody[r_id], m) << std::endl;
+              vector<expr_ref_vector> preds_vector;
+              m_rule2gpreds_vector.find(r_id, preds_vector);
+              for (unsigned i = 0; i < preds_vector.size(); ++i) {
+                  out << "  #" << i << "(" << preds_vector[i].size() << "): ";
+                  print_expr_ref_vector(out, preds_vector[i]);
+              }
+          } 
+          out << "rule dependency" << std::endl;
+          for (func_decl2uints::iterator it = m_func_decl_body2rules.begin(),
+                   end = m_func_decl_body2rules.end(); it != end; ++it) {
+              out << mk_pp(it->m_key, m) << ": " << it->m_value << std::endl;
+          }
       }
-      std::cout << "instantiated predicates" << std::endl;
-      for (unsigned r_id = 0; r_id < m_rule2gpreds_vector.size(); ++r_id) {
-	std::cout << "inst " << r_id << ": " << 
-	  mk_pp(m_rule2gbody[r_id], m) << std::endl;
-	vector<expr_ref_vector> preds_vector;
-	m_rule2gpreds_vector.find(r_id, preds_vector);
-	for (unsigned i=0; i < preds_vector.size(); ++i) {
-	  std::cout << "  #" << i << "(" << preds_vector[i].size() << "): ";
-	  print_expr_ref_vector(preds_vector[i]);
-	}
-      } 
-      std::cout << "rule dependency" << std::endl;
-      for (func_decl2uints::iterator it = m_func_decl_body2rules.begin(),
-	     end = m_func_decl_body2rules.end(); it != end; ++it) 
-	std::cout << mk_pp(it->m_key, m) << ": " << it->m_value << std::endl;
-    }
 
-    void print_inference_state() const {
-      std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << 
-	std::endl << "m_node_counter " << m_node_counter << std::endl;
-      for (unsigned i = 0; i < m_node_counter; ++i) 
-	std::cout << "node " << i << " " << 
-	  mk_pp(m_node2func_decl[i], m) << " [" << *m_node2cube[i] << "] " << 
-	  m_node2parent_rule[i] << " (" << m_node2parent_nodes[i] << ")" << 
-	  std::endl;
-      for (func_decl2node_set::iterator 
-	     it = m_func_decl2max_reach_node_set.begin(),
-	     end = m_func_decl2max_reach_node_set.end();
-	   it != end; ++it) 
-	std::cout << "max reached nodes " << mk_pp(it->m_key, m) 
-		  << " " << it->m_value << std::endl;
-      std::cout << "worklist " << m_node_worklist << std::endl <<
-	"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
-    }
-
-    void print_expr_ref_vector(const expr_ref_vector& v, bool newline = true)
-      const {
-      unsigned size = v.size();
-      if (size > 0) {
-	std::cout << mk_pp(v[0], m);
-	for (unsigned i = 1; i < size; ++i) std::cout << ", " << mk_pp(v[i], m);
+      void print_inference_state(std::ostream& out) const {
+          out << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+          out << "m_node_counter " << m_node_counter << std::endl;
+          for (unsigned i = 0; i < m_node_counter; ++i) 
+              out << "node " << i << " " << 
+                  mk_pp(m_node2func_decl[i], m) << " [" << *m_node2cube[i] << "] " << 
+                  m_node2parent_rule[i] << " (" << m_node2parent_nodes[i] << ")" << 
+                  std::endl;
+          for (func_decl2node_set::iterator 
+                   it = m_func_decl2max_reach_node_set.begin(),
+                   end = m_func_decl2max_reach_node_set.end();
+               it != end; ++it) 
+              out << "max reached nodes " << mk_pp(it->m_key, m) 
+                        << " " << it->m_value << std::endl;
+          out << "worklist " << m_node_worklist << std::endl;
+          out << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
       }
-      if (newline) std::cout << std::endl;
-    }
+
+      void print_expr_ref_vector(std::ostream& out, const expr_ref_vector& v, bool newline = true)
+          const {
+          for (unsigned i = 0; i < v.size(); ++i) {
+              out << mk_pp(v[i], m);
+              if (i + 1 < v.size()) out << ", ";
+          }
+          if (newline) out << std::endl;
+      }
   };
 
   predabst::predabst(context& ctx):
@@ -623,7 +622,8 @@ namespace datalog {
   */
 };
 
-inline std::ostream& operator<<(std::ostream& out, const vector<bool>& v) {
+template<class T>
+inline std::ostream& operator<<(std::ostream& out, const vector<T>& v) {
   unsigned size = v.size();
   if (size > 0) {
     out << v[0];
