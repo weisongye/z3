@@ -28,19 +28,19 @@
 namespace datalog {
 
   class predabst::imp {
-      struct stats {
-          stats() { reset(); }
-          void reset() { memset(this, 0, sizeof(*this)); }
-          unsigned m_num_unfold;
-          unsigned m_num_no_unfold;
-          unsigned m_num_subsumed;
-      };
+    struct stats {
+      stats() { reset(); }
+      void reset() { memset(this, 0, sizeof(*this)); }
+      unsigned m_num_unfold;
+      unsigned m_num_no_unfold;
+      unsigned m_num_subsumed;
+    };
 
-      struct rule_info {
-          expr_ref                m_body;
-          vector<expr_ref_vector> m_preds;
-          rule_info(expr_ref& body): m_body(body) {}
-      };
+    struct rule_info {
+      expr_ref                m_body;
+      vector<expr_ref_vector> m_preds;
+      rule_info(expr_ref& body): m_body(body) {}
+    };
 
     context&               m_ctx;         // main context where (fixedpoint) constraints are stored.
     ast_manager&           m;             // manager for ASTs. It is used for managing expressions
@@ -55,7 +55,7 @@ namespace datalog {
     func_decl2vars_preds;
     func_decl2vars_preds m_func_decl2vars_preds;
 
-      vector<rule_info> m_rule2info;
+    vector<rule_info> m_rule2info;
 
     typedef u_map<vector<expr_ref_vector> > id2preds_vector;
     id2preds_vector m_rule2gpreds_vector; 
@@ -119,19 +119,22 @@ namespace datalog {
       rule_set& rules = m_ctx.get_rules();
       rm.mk_query(query, rules);
       // collect predicates and delete corresponding rules
-      collect_predicates(rules);
+      for (rule_set::iterator it = rules.begin(), end = rules.end(); it != end;
+	   ++it) collect_predicates(rules, *it);
       // for each rule: ground body and instantiate predicates for applications
-      instantiate_rules(rules);
+      for (unsigned i = 0; i < rules.get_num_rules(); ++i)
+	instantiate_rule(rules, i);
+      //      instantiate_rules(rules);
       try {
 	// initial abstract inference
-	for (unsigned r_id = 0; r_id < rules.get_num_rules(); ++r_id) {
+	for (unsigned i = 0; i < rules.get_num_rules(); ++i) {
 	  if (m_cancel) throw default_exception("predabst canceled");
-	  rule* r = rules.get_rule(r_id);
+	  rule* r = rules.get_rule(i);
 	  if (r->get_uninterpreted_tail_size() != 0) continue;
 	  check_node_property(rules,
 			      add_node(r->get_decl(),
-				       cart_pred_abst_rule(r_id),
-				       r_id));
+				       cart_pred_abst_rule(i),
+				       i));
 	}
 	// process worklist
 	while (!m_node_worklist.empty()) {
@@ -145,7 +148,8 @@ namespace datalog {
 	  m_node_worklist.remove(current_id);
 	  inference_step(rules, current_id);
 	}
-      } catch (reached_query& ) {
+      } catch (reached_query& exc) {
+	print_proof_prolog(std::cout, exc.m_node);
 	return l_true;
       }
       return l_false;
@@ -245,87 +249,90 @@ namespace datalog {
 
   private:
 
-      void instantiate_rules(rule_set& rules) {
-          for (unsigned r_id = 0; r_id<rules.get_num_rules(); ++r_id) {
-              rule* r = rules.get_rule(r_id);
-              // prepare grounding substitution
-              ptr_vector<sort> free_sorts;
-              r->get_vars(m, free_sorts);
-              expr_ref_vector rule_subst(m);
-              rule_subst.reserve(free_sorts.size());
-              for (unsigned i = 0; i < rule_subst.size(); ++i) 
-                  rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
-              // conjoin constraints in rule body
-              unsigned usz = r->get_uninterpreted_tail_size();
-              unsigned tsz = r->get_tail_size();
-              expr_ref conj(m.mk_and(tsz - usz, r->get_expr_tail() + usz), m);
-              // apply substitution
-              m_var_subst(conj, rule_subst.size(), rule_subst.c_ptr(), conj);
-              // store ground body and instantiations
-              rule_info info(conj);              
-              vector<expr_ref_vector>& preds = info.m_preds;
-
-              // store instantiation for body applications
-              for (unsigned i = 0; i < usz; ++i) {
-                  preds.push_back(expr_ref_vector(m));
-                  app_inst_preds(r->get_tail(i), rule_subst, preds[i]);
-              }
-              // store instantiation for non-query head
-              if (!rules.is_output_predicate(r->get_decl())) {
-                  expr_ref_vector outs(m);
-                  app_inst_preds(r->get_head(), rule_subst, outs);
-                  for (unsigned i = 0; i < outs.size(); ++i) 
-                      outs[i] = m.mk_not(outs[i].get());
-                  preds.push_back(outs);
-              }
-              m_rule2info.push_back(info);
-
-              // map body func_decls to rule
-              for (unsigned i = 0; i < usz; ++i)
-                  m_func_decl_body2rules.
-                      insert_if_not_there2(r->get_decl(i), uint_set())->get_data().
-                      m_value.insert(r_id);
-          }
+    void instantiate_rule(rule_set const& rules, unsigned r_id) {
+      rule* r = rules.get_rule(r_id);
+      // prepare grounding substitution
+      ptr_vector<sort> free_sorts;
+      r->get_vars(m, free_sorts);
+      expr_ref_vector rule_subst(m);
+      rule_subst.reserve(free_sorts.size());
+      for (unsigned i = 0; i < rule_subst.size(); ++i) 
+	rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
+      // conjoin constraints in rule body
+      unsigned usz = r->get_uninterpreted_tail_size();
+      unsigned tsz = r->get_tail_size();
+      expr_ref conj(m.mk_and(tsz - usz, r->get_expr_tail() + usz), m);
+      // apply substitution
+      m_var_subst(conj, rule_subst.size(), rule_subst.c_ptr(), conj);
+      // store ground body and instantiations
+      rule_info info(conj);              
+      vector<expr_ref_vector>& preds = info.m_preds;
+      // store instantiation for body applications
+      for (unsigned i = 0; i < usz; ++i) {
+	preds.push_back(expr_ref_vector(m));
+	app_inst_preds(r->get_tail(i), rule_subst, preds[i]);
       }
-
-      void collect_predicates(rule_set& rules) {
-          for (rule_set::iterator rules_it = rules.begin(), rules_end = rules.end();
-               rules_it != rules_end; ++rules_it) {
-              collect_predicates(rules, *rules_it);
-          }
+      // store instantiation for non-query head
+      if (!rules.is_output_predicate(r->get_decl())) {
+	expr_ref_vector outs(m);
+	app_inst_preds(r->get_head(), rule_subst, outs);
+	for (unsigned i = 0; i < outs.size(); ++i) 
+	  outs[i] = m.mk_not(outs[i].get());
+	preds.push_back(outs);
       }
+      m_rule2info.push_back(info);
+      // map body func_decls to rule
+      for (unsigned i = 0; i < usz; ++i)
+	m_func_decl_body2rules.
+	  insert_if_not_there2(r->get_decl(i), uint_set())->
+	  get_data().m_value.insert(r_id);
+    }
+    
+    void collect_predicates(rule_set& rules, rule* r) {          
+      if (!is_pred_abst(r)) return;
+      func_decl* head_decl = r->get_decl();
+      symbol suffix(head_decl->get_name().str().substr(8).c_str());
+      func_decl* suffix_decl = 
+	m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
+		       head_decl->get_domain(), head_decl->get_range());
+      m_ast_trail.push_back(suffix_decl);
+      // add predicates to m_func_decl2vars_preds
+      expr_ref_vector* preds = alloc(expr_ref_vector, m);
+      preds->reserve(r->get_tail_size());
+      for (unsigned i = 0; i < r->get_tail_size(); ++i)
+	(*preds)[i] = r->get_tail(i);
+      m_func_decl2vars_preds.
+	insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
+      // rule is not used for inference
+      // TODO check if iteration and deletion over same set works
+      rules.del_rule(r);
+    }
+    
+    bool is_pred_abst(rule *r) {
+      return r->get_uninterpreted_tail_size() == 0 &&
+	r->get_decl()->get_name().str().substr(0, 8) == "__pred__";
+    }
 
-      void collect_predicates(rule_set& rules, rule* r) {          
-          func_decl* head_decl = r->get_decl();
-          if (!is_pred_abst(r)) {
-              return;
-          }
-          symbol suffix(head_decl->get_name().str().substr(8).c_str());
-          func_decl* suffix_decl = 
-              m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
-                             head_decl->get_domain(), head_decl->get_range());
-          m_ast_trail.push_back(suffix_decl);
-          // add predicates to m_func_decl2vars_preds
-          expr_ref_vector* preds = alloc(expr_ref_vector, m);
-          preds->reserve(r->get_tail_size());
-          for (unsigned i = 0; i < r->get_tail_size(); ++i)
-              (*preds)[i] = r->get_tail(i);
-          m_func_decl2vars_preds.
-              insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
-          // rule is not used for inference
-          rules.del_rule(r);
+    void print_proof_prolog(std::ostream& out, unsigned id) {
+      node_set todo_nodes;
+      todo_nodes.insert(id);
+      while (!todo_nodes.empty()) {
+	unsigned curr_id = *todo_nodes.begin();
+	todo_nodes.remove(curr_id);
+	node_vector& parent_nodes = m_node2parent_nodes[curr_id];
+	out << "hyper_resolve([" << parent_nodes << "], " <<
+	  m_node2parent_rule[curr_id] << ", " << curr_id << ")." << std::endl;
+	for (unsigned i = 0; i < parent_nodes.size(); ++i)
+	  todo_nodes.insert(parent_nodes[i]);
       }
-
-      bool is_pred_abst(rule *r) {
-          func_decl* head = r->get_decl();
-          return 
-              r->get_uninterpreted_tail_size() == 0 &&
-              head->get_name().str().substr(0, 8) == "__pred__";
-      }
+    }
 
     static const unsigned NON_NODE = UINT_MAX;
 
-    struct reached_query {};
+    struct reached_query {
+      unsigned m_node;
+      reached_query(unsigned node): m_node(node) {}
+    };
     
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
@@ -461,21 +468,8 @@ namespace datalog {
     }
 
     void check_node_property(rule_set const& rules, unsigned id) {
-      // TODO add proof construction
-      if (id == NON_NODE ||
-	  !rules.is_output_predicate(m_node2func_decl[id])) return;
-      node_set todo_nodes;
-      todo_nodes.insert(id);
-      while (!todo_nodes.empty()) {
-	unsigned curr_id = *todo_nodes.begin();
-	todo_nodes.remove(curr_id);
-	node_vector& parent_nodes = m_node2parent_nodes[curr_id];
-	std::cout << "([" << parent_nodes << "], " <<
-	  m_node2parent_rule[curr_id] << ", " << curr_id << ")" << std::endl;
-	for (unsigned i = 0; i < parent_nodes.size(); ++i)
-	  todo_nodes.insert(parent_nodes[i]);
-      }
-      throw reached_query ();
+      if (id != NON_NODE && rules.is_output_predicate(m_node2func_decl[id])) 
+	throw reached_query (id);
     }
 
     // return whether c1 implies c2
