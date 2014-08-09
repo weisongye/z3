@@ -189,25 +189,23 @@ namespace datalog {
 	  throw("predabst::get_model zero arity");
 	func_decl2vars_preds::obj_map_entry* e = 
 	  m_func_decl2vars_preds.find_core(it_decl->m_key);
-	expr* disj = 0;
+        expr_ref_vector disj(m);
 	if (e) {
-	  expr_ref_vector& preds = *e->get_data().get_value().second;
+	  expr_ref_vector const& preds = *e->get_data().get_value().second;
 	  for (node_set::iterator it_node = it_decl->m_value.begin(),
 		 end_node = it_decl->m_value.end(); it_node != end_node;
 	       ++it_node) {
 	    cube_t const& cube = m_node2info[*it_node].m_cube;
-	    expr* conj = 0;
+            expr_ref_vector conj(m);
 	    for (unsigned i = 0; i < cube.size(); ++i) 
-	      if (cube[i]) 
-		conj = conj ? to_expr(m.mk_and(preds[i].get(), conj))
-		  : preds[i].get();
-	    disj = disj ? to_expr(m.mk_or(conj, disj)) : conj;
+                if (cube[i]) conj.push_back(preds[i]);
+            disj.push_back(m.mk_and(conj.size(), conj.c_ptr()));
 	  }
 	} else {
-	  disj = to_expr(m.mk_true());
+            disj.push_back(m.mk_true());
 	}
 	func_interp* fi = alloc(func_interp, m, it_decl->m_key->get_arity());
-	fi->set_else(expr_ref(disj, m));
+	fi->set_else(expr_ref(m.mk_or(disj.size(), disj.c_ptr()), m));
 	md->register_decl(it_decl->m_key, fi);
       }
       func_decl_set false_func_decls;
