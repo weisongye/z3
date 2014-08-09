@@ -205,15 +205,13 @@ namespace datalog {
             disj.push_back(m.mk_true());
 	}
 	func_interp* fi = alloc(func_interp, m, it_decl->m_key->get_arity());
-	fi->set_else(expr_ref(m.mk_or(disj.size(), disj.c_ptr()), m));
+	fi->set_else(m.mk_or(disj.size(), disj.c_ptr()));
 	md->register_decl(it_decl->m_key, fi);
       }
       func_decl_set false_func_decls;
       // unreachable body predicates are false
       for (func_decl2uints::iterator it = m_func_decl_body2rules.begin(),
 	     end = m_func_decl_body2rules.end(); it != end; ++it) {
-	if (it->m_key->get_arity() == 0)
-	  throw("predabst::get_model zero arity");
 	if (!m_func_decl2max_reach_node_set.contains(it->m_key)) 
 	  false_func_decls.insert(it->m_key);
       }
@@ -223,16 +221,20 @@ namespace datalog {
 	   ++it) {
 	func_decl* head_decl = (*it)->get_decl();
 	if (rules.is_output_predicate(head_decl)) continue;
-	if (head_decl->get_arity() == 0)
-	  throw("predabst::get_model zero arity");
 	if (!m_func_decl2max_reach_node_set.contains(head_decl)) 
 	  false_func_decls.insert(head_decl);
       }
       for (func_decl_set::iterator it = false_func_decls.begin(),
 	     end = false_func_decls.end(); it != end; ++it) {
-	func_interp* fi = alloc(func_interp, m, (*it)->get_arity());
-	fi->set_else(expr_ref(m.mk_false(), m));
-	md->register_decl(*it, fi);
+        func_decl* d = *it;
+        if (d->get_arity() == 0) {
+          md->register_decl(d, m.mk_false());
+        }
+        else {
+          func_interp* fi = alloc(func_interp, m, d->get_arity());
+          fi->set_else(m.mk_false());
+          md->register_decl(d, fi);
+        }
       }
       return md;
     }
