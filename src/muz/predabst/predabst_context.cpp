@@ -66,12 +66,12 @@ namespace datalog {
     typedef vector<bool> cube_t;
     typedef vector<unsigned> node_vector;
     struct node_info {
-      func_decl* m_func_decl;
-      cube_t* m_cube;
-      unsigned m_parent_rule;
+      func_decl*  m_func_decl;
+      cube_t      m_cube;
+      unsigned    m_parent_rule;
       node_vector m_parent_nodes;
       node_info() {}
-      node_info(func_decl* f, cube_t* c, unsigned r, node_vector n):
+      node_info(func_decl* f, cube_t& c, unsigned r, node_vector n):
 	m_func_decl(f),
 	m_cube(c),
 	m_parent_rule(r),
@@ -104,17 +104,19 @@ namespace datalog {
       for (func_decl2vars_preds::iterator it = m_func_decl2vars_preds.begin(), 
 	     end = m_func_decl2vars_preds.end(); it != end; ++it) 
 	dealloc(it->m_value.second);
-      for (unsigned i = 0; i < m_node2info.size(); ++i)
-	dealloc(m_node2info[i].m_cube);
     }        
 
     lbool query(expr* query) {
       m_ctx.ensure_opened();
       rule_set& rules = m_ctx.get_rules();
       rm.mk_query(query, rules);
+      ptr_vector<rule> to_delete;
       // collect predicates and delete corresponding rules
       for (rule_set::iterator it = rules.begin(), end = rules.end(); it != end;
-	   ++it) collect_predicates(rules, *it);
+	   ++it) collect_predicates(rules, *it, to_delete);
+      for (unsigned i = 0; i < to_delete.size(); ++i) {
+          rules.del_rule(to_delete[i]);
+      }
       // for each rule: ground body and instantiate predicates for applications
       for (unsigned i = 0; i < rules.get_num_rules(); ++i)
 	instantiate_rule(rules, i);
@@ -124,10 +126,12 @@ namespace datalog {
 	  if (m_cancel) throw default_exception("predabst canceled");
 	  rule* r = rules.get_rule(i);
 	  if (r->get_uninterpreted_tail_size() != 0) continue;
-	  check_node_property(rules,
-			      add_node(r->get_decl(),
-				       cart_pred_abst_rule(i),
-				       i));
+          cube_t cube;
+          if (cart_pred_abst_rule(i, cube))
+              check_node_property(rules,
+                                  add_node(r->get_decl(),
+                                           cube,
+                                           i));
 	}
 	// process worklist
 	while (!m_node_worklist.empty()) {
@@ -196,7 +200,7 @@ namespace datalog {
 	  for (node_set::iterator it_node = it_decl->m_value.begin(),
 		 end_node = it_decl->m_value.end(); it_node != end_node;
 	       ++it_node) {
-	    cube_t& cube = *m_node2info[*it_node].m_cube;
+	    cube_t const& cube = m_node2info[*it_node].m_cube;
 	    expr* conj = 0;
 	    for (unsigned i = 0; i < cube.size(); ++i) 
 	      if (cube[i]) 
@@ -267,11 +271,11 @@ namespace datalog {
       }
       // store instantiation for non-query head
       if (!rules.is_output_predicate(r->get_decl())) {
-	expr_ref_vector outs(m);
-	app_inst_preds(r->get_head(), rule_subst, outs);
-	for (unsigned i = 0; i < outs.size(); ++i) 
-	  outs[i] = m.mk_not(outs[i].get());
-	preds.push_back(outs);
+	expr_ref_vector heads(m);
+	app_inst_preds(r->get_head(), rule_subst, heads);
+	for (unsigned i = 0; i < heads.size(); ++i) 
+	  heads[i] = m.mk_not(heads[i].get());
+	preds.push_back(heads);
       }
       m_rule2info.push_back(info);
       // map body func_decls to rule
@@ -281,7 +285,7 @@ namespace datalog {
 	  get_data().m_value.insert(r_id);
     }
     
-    void collect_predicates(rule_set& rules, rule* r) {          
+    void collect_predicates(rule_set& rules, rule* r, ptr_vector<rule>& to_delete) {          
       if (!is_pred_abst(r)) return;
       func_decl* head_decl = r->get_decl();
       symbol suffix(head_decl->get_name().str().substr(8).c_str());
@@ -297,8 +301,7 @@ namespace datalog {
       m_func_decl2vars_preds.
 	insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
       // rule is not used for inference
-      // TODO check if iteration and deletion over same set works
-      rules.del_rule(r);
+      to_delete.push_back(r);
     }
     
     bool is_pred_abst(rule *r) const {
@@ -330,7 +333,8 @@ namespace datalog {
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
     void app_inst_preds(app* appl, expr_ref_vector const& subst,
-			expr_ref_vector& inst_preds) {
+			expr_ref_vector& inst_preds) {      
+        
       func_decl2vars_preds::obj_map_entry* e = 
 	m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return;
@@ -357,71 +361,43 @@ namespace datalog {
       }
     }
 
-    expr_ref_vector app_inst_preds(app* appl, expr_ref_vector const& subst) {
-      func_decl2vars_preds::obj_map_entry* e = 
-	m_func_decl2vars_preds.find_core(appl->get_decl());
-      if (!e) return m_empty_preds;
-      expr* const* vars = e->get_data().get_value().first;
-      expr_ref_vector& preds = *e->get_data().get_value().second;
-      // ground appl arguments
-      expr_ref subst_tmp(m);
-      m_var_subst(appl, subst.size(), subst.c_ptr(), subst_tmp);
-      // instantiation maps preds variables to head arguments
-      expr_ref_vector inst(m);
-      inst.reserve(appl->get_num_args());
-      app* gappl = to_app(subst_tmp);
-      for (unsigned i = 0; i < appl->get_num_args(); ++i) {
-	unsigned idx = to_var(vars[i])->get_idx();
-	if (idx>=inst.size())
-	  inst.resize(idx+1);
-	inst[idx] = gappl->get_arg(i);
-      } 
-      // preds instantiates to inst_preds
-      expr_ref_vector inst_preds(m);
-      inst_preds.reserve(preds.size());
-      for (unsigned i = 0; i < preds.size(); ++i) {
-	m_var_subst(preds[i].get(), inst.size(), inst.c_ptr(), subst_tmp);
-	inst_preds[i] = subst_tmp;
-      }
-      return inst_preds;
-    }
     
-    cube_t* cart_pred_abst_rule(unsigned r_id, 
-				node_vector const& nodes = node_vector()) {
+   bool cart_pred_abst_rule(unsigned r_id, 
+                             cube_t& cube,
+                             node_vector const& nodes = node_vector()) {
       // get instantiated predicates
       vector<expr_ref_vector>& preds_vector = m_rule2info[r_id].m_preds;
       m_solver.push();
       m_solver.assert_expr(m_rule2info[r_id].m_body);
       // load abstract states for nodes
       for (unsigned pos = 0; pos < nodes.size(); ++pos) {
-	cube_t& pos_cube = *m_node2info[nodes[pos]].m_cube;
+	cube_t& pos_cube = m_node2info[nodes[pos]].m_cube;
 	for (unsigned i = 0; i < preds_vector[pos].size(); ++i) 
 	  if (pos_cube[i]) m_solver.assert_expr(preds_vector[pos][i].get());
       }
       if (m_solver.check() == l_false) {
 	// unsat body
 	m_solver.pop(1);
-	return 0; // null pointer denotes unsat cube
+        return false; 
       }
       // collect abstract cube
-      cube_t* cube = alloc(cube_t);
+      cube.reset();
       expr_ref_vector& head_preds = preds_vector.back();
-      if (head_preds.empty()) return cube;
-      cube->resize(head_preds.size());
+      if (head_preds.empty()) return true;
+      cube.resize(head_preds.size());
       for (unsigned i = 0; i < head_preds.size(); ++i) {
 	m_solver.push();
 	m_solver.assert_expr(head_preds[i].get());
-	(*cube)[i] = (m_solver.check() == l_false);
+	cube[i] = (m_solver.check() == l_false);
 	m_solver.pop(1);
       }
       m_solver.pop(1);
-      return cube;
+      return true;
     }
 
-    unsigned add_node(func_decl* sym, cube_t* cube, 
+    unsigned add_node(func_decl* sym, cube_t& cube, 
 		      unsigned r_id, node_vector const& nodes = node_vector()) {
       unsigned added_id = m_node2info.size();
-      if (!cube) return NON_NODE;
       func_decl2node_set::obj_map_entry * sym_nodes_entry =
 	m_func_decl2max_reach_node_set.find_core(sym);
       // first fixpoint check combined with maximality maintainance
@@ -431,14 +407,13 @@ namespace datalog {
 	node_vector old_lt_nodes;
 	for (node_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
 	     it != end; ++it) {
-	  cube_t& old_cube = *m_node2info[*it].m_cube;
+	  cube_t& old_cube = m_node2info[*it].m_cube;
 	  // if cube implies existing cube then nothing to add
-	  if (cube_leq(*cube, old_cube)) {
-	    dealloc(cube);
+	  if (cube_leq(cube, old_cube)) {
 	    return NON_NODE;
 	  }
 	  // stronger old cubes will not be considered maximal
-	  if (cube_leq(old_cube, *cube)) old_lt_nodes.push_back(*it);
+	  if (cube_leq(old_cube, cube)) old_lt_nodes.push_back(*it);
 	}
 	// fixpoint reached since didn't return
 	// remove subsumed maximal nodes
@@ -521,11 +496,14 @@ namespace datalog {
 	}
 	// apply rule on each node combination
 	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-	       nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) 
-	  check_node_property(rules,
-			      add_node(r->get_decl(),
-				       cart_pred_abst_rule(*r_id, *nodes),
-				       *r_id, *nodes));
+                 nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
+            cube_t cube;
+            if (cart_pred_abst_rule(*r_id, cube, *nodes))
+                check_node_property(rules,
+                                    add_node(r->get_decl(),
+                                             cube,
+                                             *r_id, *nodes));
+        }
       }
     }
 
@@ -554,13 +532,14 @@ namespace datalog {
       }
     }
     
+    
     void print_inference_state(std::ostream& out) const {
       out << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" <<
 	std::endl << "node counter " << m_node2info.size() << std::endl;
       for (unsigned i = 0; i < m_node2info.size(); ++i) {
 	node_info const& node = m_node2info[i];
 	out << "node " << i << " " << 
-	  mk_pp(node.m_func_decl, m) << " [" << *node.m_cube << "] " << 
+	  mk_pp(node.m_func_decl, m) << " [" << node.m_cube << "] " << 
 	  node.m_parent_rule << " (" << node.m_parent_nodes << ")" <<
 	  std::endl;
       }
