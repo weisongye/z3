@@ -120,27 +120,18 @@ namespace datalog {
       rule_set& rules = m_ctx.get_rules();
       rm.mk_query(query, rules);
       ptr_vector<rule> to_delete;
-      // collect predicates and delete corresponding rules
-      for (rule_set::iterator it = rules.begin(), end = rules.end(); it != end;
-	   ++it) collect_predicates(rules, *it, to_delete);
-      for (unsigned i = 0; i < to_delete.size(); ++i) {
-          rules.del_rule(to_delete[i]);
-      }
-      // for each rule: ground body and instantiate predicates for applications
-      for (unsigned i = 0; i < rules.get_num_rules(); ++i)
-	instantiate_rule(rules, i);
       try {
+        // collect predicates and delete corresponding rules
+        for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i)
+          collect_predicates(rules, i, to_delete);
+        for (unsigned i = 0; !m_cancel && i < to_delete.size(); ++i) 
+          rules.del_rule(to_delete[i]);
+        // for each rule: ground body and instantiate predicates for applications
+        for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i)
+	  instantiate_rule(rules, i);
 	// initial abstract inference
-	for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) {
-	  rule* r = rules.get_rule(i);
-	  if (r->get_uninterpreted_tail_size() != 0) continue;
-          cube_t cube;
-          if (cart_pred_abst_rule(i, cube))
-              check_node_property(rules,
-                                  add_node(r->get_decl(),
-                                           cube,
-                                           i));
-	}
+	for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i)
+          initialize_abs(rules, i);	
 	// process worklist
 	while (!m_cancel && !m_node_worklist.empty()) {
           TRACE("dl", print_inference_state(tout););
@@ -250,6 +241,18 @@ namespace datalog {
 
   private:
 
+    void initialize_abs(rule_set const& rules, unsigned r_id) {
+       rule* r = rules.get_rule(r_id);
+       cube_t cube;
+       if (r->get_uninterpreted_tail_size() == 0 && 
+           cart_pred_abst_rule(r_id, cube))
+         check_node_property(rules,
+                             add_node(r->get_decl(),
+                                      cube,
+                                      r_id));
+
+    }
+
     void instantiate_rule(rule_set const& rules, unsigned r_id) {
       rule* r = rules.get_rule(r_id);
       // prepare grounding substitution
@@ -289,7 +292,8 @@ namespace datalog {
 	  get_data().m_value.insert(r_id);
     }
     
-    void collect_predicates(rule_set& rules, rule* r, ptr_vector<rule>& to_delete) {          
+    void collect_predicates(rule_set& rules, unsigned r_id, ptr_vector<rule>& to_delete) {          
+      rule* r = rules.get_rule(r_id);
       if (!is_pred_abst(r)) return;
       func_decl* head_decl = r->get_decl();
       symbol suffix(head_decl->get_name().str().substr(8).c_str());
@@ -384,10 +388,7 @@ namespace datalog {
         return false; 
       }
       // collect abstract cube
-      cube.reset();
       expr_ref_vector const& head_preds = preds_vector.back();
-      if (head_preds.empty()) 
-        return true;
       cube.resize(head_preds.size());
       for (unsigned i = 0; i < head_preds.size(); ++i) {
         scoped_push _push2(m_solver);
