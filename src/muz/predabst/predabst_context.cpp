@@ -41,6 +41,14 @@ namespace datalog {
       vector<expr_ref_vector> m_preds;
       rule_info(expr_ref& body): m_body(body) {}
     };
+
+    class scoped_push {
+        smt::kernel& s;
+    public:
+        scoped_push(smt::kernel& s):s(s){ s.push();  }
+        ~scoped_push() { s.pop(1); }
+    };
+
     
     context&               m_ctx;         // main context where (fixedpoint) constraints are stored.
     ast_manager&           m;             // manager for ASTs. It is used for managing expressions
@@ -79,10 +87,11 @@ namespace datalog {
       {}
     };
     typedef uint_set node_set;
-    vector<node_info> m_node2info;
     typedef obj_map<func_decl, node_set> func_decl2node_set;
-    func_decl2node_set m_func_decl2max_reach_node_set;
-    node_set m_node_worklist;
+
+    vector<node_info>  m_node2info;                        
+    func_decl2node_set m_func_decl2max_reach_node_set;    
+    node_set           m_node_worklist;                    
 
   public:
     imp(context& ctx):
@@ -122,8 +131,7 @@ namespace datalog {
 	instantiate_rule(rules, i);
       try {
 	// initial abstract inference
-	for (unsigned i = 0; i < rules.get_num_rules(); ++i) {
-	  if (m_cancel) throw default_exception("predabst canceled");
+	for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) {
 	  rule* r = rules.get_rule(i);
 	  if (r->get_uninterpreted_tail_size() != 0) continue;
           cube_t cube;
@@ -134,13 +142,8 @@ namespace datalog {
                                            i));
 	}
 	// process worklist
-	while (!m_node_worklist.empty()) {
-	  /*
-	    print_inference_state(std::cout);
-	    char name[256];
-	    std::cin.getline(name, 256);
-	  */
-	  if (m_cancel) throw default_exception("predabst canceled");
+	while (!m_cancel && !m_node_worklist.empty()) {
+          TRACE("dl", print_inference_state(tout););
 	  unsigned current_id = *m_node_worklist.begin();
 	  m_node_worklist.remove(current_id);
 	  inference_step(rules, current_id);
@@ -149,6 +152,7 @@ namespace datalog {
 	print_proof_prolog(std::cout, exc.m_node);
 	return l_true;
       }
+      if (m_cancel) return l_undef;
       return l_false;
     }
 
@@ -366,32 +370,30 @@ namespace datalog {
                              cube_t& cube,
                              node_vector const& nodes = node_vector()) {
       // get instantiated predicates
-      vector<expr_ref_vector>& preds_vector = m_rule2info[r_id].m_preds;
-      m_solver.push();
+      vector<expr_ref_vector> const& preds_vector = m_rule2info[r_id].m_preds;
+      scoped_push _push1(m_solver);
       m_solver.assert_expr(m_rule2info[r_id].m_body);
       // load abstract states for nodes
       for (unsigned pos = 0; pos < nodes.size(); ++pos) {
 	cube_t& pos_cube = m_node2info[nodes[pos]].m_cube;
 	for (unsigned i = 0; i < preds_vector[pos].size(); ++i) 
-	  if (pos_cube[i]) m_solver.assert_expr(preds_vector[pos][i].get());
+	  if (pos_cube[i]) m_solver.assert_expr(preds_vector[pos][i]);
       }
       if (m_solver.check() == l_false) {
 	// unsat body
-	m_solver.pop(1);
         return false; 
       }
       // collect abstract cube
       cube.reset();
-      expr_ref_vector& head_preds = preds_vector.back();
-      if (head_preds.empty()) return true;
+      expr_ref_vector const& head_preds = preds_vector.back();
+      if (head_preds.empty()) 
+        return true;
       cube.resize(head_preds.size());
       for (unsigned i = 0; i < head_preds.size(); ++i) {
-	m_solver.push();
-	m_solver.assert_expr(head_preds[i].get());
+        scoped_push _push2(m_solver);
+	m_solver.assert_expr(head_preds[i]);
 	cube[i] = (m_solver.check() == l_false);
-	m_solver.pop(1);
       }
-      m_solver.pop(1);
       return true;
     }
 
