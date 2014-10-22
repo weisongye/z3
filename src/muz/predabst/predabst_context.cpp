@@ -17,6 +17,7 @@
 
 --*/
 
+#include "farkas_util.h"
 #include "predabst_context.h"
 #include "dl_context.h"
 #include "unifier.h"
@@ -436,11 +437,67 @@ namespace datalog {
       return added_id;
     }
 
-    void check_node_property(rule_set const& rules, unsigned id) const {
-      if (id != NON_NODE &&
-	  rules.is_output_predicate(m_node2info[id].m_func_decl)) 
-	throw reached_query (id);
-    }
+
+
+	void check_node_property(rule_set const& rules, unsigned id) const {
+		if (id != NON_NODE && rules.is_output_predicate(m_node2info[id].m_func_decl)) 
+			throw reached_query(id);
+		if (id != NON_NODE && is_wf_predicate(m_node2info[id].m_func_decl)) {
+			check_well_founded(m_node2info[id].m_func_decl, m_node2info[id].m_cube);
+		}
+	}
+
+	bool is_wf_predicate(func_decl * pred) const {
+		return pred->get_name().str().substr(0, 6) == "__wf__";
+	}
+
+	void check_well_founded(func_decl * pred, cube_t cube) const {
+		if ((pred->get_arity() % 2) == 0){
+			func_decl2vars_preds::obj_map_entry* e = m_func_decl2vars_preds.find_core(pred);
+			if (!e) return;
+			expr* const* vars = e->get_data().get_value().first;
+			expr_ref_vector preds_set = *(e->get_data().get_value().second);
+			expr_ref_vector cube_preds_set(m);
+			for (unsigned i = 0; i < cube.size(); i++) {
+				if (cube[i]) cube_preds_set.push_back(preds_set[i].get());
+			}
+			expr_ref to_rank(m.mk_and(cube_preds_set.size(), cube_preds_set.c_ptr()), m);
+			//std::cout << "to_rank: " << mk_pp(to_rank, m) << "\n";
+			expr_ref_vector vs(m);
+			expr_ref_vector ws(m);
+			for (unsigned i = 0; i < pred->get_arity(); i++){
+				if (i < (pred->get_arity() / 2)){
+					vs.push_back(*vars);
+				}
+				else {
+					ws.push_back(*vars);
+				}
+				vars++;
+			}
+			expr_ref_vector values(m);
+			if (well_founded(vs, ws, to_rank, values)) {
+				std::cout << "===================================== \n";
+				std::cout << "Formula is well-founded! \n";
+				std::cout << "===================================== \n";
+
+				expr_ref_vector bound_values(values);
+				expr_ref delta0(values[0].get(), m);
+				bound_values.reverse();
+				bound_values.pop_back();
+				bound_values.reverse();
+				farkas_pred bound(vs, bound_values, 2, delta0);
+				bound.display();
+			}
+			else{
+				std::cout << "===================================== \n";
+				std::cout << "Formula is not well-founded! \n";
+				std::cout << "===================================== \n";
+			}
+		}
+		else {
+			std::cout << " WF check over odd arity relation \n";
+		}
+	}
     
     // return whether c1 implies c2
     bool cube_leq(cube_t const& c1, cube_t const& c2) const {
