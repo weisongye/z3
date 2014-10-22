@@ -216,6 +216,7 @@ int main(int argc, char ** argv) {
     TST(polynorm);
     TST(qe_arith);
     TST(expr_substitution);
+    TST(farkas_app);
 }
 
 void initialize_mam() {}

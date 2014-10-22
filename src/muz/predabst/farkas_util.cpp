@@ -14,7 +14,7 @@ vector<expr_ref_vector> pair_set_to_set2(vector<expr_ref_vector> fmls1, vector<e
 	return result;
 }
 
-vector<expr_ref_vector> cnf_to_dnf2(vector<vector<expr_ref_vector>> cnf_sets, ast_manager& m){
+vector<expr_ref_vector> cnf_to_dnf2(vector<vector<expr_ref_vector> > cnf_sets, ast_manager& m){
 
 	SASSERT(cnf_sets.size() >= 2);
 	vector<expr_ref_vector> result;
@@ -74,7 +74,7 @@ struct norm_formula{
 		if (m.is_and(fml)){
 
 			expr_ref_vector sub_formulas(m);
-			vector<vector<expr_ref_vector>> dnf_sub_formulas;
+			vector<vector<expr_ref_vector> > dnf_sub_formulas;
 			sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
 
 			for (unsigned i = 0; i < sub_formulas.size(); ++i) {
@@ -84,7 +84,7 @@ struct norm_formula{
 		}
 		else if (m.is_or(fml)){
 			expr_ref_vector sub_formulas(m);
-			vector<vector<expr_ref_vector>> dnf_sub_formulas;
+			vector<vector<expr_ref_vector> > dnf_sub_formulas;
 			sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
 
 			for (unsigned i = 0; i < sub_formulas.size(); ++i) {

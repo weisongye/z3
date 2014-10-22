@@ -11,7 +11,7 @@
 #include "model2expr.h"
 #include "model_smt2_pp.h"
 
-static expr_ref_vector get_all_terms(expr_ref& term){
+static expr_ref_vector get_all_terms(expr_ref term){
 	ast_manager& m = term.get_manager();
 	arith_util arith(m);
 	expr_ref_vector all_facts(m);
@@ -187,7 +187,7 @@ public:
 		m_const(in_const), m_op(in_op), m_has_params(false){
 	}
 
-	void put(expr_ref& term){
+	void put(expr_ref term){
 
 		ast_manager& m = term.get_manager();
 		arith_util arith(m);
@@ -504,7 +504,7 @@ public:
 		m_constraints((vars.get_manager()).mk_true(), vars.get_manager()){
 	}
 
-	void set(expr_ref& lhs_term, expr_ref& rhs_term) {
+	void set(expr_ref lhs_term, expr_ref& rhs_term) {
 		ast_manager& m = m_vars.get_manager();
 		expr_ref_vector conjs(m);
 		conjs.append(to_app(lhs_term)->get_num_args(), to_app(lhs_term)->get_args());
@@ -512,8 +512,8 @@ public:
 			//std::cout << "Conj " << i << " : ";
 			//std::cout << "Input to pred " << mk_pp(conjs[i].get(), m) << "\n";
 			farkas_pred f_pred(m_vars);
-			f_pred.put(expr_ref(conjs[i].get(), m));
-			//f_pred.display();
+            f_pred.put(expr_ref(conjs[i].get(), m));
+            //f_pred.display();
 			m_lhs.add(f_pred);
 		}
 		m_rhs.put(rhs_term);
