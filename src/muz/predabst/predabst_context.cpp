@@ -443,7 +443,7 @@ namespace datalog {
 		if (id != NON_NODE && rules.is_output_predicate(m_node2info[id].m_func_decl)) 
 			throw reached_query(id);
 		if (id != NON_NODE && is_wf_predicate(m_node2info[id].m_func_decl)) {
-			check_well_founded(m_node2info[id].m_func_decl, m_node2info[id].m_cube);
+			check_well_founded(id);
 		}
 	}
 
@@ -451,51 +451,35 @@ namespace datalog {
 		return pred->get_name().str().substr(0, 6) == "__wf__";
 	}
 
-	void check_well_founded(func_decl * pred, cube_t cube) const {
-		if ((pred->get_arity() % 2) == 0){
-			func_decl2vars_preds::obj_map_entry* e = m_func_decl2vars_preds.find_core(pred);
-			if (!e) return;
-			expr* const* vars = e->get_data().get_value().first;
-			expr_ref_vector preds_set = *(e->get_data().get_value().second);
-			expr_ref_vector cube_preds_set(m);
-			for (unsigned i = 0; i < cube.size(); i++) {
-				if (cube[i]) cube_preds_set.push_back(preds_set[i].get());
-			}
-			expr_ref to_rank(m.mk_and(cube_preds_set.size(), cube_preds_set.c_ptr()), m);
-			//std::cout << "to_rank: " << mk_pp(to_rank, m) << "\n";
-			expr_ref_vector vs(m);
-			expr_ref_vector ws(m);
-			for (unsigned i = 0; i < pred->get_arity(); i++){
-				if (i < (pred->get_arity() / 2)){
-					vs.push_back(*vars);
-				}
-				else {
-					ws.push_back(*vars);
-				}
-				vars++;
-			}
-			expr_ref_vector values(m);
-			if (well_founded(vs, ws, to_rank, values)) {
-				std::cout << "===================================== \n";
-				std::cout << "Formula is well-founded! \n";
-				std::cout << "===================================== \n";
-
-				expr_ref_vector bound_values(values);
-				expr_ref delta0(values[0].get(), m);
-				bound_values.reverse();
-				bound_values.pop_back();
-				bound_values.reverse();
-				farkas_pred bound(vs, bound_values, 2, delta0);
-				bound.display();
-			}
-			else{
-				std::cout << "===================================== \n";
-				std::cout << "Formula is not well-founded! \n";
-				std::cout << "===================================== \n";
-			}
+	void check_well_founded(unsigned r_id) const {
+		func_decl * pred = m_node2info[r_id].m_func_decl;
+		cube_t cube = m_node2info[r_id].m_cube;
+		func_decl2vars_preds::obj_map_entry* e = m_func_decl2vars_preds.find_core(pred);
+		if (!e) return;
+		expr* const* vars = e->get_data().get_value().first;
+		expr_ref_vector preds_set = *(e->get_data().get_value().second);
+		expr_ref_vector cube_preds_set(m);
+		for (unsigned i = 0; i < cube.size(); i++) {
+			if (cube[i]) cube_preds_set.push_back(preds_set[i].get());
 		}
-		else {
-			std::cout << " WF check over odd arity relation \n";
+		expr_ref to_rank(m.mk_and(cube_preds_set.size(), cube_preds_set.c_ptr()), m);
+		//std::cout << "to_rank: " << mk_pp(to_rank, m) << "\n";		
+		
+		expr_ref_vector values(m);
+		expr_ref bound(m), decrease(m);
+		if (well_founded(expr_ref_vector(m, (pred->get_arity()), vars), to_rank, bound, decrease)) {
+			std::cout << "===================================== \n";
+			std::cout << "Formula is well-founded! \n";
+			std::cout << "===================================== \n";
+			std::cout << "bound: " << mk_pp(bound, m) << "\n";
+			std::cout << "decrease: " << mk_pp(decrease, m) << "\n";
+
+		}
+		else{
+			std::cout << "===================================== \n";
+			std::cout << "Formula is not well-founded! \n";
+			std::cout << "===================================== \n";
+			throw reached_query(r_id);
 		}
 	}
     

@@ -1,4 +1,21 @@
+/*++
+Copyright (c) 2013 Microsoft Corporation
 
+Module Name: 
+
+	farkas_util.h
+
+Abstract:
+
+	Utilities for applying farkas lemma over linear implications.
+
+Author:
+
+	Tewodros A. Beyene (t-tewbe) 2014-10-22.
+
+Revision History:
+
+--*/
 #include "th_rewriter.h"
 #include "smt2parser.h"
 #include "arith_decl_plugin.h"
@@ -10,6 +27,26 @@
 #include "model.h"
 #include "model2expr.h"
 #include "model_smt2_pp.h"
+#include "ast_counter.h"
+#include "dl_util.h"
+
+
+
+typedef enum  { bilin_sing, bilin, lin } lambda_kind_sort;
+
+struct lambda_kind {
+	expr_ref m_lambda;
+	lambda_kind_sort m_kind;
+	unsigned m_op;
+	int m_lower_bound;
+	int m_upper_bound;
+
+	lambda_kind(expr_ref in_lambda, lambda_kind_sort in_kind, unsigned in_op) :
+		m_lambda(in_lambda), m_kind(in_kind), m_op(in_op),
+		m_lower_bound(0),
+		m_upper_bound(0){
+	}
+};
 
 static expr_ref_vector get_all_terms(expr_ref term){
 	ast_manager& m = term.get_manager();
@@ -382,22 +419,6 @@ class farkas_imp{
 	expr_ref_vector m_solutions;
 	expr_ref m_constraints;
 
-	typedef enum  { bilin_sing, bilin, lin } lambda_sort;
-
-	struct lambda_kind {
-		expr_ref m_lambda;
-		lambda_sort m_kind;
-		unsigned m_op;
-		expr_ref m_lower_bound;
-		expr_ref m_upper_bound;
-
-		lambda_kind(expr_ref in_lambda, lambda_sort in_kind, unsigned in_op) :
-			m_lambda(in_lambda), m_kind(in_kind), m_op(in_op),
-			m_lower_bound(m_lambda.get_manager()),
-			m_upper_bound(m_lambda.get_manager()){
-		}
-	};
-
 	vector<lambda_kind> m_lambda_kinds;
 
 
@@ -466,37 +487,17 @@ class farkas_imp{
 			}
 		}
 		else {
-			m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[0].get(), m), bilin, m_lhs.get_ops()[0]));
-		}
-		for (unsigned i = 1; i < lhs_params_count; ++i) {
-			m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), bilin, m_lhs.get_ops()[i]));
-		}
-		for (unsigned i = lhs_params_count; i < m_lhs.conj_size(); ++i) {
-			m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), lin, m_lhs.get_ops()[i]));
-		}
-	}
-
-	void set_lambda_bound_pairs(expr_ref lin_upper_bound, expr_ref bilin_upper_bound){
-		ast_manager& m = m_vars.get_manager();
-		reg_decl_plugins(m);
-		arith_util arith(m);
-
-		for (unsigned i = 0; i < m_lambda_kinds.size(); i++) {
-			if (m_lambda_kinds[i].m_kind == bilin_sing){
-				m_lambda_kinds[i].m_lower_bound = expr_ref(arith.mk_numeral(rational(-1), true), m);
-				m_lambda_kinds[i].m_upper_bound = expr_ref(arith.mk_numeral(rational(1), true), m);
-			}
-			else if (m_lambda_kinds[i].m_kind == bilin){
-				if (m_lambda_kinds[i].m_op == 0){
-					m_lambda_kinds[i].m_lower_bound = expr_ref(arith.mk_numeral(rational(-1), true), m);
+			for (unsigned i = 0; i < m_lhs.conj_size(); ++i) {
+				if (i < lhs_params_count){
+					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), bilin, m_lhs.get_ops()[i]));
 				}
 				else {
-					m_lambda_kinds[i].m_lower_bound = expr_ref(arith.mk_numeral(rational(-1), true), m);
+					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), lin, m_lhs.get_ops()[i]));
 				}
-				m_lambda_kinds[i].m_upper_bound = expr_ref(arith.mk_numeral(rational(1), true), m);
 			}
 		}
 	}
+
 
 public:
 	farkas_imp(expr_ref_vector vars) : m_vars(vars), m_lhs(vars), m_rhs(vars),
@@ -512,8 +513,8 @@ public:
 			//std::cout << "Conj " << i << " : ";
 			//std::cout << "Input to pred " << mk_pp(conjs[i].get(), m) << "\n";
 			farkas_pred f_pred(m_vars);
-            f_pred.put(expr_ref(conjs[i].get(), m));
-            //f_pred.display();
+			f_pred.put(expr_ref(conjs[i].get(), m));
+			//f_pred.display();
 			m_lhs.add(f_pred);
 		}
 		m_rhs.put(rhs_term);
@@ -578,4 +579,6 @@ public:
 
 bool exists_valid(expr_ref& formula, expr_ref_vector vars, expr_ref& constraint_st);
 
-bool well_founded(expr_ref_vector vars1, expr_ref_vector vars2, expr_ref& LHS, expr_ref_vector& values);
+bool well_founded(expr_ref_vector vars, expr_ref& LHS, expr_ref& bound, expr_ref& decrease);
+
+expr_ref_vector get_all_vars(expr_ref& fml);

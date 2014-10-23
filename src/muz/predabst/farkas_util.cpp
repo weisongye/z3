@@ -1,3 +1,21 @@
+/*++
+Copyright (c) 2013 Microsoft Corporation
+
+Module Name:
+
+	farkas_util.cpp
+
+Abstract:
+
+	Utilities for applying farkas lemma over linear implications.
+
+Author:
+
+	Tewodros A. Beyene (t-tewbe) 2014-10-22.
+
+Revision History:
+
+--*/
 
 #include "farkas_util.h"
 
@@ -205,56 +223,53 @@ bool exists_valid(expr_ref& formula, expr_ref_vector vars, expr_ref& constraint_
 	return true;
 }
 
-bool well_founded(expr_ref_vector vs, expr_ref_vector ws, expr_ref& LHS, expr_ref_vector& values){
+bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr_ref& sol_decrease){
 	ast_manager& m = LHS.get_manager();
-	reg_decl_plugins(m);
 	arith_util arith(m);
 
 	SASSERT(!m.is_true(LHS));
 	SASSERT(m.is_and(LHS));
-
-	//SASSERT(LHS.get_num_args() > 1);
-	SASSERT(vs.size() == ws.size());
+	SASSERT(to_app(LHS)->get_num_args > 1);
+	
+	SASSERT((vsws.size() % 2) == 0);
+	expr_ref_vector vs(m), ws(m);
+	for (unsigned i = 0; i < vsws.size(); i++){
+		if (i < (vsws.size() / 2)){
+			vs.push_back(vsws[i].get());
+		}
+		else {
+			ws.push_back(vsws[i].get());
+		}
+	}
 
 	expr_ref_vector params(m);
-
 	expr_ref sum_psvs(arith.mk_numeral(rational(0), true), m);
 	expr_ref sum_psws(arith.mk_numeral(rational(0), true), m);
 
-	expr_ref delta0(m.mk_const(symbol("delta0"), arith.mk_int()), m);
-	params.push_back(delta0);
-
-	//std::cout << "vs " << vs.size() << "\n";
 	for (unsigned i = 0; i < vs.size(); ++i) {
 		expr_ref param(m.mk_fresh_const("p", arith.mk_int()), m);
-
 		params.push_back(param);
 		sum_psvs = arith.mk_add(sum_psvs.get(), arith.mk_mul(param.get(), vs[i].get()));
 		sum_psws = arith.mk_add(sum_psws.get(), arith.mk_mul(param.get(), ws[i].get()));
 	}
 
+	expr_ref delta0(m.mk_const(symbol("delta0"), arith.mk_int()), m);
+	params.push_back(delta0);
+
 	expr_ref bound(arith.mk_ge(sum_psvs, delta0), m);
 	expr_ref decrease(arith.mk_lt(sum_psws, sum_psvs), m);
-
-	//expr_ref to_solve(m.mk_implies(LHS.get(), m.mk_and(bound.get(), decrease.get())), m);
 	expr_ref to_solve(m.mk_or(m.mk_not(LHS), m.mk_and(bound, decrease)), m);
 
-	expr_ref_vector vars(vs);
-	vars.append(ws);
-
 	expr_ref constraint_st(m.mk_true(), m);
-	if (exists_valid(to_solve, vars, constraint_st)) {
-		smt_params new_param;;
+	if (exists_valid(to_solve, vsws, constraint_st)) {
+		smt_params new_param;
 		smt::kernel solver(m, new_param);
 		solver.assert_expr(constraint_st);
-
 		if (solver.check() == l_true){
+			expr_ref_vector values(m);
 			model_ref modref;
 			solver.get_model(modref);
 			expr_ref value(m);
-
-			expr_ref sum_psvs_sol(arith.mk_numeral(rational(0), true), m);
-			expr_ref bound_sol(m);
 
 			for (unsigned j = 0; j < params.size(); j++) {
 				if (modref.get()->eval(params[j].get(), value, true)) {
@@ -264,16 +279,105 @@ bool well_founded(expr_ref_vector vs, expr_ref_vector ws, expr_ref& LHS, expr_re
 					return false;
 				}
 			}
+			expr_ref sol_delta0(values[vs.size()-1].get(), m);
+			//values.pop_back();
+			expr_ref sol_sum_psvs(arith.mk_numeral(rational(0), true), m);
+			expr_ref sol_sum_psws(arith.mk_numeral(rational(0), true), m);
+
+			for (unsigned i = 0; i < values.size()-1; ++i) {
+				sol_sum_psvs = arith.mk_add(sol_sum_psvs.get(), arith.mk_mul(values[i].get(), vs[i].get()));
+				sol_sum_psws = arith.mk_add(sol_sum_psws.get(), arith.mk_mul(values[i].get(), ws[i].get()));
+			}
+			sol_bound = arith.mk_ge(sol_sum_psvs, sol_delta0);
+			sol_decrease = arith.mk_lt(sol_sum_psws, sol_sum_psvs);
 			return true;
 		}
 		else {
 			return false;
 		}
-
 	}
-	else{
+	else {
 		return false;
 	}
 
+}
+
+void mk_bilin_lambda_constraint(vector<lambda_kind> lambda_kinds, int max_lambda, expr_ref& cons){
+	ast_manager& m = cons.get_manager();
+	//reg_decl_plugins(m);
+	arith_util arith(m);
+
+	expr_ref n1(arith.mk_numeral(rational(1), true), m);
+	expr_ref nminus1(arith.mk_numeral(rational(-1), true), m);
+
+	int min_lambda = -1 * max_lambda;
+
+	for (unsigned i = 0; i < lambda_kinds.size(); i++) {
+
+		if (lambda_kinds[i].m_kind == bilin_sing){
+			cons = m.mk_and(cons, m.mk_or(m.mk_eq(lambda_kinds[i].m_lambda, nminus1), m.mk_eq(lambda_kinds[i].m_lambda.get(), n1)));
+		}
+		else if (lambda_kinds[i].m_kind == bilin){
+			if (lambda_kinds[i].m_op != 0)  min_lambda = 0; // operator not equality
+			expr_ref bilin_disj(m.mk_true(), m);
+			for (int j = min_lambda; j <= max_lambda; j++)
+				bilin_disj = m.mk_or(bilin_disj, m.mk_eq(lambda_kinds[i].m_lambda.get(), arith.mk_numeral(rational(j), true)));
+			cons = m.mk_and(cons, bilin_disj);
+		}
+	}
+}
+
+void mk_bound_pairs(vector<lambda_kind>& lambda_kinds, int lin_max_lambda, int bilin_max_lambda){
+
+	for (unsigned i = 0; i < lambda_kinds.size(); i++) {
+		if (lambda_kinds[i].m_kind == bilin_sing){
+			lambda_kinds[i].m_lower_bound = -1;
+			lambda_kinds[i].m_upper_bound = 1;
+		}
+		else {
+			int min_lambda;
+			if (lambda_kinds[i].m_kind == bilin){
+				min_lambda = -1 * bilin_max_lambda;
+				lambda_kinds[i].m_upper_bound = bilin_max_lambda;
+			}
+			else {
+				min_lambda = -1 * lin_max_lambda;
+				lambda_kinds[i].m_upper_bound = lin_max_lambda;
+			}
+
+			if (lambda_kinds[i].m_op == 0){
+				lambda_kinds[i].m_lower_bound = min_lambda;
+			}
+			else {
+				lambda_kinds[i].m_lower_bound = 0;
+			}
+
+		}
+	}
+}
+
+expr_ref_vector get_all_vars(expr_ref& fml){
+	ast_manager& m = fml.get_manager();
+	expr_ref_vector m_todo(m);
+	expr_ref_vector vars(m);
+	m_todo.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
+	while (!m_todo.empty()) {
+		expr* e = m_todo.back();
+		m_todo.pop_back();
+		switch (e->get_kind()) {
+		case AST_VAR: {
+			if(!vars.contains(e)) vars.push_back(e);
+			break;
+		}
+		case AST_APP: {
+			m_todo.append(to_app(e)->get_num_args(), to_app(e)->get_args());
+			break;
+		}
+		default:
+			UNREACHABLE();
+			break;
+		}
+	}
+	return vars;
 }
 
