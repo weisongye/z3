@@ -223,6 +223,30 @@ bool exists_valid(expr_ref& formula, expr_ref_vector vars, expr_ref& constraint_
 	return true;
 }
 
+bool mk_exists_forall_farkas(expr_ref& fml, expr_ref_vector vars, expr_ref& constraint_st, bool mk_lambda_kinds, vector<lambda_kind>& all_lambda_kinds) {
+	ast_manager& m = fml.get_manager();
+	
+	norm_formula n_form(fml);
+	n_form.normalize();
+	SASSERT(m.is_or(n_form.get_formula()));
+
+	expr_ref_vector disjs(m);
+	disjs.append(to_app(n_form.get_formula())->get_num_args(), to_app(n_form.get_formula())->get_args());
+	expr_ref fml_false(m.mk_false(), m);
+	for (unsigned i = 0; i < disjs.size(); ++i) {
+		farkas_imp f_imp(vars, mk_lambda_kinds);
+		f_imp.set(expr_ref(disjs[i].get(), m), fml_false);
+		if (f_imp.solve_constraint()) {
+			constraint_st = m.mk_and(constraint_st, f_imp.get_constraints());
+			all_lambda_kinds.append(f_imp.get_lambda_kinds());
+		}
+		else {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr_ref& sol_decrease){
 	ast_manager& m = LHS.get_manager();
 	arith_util arith(m);
@@ -241,7 +265,6 @@ bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr
 			ws.push_back(vsws[i].get());
 		}
 	}
-
 	expr_ref_vector params(m);
 	expr_ref sum_psvs(arith.mk_numeral(rational(0), true), m);
 	expr_ref sum_psws(arith.mk_numeral(rational(0), true), m);
@@ -269,37 +292,14 @@ bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr
 			expr_ref_vector values(m);
 			model_ref modref;
 			solver.get_model(modref);
-			expr_ref value(m);
-
-			for (unsigned j = 0; j < params.size(); j++) {
-				if (modref.get()->eval(params[j].get(), value, true)) {
-					values.push_back(value);
-				}
-				else {
-					return false;
-				}
-			}
-			expr_ref sol_delta0(values[vs.size()-1].get(), m);
-			//values.pop_back();
-			expr_ref sol_sum_psvs(arith.mk_numeral(rational(0), true), m);
-			expr_ref sol_sum_psws(arith.mk_numeral(rational(0), true), m);
-
-			for (unsigned i = 0; i < values.size()-1; ++i) {
-				sol_sum_psvs = arith.mk_add(sol_sum_psvs.get(), arith.mk_mul(values[i].get(), vs[i].get()));
-				sol_sum_psws = arith.mk_add(sol_sum_psws.get(), arith.mk_mul(values[i].get(), ws[i].get()));
-			}
-			sol_bound = arith.mk_ge(sol_sum_psvs, sol_delta0);
-			sol_decrease = arith.mk_lt(sol_sum_psws, sol_sum_psvs);
-			return true;
+			if (modref.get()->eval(bound.get(), sol_bound) && modref.get()->eval(decrease.get(), sol_decrease)) {
+				return true;
+			}			
+			return false; // when does it happen?		
 		}
-		else {
-			return false;
-		}
+		return false; //unsat param
 	}
-	else {
-		return false;
-	}
-
+	return false; //unsat lambda
 }
 
 void mk_bilin_lambda_constraint(vector<lambda_kind> lambda_kinds, int max_lambda, expr_ref& cons){
@@ -356,7 +356,8 @@ void mk_bound_pairs(vector<lambda_kind>& lambda_kinds, int lin_max_lambda, int b
 	}
 }
 
-expr_ref_vector get_all_vars(expr_ref& fml){
+
+static expr_ref_vector get_all_pred_vars(expr_ref& fml){
 	ast_manager& m = fml.get_manager();
 	expr_ref_vector m_todo(m);
 	expr_ref_vector vars(m);
@@ -366,7 +367,7 @@ expr_ref_vector get_all_vars(expr_ref& fml){
 		m_todo.pop_back();
 		switch (e->get_kind()) {
 		case AST_VAR: {
-			if(!vars.contains(e)) vars.push_back(e);
+			if (!vars.contains(e)) vars.push_back(e);
 			break;
 		}
 		case AST_APP: {
@@ -381,3 +382,163 @@ expr_ref_vector get_all_vars(expr_ref& fml){
 	return vars;
 }
 
+static expr_ref_vector get_all_vars(expr_ref& fml){
+	ast_manager& m = fml.get_manager();
+	if (m.is_and(fml) || m.is_or(fml)){
+		expr_ref_vector all_vars(m);
+		expr_ref_vector sub_formulas(m);
+		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
+		for (unsigned i = 0; i < sub_formulas.size(); ++i)
+			all_vars.append(get_all_vars(expr_ref(sub_formulas[i].get(), m)));
+		return all_vars;
+	}
+	else if (m.is_not(fml)){
+		return get_all_vars(expr_ref(to_app(fml)->get_arg(0), m));
+	}
+	else {
+		if (is_func_decl(fml)){
+			return expr_ref_vector(m, to_app(fml)->get_num_args(), to_app(fml)->get_args());
+		}
+		else {
+			return get_all_pred_vars(fml);
+		}
+	}
+}
+
+static expr_ref_vector vars_difference(expr_ref_vector source, expr_ref_vector to_remove){
+	expr_ref_vector diff(source.get_manager());
+	for (unsigned i = 0; i < source.size(); i++)
+		if (!to_remove.contains(source[i].get())) diff.push_back(source[i].get());
+	return diff;
+}
+
+class rel_template {
+
+	typedef obj_map<app, expr*> func_decl2body;
+	typedef obj_map<app, std::pair<expr* const*, expr*> > func_decl2params_body;
+	typedef obj_map<app, expr*> func_decl2inst;
+
+	func_decl2params_body m_map;
+	expr_ref m_extras;
+	expr_ref m_acc;
+
+	func_decl2inst m_rel_template_instances;
+
+	vector<symbol> m_names;
+	expr_ref_vector m_params;
+
+	expr_ref subst_template_body(expr_ref fml, func_decl2params_body map);
+
+public:
+
+	void process_template(app* head, expr_ref body, expr_ref extra){
+		func_decl2body in_rel_templates;
+		in_rel_templates.insert(head, body);
+		process_template(in_rel_templates, extra);
+	}
+	
+	void process_template(func_decl2body in_rel_templates, expr_ref extra){
+		ast_manager m;
+		func_decl2body::iterator it = in_rel_templates.begin();
+		func_decl2body::iterator end = in_rel_templates.end();
+
+		for (; it != end; ++it){
+			symbol head_name = it->m_key->get_decl()->get_name();
+			if (m_names.contains(head_name)){
+				std::cout << "Multiple templates found for : " << head_name.str() << "\n";
+				throw(head_name);
+			}
+			else {
+				expr_ref_vector body_vars(get_all_vars(expr_ref(it->get_value(), m)));
+				expr_ref_vector head_vars(m, it->m_key->get_num_args(), it->m_key->get_args());
+				expr_ref_vector temp_params(m);
+				for (unsigned j = 0; j < body_vars.size(); j++)
+					if (!head_vars.contains(body_vars[j].get())) temp_params.push_back(body_vars[j].get());
+				m_map.insert(it->m_key, std::make_pair(temp_params.c_ptr(), it->m_value));
+				m_names.push_back(head_name);
+				m_params.append(temp_params);
+			}
+		}
+		m_extras = m.mk_and(m_extras, extra);
+	}
+
+	void constrain_template(expr_ref fml){
+		ast_manager& m = fml.get_manager();
+		m_acc = m.mk_and(fml, m_acc); //updating the constraint store
+		instantiate_template(fml);
+	}
+
+	void instantiate_template(expr_ref fml){
+		ast_manager& m = m_acc.get_manager();
+		expr_ref m_acc_subst(subst_template_body(m_acc, m_map));
+		expr_ref farkas_cons(m), lambda_cons(m);
+		vector<lambda_kind> all_lambda_kinds;
+		expr_ref_vector all_vars(get_all_vars(fml));
+		expr_ref_vector vars(vars_difference(all_vars, m_params));
+
+		mk_exists_forall_farkas(m_acc_subst, vars, farkas_cons, true, all_lambda_kinds);
+		int max_lambda = 2;
+		mk_bilin_lambda_constraint(all_lambda_kinds, max_lambda, lambda_cons);
+
+		smt_params new_param;
+		smt::kernel solver(m, new_param);
+		solver.assert_expr(m.mk_and(farkas_cons, m.mk_and(lambda_cons, m_extras)));
+
+		if (solver.check() == l_true){
+			model_ref modref;
+			solver.get_model(modref);
+			expr_ref instance(m);
+
+			func_decl2params_body::iterator it = m_map.begin();
+			func_decl2params_body::iterator end = m_map.end();
+			for (; it != end; ++it) {
+				if (modref.get()->eval(it->get_value().second, instance)) {
+					m_rel_template_instances.insert(it->m_key, instance);
+				}
+				else {// when does this happen?
+					throw(it->m_key->get_decl()->get_name());
+				}
+			}
+		}
+		throw(fml);
+	}
+
+	expr* get_templat_instance(app* temp_head){
+		func_decl2inst::obj_map_entry* e = m_rel_template_instances.find_core(temp_head);
+		return e->get_data().m_value;
+	}
+};
+
+expr_ref rel_template::subst_template_body(expr_ref fml, func_decl2params_body map){
+	ast_manager& m = fml.get_manager();
+	expr_ref new_formula(m);
+	expr_ref_vector sub_formulas(m);
+	expr_ref_vector new_sub_formulas(m);
+
+	if (m.is_and(fml)){
+		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
+		for (unsigned i = 0; i < sub_formulas.size(); ++i)
+			new_sub_formulas.push_back(subst_template_body(expr_ref(sub_formulas[i].get(), m), map).get());
+		new_formula = m.mk_and(new_sub_formulas.size(), new_sub_formulas.c_ptr());
+	}
+	else if (m.is_or(fml)){
+		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
+		for (unsigned i = 0; i < sub_formulas.size(); ++i)
+			new_sub_formulas.push_back(subst_template_body(expr_ref(sub_formulas[i].get(), m), map).get());
+		new_formula = m.mk_or(new_sub_formulas.size(), new_sub_formulas.c_ptr());
+
+	}
+	else if (m.is_not(fml)){
+		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
+		new_formula = m.mk_not(subst_template_body(expr_ref(sub_formulas[0].get(), m), map));
+	}
+	else {
+
+		if (is_func_decl(fml)){
+			func_decl2params_body::obj_map_entry* e = map.find_core(to_app(fml));
+			if (!e) return fml;
+			return expr_ref(e->get_data().get_value().second, m);
+		}
+	}
+	return new_formula;
+}

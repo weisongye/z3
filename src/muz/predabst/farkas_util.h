@@ -28,9 +28,20 @@ Revision History:
 #include "model2expr.h"
 #include "model_smt2_pp.h"
 #include "ast_counter.h"
-#include "dl_util.h"
 
 
+template<class T>
+static void push_front(vector<T>& v, T e){
+	v.reverse();
+	v.push_back(e);
+	v.reverse();
+}
+
+static void push_front_0(expr_ref_vector& v, expr_ref e){
+	v.reverse();
+	v.push_back(e);
+	v.reverse();
+}
 
 typedef enum  { bilin_sing, bilin, lin } lambda_kind_sort;
 
@@ -213,10 +224,13 @@ class farkas_pred{
 		extend_coeffs(p_vars, p_coeffs);
 	}
 
+	ast_manager m_pred_manager;
+
 public:
 
 	farkas_pred(expr_ref_vector vars) : m_vars(vars), m_coeffs(vars.get_manager()),
-		m_const(vars.get_manager()), m_op(1), m_has_params(false){
+		m_const(vars.get_manager()), m_op(1), m_has_params(false),
+		m_pred_manager(vars.get_manager()){
 	}
 
 	farkas_pred(expr_ref_vector vars, expr_ref_vector in_coeffs, unsigned in_op, expr_ref in_const) :
@@ -258,6 +272,10 @@ public:
 
 	expr_ref_vector get_coeffs(){
 		return m_coeffs;
+	}
+
+	expr_ref get_coeffs(unsigned i){
+		return expr_ref(m_coeffs.get(i), m_pred_manager);
 	}
 
 	unsigned get_op(){
@@ -315,76 +333,65 @@ class farkas_conj{
 	vector<expr_ref> m_set_const;
 
 	unsigned m_param_pred_count;
+	ast_manager m_conj_manager;
 
-	void add_more(farkas_pred& f_pred){
-		ast_manager& m = m_vars.get_manager();
-		expr_ref_vector new_coeffs(m);
-		new_coeffs.append(f_pred.get_coeffs());
-		//std::cout << "ADD: To farkas preds \n";
-		if (f_pred.has_params()){
-			m_param_pred_count++;
-			for (unsigned i = 0; i < m_vars.size(); ++i) {
-				m_set_coeffs[i].reverse();
-				m_set_coeffs[i].push_back(expr_ref(new_coeffs[i].get(), m));
-				m_set_coeffs[i].reverse();
-			}
-			m_set_op.reverse();
-			m_set_op.push_back(f_pred.get_op());
-			m_set_op.reverse();
-			m_set_const.reverse();
-			m_set_const.push_back(f_pred.get_const());
-			m_set_const.reverse();
-
-		}
-		else {
-			for (unsigned i = 0; i < m_vars.size(); ++i) {
-				m_set_coeffs[i].push_back(expr_ref(new_coeffs[i].get(), m));
-			}
-			m_set_op.push_back(f_pred.get_op());
-			m_set_const.push_back(f_pred.get_const());
-		}
-	}
-
-	void init(farkas_pred& f_pred){
-		ast_manager& m = m_vars.get_manager();
-		expr_ref_vector new_coeffs(m);
-		new_coeffs.append(f_pred.get_coeffs());
-		//std::cout << "INIT: To farkas preds, vars " << m_vars.size() << "\n";
-		for (unsigned i = 0; i < m_vars.size(); ++i) {
-			expr_ref_vector init_coeff(m);
-			init_coeff.push_back(expr_ref(new_coeffs[i].get(), m));
-			m_set_coeffs.push_back(init_coeff);
-		}
-		m_set_op.push_back(f_pred.get_op());
-		m_set_const.push_back(f_pred.get_const());
-		if (f_pred.has_params()) {
-			m_param_pred_count++;
-		}
-	}
 
 public:
-	farkas_conj(expr_ref_vector vars) : m_vars(vars), m_param_pred_count(0){
+	farkas_conj(expr_ref_vector vars) : 
+		m_vars(vars), m_param_pred_count(0), m_conj_manager(vars.get_manager()){
 	}
 
 	void add(farkas_pred& f_pred){
 		if (m_set_coeffs.size() == 0) {
-			init(f_pred);
+			//init(f_pred);
+			for (unsigned i = 0; i < m_vars.size(); ++i) {
+				expr_ref_vector init_coeff(m_conj_manager);
+				init_coeff.push_back(f_pred.get_coeffs(i));
+				m_set_coeffs.push_back(init_coeff);
+			}
+			m_set_op.push_back(f_pred.get_op());
+			m_set_const.push_back(f_pred.get_const());
+			if (f_pred.has_params()) m_param_pred_count++;
 		}
-		else{
-			add_more(f_pred);
+		else {
+			//add_more(f_pred);
+			if (f_pred.has_params()){
+				for (unsigned i = 0; i < m_vars.size(); ++i)
+					push_front_0(m_set_coeffs[i], f_pred.get_coeffs(i));
+				push_front(m_set_op, f_pred.get_op());
+				push_front(m_set_const, f_pred.get_const());
+				m_param_pred_count++;
+			}
+			else {
+				for (unsigned i = 0; i < m_vars.size(); ++i)
+					m_set_coeffs[i].push_back(f_pred.get_coeffs(i));
+				m_set_op.push_back(f_pred.get_op());
+				m_set_const.push_back(f_pred.get_const());
+			}
 		}
 	}
 
-	vector<expr_ref_vector> get_set_coeffs(){
+	vector<expr_ref_vector> get_conj_coeffs(){
 		return m_set_coeffs;
 	}
 
-	vector<expr_ref> get_set_const(){
+	expr_ref get_conj_coeffs(unsigned i, unsigned j){
+		return expr_ref(m_set_coeffs.get(i).get(j),m_conj_manager);
+	}
+
+	vector<expr_ref> get_conj_const(){
 		return m_set_const;
+	}
+
+	expr_ref get_conj_const(unsigned i){
+		return expr_ref(m_set_const.get(i), m_conj_manager);
 	}
 
 	vector<unsigned> get_ops(){
 		return  m_set_op;
+	}
+	unsigned get_ops(unsigned i){
+		return  m_set_op.get(i);
 	}
 
 	unsigned conj_size(){
@@ -396,16 +403,13 @@ public:
 	}
 
 	void display(){
-		ast_manager& m = m_vars.get_manager();
-		for (unsigned i = 0; i < m_vars.size(); ++i) {
-			std::cout << mk_pp(m_vars[i].get(), m) << "   ";
-		}
+		for (unsigned i = 0; i < m_vars.size(); ++i)
+			std::cout << mk_pp(m_vars[i].get(), m_conj_manager) << "   ";
 		std::cout << "\n";
 		for (unsigned i = 0; i < m_set_coeffs[0].size(); ++i) {
-			for (unsigned j = 0; j < m_vars.size(); ++j) {
-				std::cout << mk_pp(m_set_coeffs[j][i].get(), m) << "   ";
-			}
-			std::cout << m_set_op[i] << "   " << mk_pp(m_set_const[i].get(), m) << "\n";
+			for (unsigned j = 0; j < m_vars.size(); ++j)
+				std::cout << mk_pp(m_set_coeffs[j][i].get(), m_conj_manager) << "   ";
+			std::cout << m_set_op[i] << "   " << mk_pp(m_set_const[i].get(), m_conj_manager) << "\n";
 		}
 	}
 
@@ -420,7 +424,7 @@ class farkas_imp{
 	expr_ref m_constraints;
 
 	vector<lambda_kind> m_lambda_kinds;
-
+	bool m_mk_lambda_kinds;
 
 	void set_constraint(){
 		ast_manager& m = m_vars.get_manager();
@@ -431,12 +435,10 @@ class farkas_imp{
 
 		unsigned no_vars = m_vars.size();
 		unsigned no_preds = m_lhs.conj_size();
-		//std::cout << "Preds No: " << no_preds << " and Vars No: " << no_vars << "\n";
 
 		for (unsigned i = 0; i < no_preds; i++) {
 			expr_ref lambda(m.mk_fresh_const("t", arith.mk_int()), m);
 			m_lambdas.push_back(lambda);
-			//m_lambdas.push_back(expr_ref(m.mk_const(symbol(i), arith.mk_int()), m));
 		}
 
 		expr_ref n0(arith.mk_numeral(rational(0), true), m);
@@ -444,18 +446,23 @@ class farkas_imp{
 
 
 		for (unsigned i = 0; i < no_preds; ++i) {
-			if (m_lhs.get_ops()[i] == 1){
+			if (m_lhs.get_ops(i) == 1){
 				m_constraints = m.mk_and(m_constraints.get(), arith.mk_ge(m_lambdas[i].get(), n0.get()));
 			}
 		}
 
-		set_lambda_kinds();
+		//set_lambda_kinds();
+		if (m_lhs.get_param_pred_count() == 1 && m_lhs.get_ops(0) != 0) 
+				m_constraints = m.mk_and(m_constraints.get(), m.mk_eq(m_lambdas[0].get(), n1.get()));
+
+		if (m_mk_lambda_kinds) set_lambda_kinds();
 
 		for (unsigned i = 0; i < no_vars; ++i) {
 			expr_ref ith_m_rhs((m_rhs.get_coeffs()[i]).get(), m);
 			expr_ref sum(arith.mk_numeral(rational(0), true), m);
 			for (unsigned j = 0; j < no_preds; ++j) {
-				expr_ref jth_m_lhs((m_lhs.get_set_coeffs()[i][j]).get(), m);
+				//expr_ref jth_m_lhs((m_lhs.get_conj_coeffs()[i][j]).get(), m);
+				expr_ref jth_m_lhs = m_lhs.get_conj_coeffs(i, j);
 				sum = arith.mk_add(sum.get(), arith.mk_mul(m_lambdas[j].get(), jth_m_lhs.get()));
 			}
 			m_constraints = m.mk_and(m_constraints.get(), m.mk_eq(sum.get(), ith_m_rhs.get()));
@@ -464,7 +471,8 @@ class farkas_imp{
 		expr_ref rhs_const((m_rhs.get_const()).get(), m);
 		expr_ref sum_const(arith.mk_numeral(rational(0), true), m);
 		for (unsigned j = 0; j < no_preds; ++j) {
-			expr_ref jth_m_lhs_const((m_lhs.get_set_const()[j]).get(), m);
+			//expr_ref jth_m_lhs_const((m_lhs.get_conj_const()[j]).get(), m);
+			expr_ref jth_m_lhs_const = m_lhs.get_conj_const(j);
 			sum_const = arith.mk_add(sum_const.get(), arith.mk_mul(m_lambdas[j].get(), jth_m_lhs_const.get()));
 		}
 		m_constraints = m.mk_and(m_constraints.get(), arith.mk_le(sum_const.get(), rhs_const.get()));
@@ -478,21 +486,16 @@ class farkas_imp{
 
 		unsigned lhs_params_count = m_lhs.get_param_pred_count();
 		if (lhs_params_count == 1) {
-			if (m_lhs.get_ops()[0] == 0){
-				m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[0].get(), m), bilin_sing, m_lhs.get_ops()[0]));
-			}
-			else {
-				expr_ref n1(arith.mk_numeral(rational(1), true), m);
-				m_constraints = m.mk_and(m_constraints.get(), m.mk_eq(m_lambdas[0].get(), n1.get()));
-			}
+			if (m_lhs.get_ops(0) == 0)
+				m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[0].get(), m), bilin_sing, m_lhs.get_ops(0)));
 		}
 		else {
 			for (unsigned i = 0; i < m_lhs.conj_size(); ++i) {
 				if (i < lhs_params_count){
-					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), bilin, m_lhs.get_ops()[i]));
+					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), bilin, m_lhs.get_ops(i)));
 				}
 				else {
-					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), lin, m_lhs.get_ops()[i]));
+					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas[i].get(), m), lin, m_lhs.get_ops(i)));
 				}
 			}
 		}
@@ -500,9 +503,10 @@ class farkas_imp{
 
 
 public:
-	farkas_imp(expr_ref_vector vars) : m_vars(vars), m_lhs(vars), m_rhs(vars),
+	farkas_imp(expr_ref_vector vars, bool mk_lambda_kinds = false) : m_vars(vars), m_lhs(vars), m_rhs(vars),
 		m_lambdas(vars.get_manager()), m_solutions(vars.get_manager()),
-		m_constraints((vars.get_manager()).mk_true(), vars.get_manager()){
+		m_constraints((vars.get_manager()).mk_true(), vars.get_manager()),
+		m_mk_lambda_kinds(mk_lambda_kinds){
 	}
 
 	void set(expr_ref lhs_term, expr_ref& rhs_term) {
@@ -527,7 +531,7 @@ public:
 		smt::kernel solver(m, new_param);
 
 		solver.assert_expr(m_constraints);
-		bool has_sol = true;
+		//bool has_sol = true;
 
 		if (solver.check() == l_true){
 			model_ref modref;
@@ -558,6 +562,10 @@ public:
 
 	expr_ref get_constraints(){
 		return m_constraints;
+	}
+
+	vector<lambda_kind> get_lambda_kinds(){
+		return m_lambda_kinds;
 	}
 
 	void display(){
