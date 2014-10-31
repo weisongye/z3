@@ -92,7 +92,8 @@ namespace datalog {
 
     vector<node_info>  m_node2info;                        
     func_decl2node_set m_func_decl2max_reach_node_set;    
-    node_set           m_node_worklist;                    
+    node_set           m_node_worklist;    
+	rel_template_suit       m_template;
 
   public:
     imp(context& ctx):
@@ -103,8 +104,9 @@ namespace datalog {
       m_var_subst(m, false),
       m_cancel(false),
       m_empty_preds(m),
-      m_ast_trail(m)
-    {
+      m_ast_trail(m),
+	  m_template(m)
+	{
       // m_fparams.m_relevancy_lvl = 0;
       m_fparams.m_mbqi = false;
       m_fparams.m_soft_timeout = 1000;
@@ -120,31 +122,41 @@ namespace datalog {
       m_ctx.ensure_opened();
       rule_set& rules = m_ctx.get_rules();
       rm.mk_query(query, rules);
+	  //rules.display(std::cout);
       ptr_vector<rule> to_delete;
       try {
-        // collect predicates and delete corresponding rules
-        for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i)
-          collect_predicates(rules, i, to_delete);
-        for (unsigned i = 0; !m_cancel && i < to_delete.size(); ++i) 
-          rules.del_rule(to_delete[i]);
-        // for each rule: ground body and instantiate predicates for applications
-        for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i)
-	  instantiate_rule(rules, i);
-	// initial abstract inference
-	for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i)
-          initialize_abs(rules, i);	
-	// process worklist
-	while (!m_cancel && !m_node_worklist.empty()) {
-          TRACE("dl", print_inference_state(tout););
-	  unsigned current_id = *m_node_worklist.begin();
-	  m_node_worklist.remove(current_id);
-	  inference_step(rules, current_id);
-	}
-      } catch (reached_query& exc) {
-	print_proof_prolog(std::cout, exc.m_node);
-	return l_true;
-      }
-      if (m_cancel) return l_undef;
+          // collect predicates and delete corresponding rules
+		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) collect_predicates(rules, i, to_delete);
+		  for (unsigned i = 0; !m_cancel && i < to_delete.size(); ++i) rules.del_rule(to_delete[i]);
+
+		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) collect_templates_extra(rules, i);
+		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) collect_templates(rules, i);
+		  initialize_templates(rules);
+		  // for each rule: ground body and instantiate predicates for applications
+		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) instantiate_rule(rules, i);
+		  // initial abstract inference
+		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) initialize_abs(rules, i);	
+		  // process worklist
+		  while (!m_cancel && !m_node_worklist.empty()) {
+			  TRACE("dl", print_inference_state(tout););
+			  unsigned current_id = *m_node_worklist.begin();
+			  m_node_worklist.remove(current_id);
+			  inference_step(rules, current_id);
+			  }
+		  } 
+	  catch (reached_query& exc) {
+		  print_proof_prolog(std::cout, exc.m_node);
+		  mk_trace(exc.m_node);
+		  expr_ref cs(m.mk_true(), m);
+		  mk_leaf2(expr_ref_vector(m), exc.m_node, rules, expr_ref_vector(m), cs);
+		 // mk_leaf(expr_ref_vector(m), exc.m_node, rules, cs);
+		  expr_ref imp(m.mk_not(cs), m);
+		  std::cout << "Next obligation: " << mk_pp(imp, m) << "\n";
+		  m_template.constrain_template(imp);
+		  //m_template.display();
+		  return l_true;
+		  }
+	  if (m_cancel) return l_undef;
       return l_false;
     }
 
@@ -245,24 +257,22 @@ namespace datalog {
     void initialize_abs(rule_set const& rules, unsigned r_id) {
        rule* r = rules.get_rule(r_id);
        cube_t cube;
-       if (r->get_uninterpreted_tail_size() == 0 && 
-           cart_pred_abst_rule(r_id, cube))
-         check_node_property(rules,
-                             add_node(r->get_decl(),
-                                      cube,
-                                      r_id));
-
+	   if (r->get_uninterpreted_tail_size() == 0 && cart_pred_abst_rule(r_id, cube)){
+		   check_node_property(rules, add_node(r->get_decl(), cube, r_id));
+	   }
+        
     }
 
     void instantiate_rule(rule_set const& rules, unsigned r_id) {
       rule* r = rules.get_rule(r_id);
+	  //std::cout << "Rule " << r_id << " is : ";
+	  //r->display(m_ctx, std::cout);
       // prepare grounding substitution
       ptr_vector<sort> free_sorts;
       r->get_vars(m, free_sorts);
       expr_ref_vector rule_subst(m);
       rule_subst.reserve(free_sorts.size());
-      for (unsigned i = 0; i < rule_subst.size(); ++i) 
-	rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
+      for (unsigned i = 0; i < rule_subst.size(); ++i) rule_subst[i] = m.mk_fresh_const("c", free_sorts[i]);
       // conjoin constraints in rule body
       unsigned usz = r->get_uninterpreted_tail_size();
       unsigned tsz = r->get_tail_size();
@@ -274,23 +284,20 @@ namespace datalog {
       vector<expr_ref_vector>& preds = info.m_preds;
       // store instantiation for body applications
       for (unsigned i = 0; i < usz; ++i) {
-	preds.push_back(expr_ref_vector(m));
-	app_inst_preds(r->get_tail(i), rule_subst, preds[i]);
+			preds.push_back(expr_ref_vector(m));
+			app_inst_preds(r->get_tail(i), rule_subst, preds[i]);
       }
       // store instantiation for non-query head
       if (!rules.is_output_predicate(r->get_decl())) {
-	expr_ref_vector heads(m);
-	app_inst_preds(r->get_head(), rule_subst, heads);
-	for (unsigned i = 0; i < heads.size(); ++i) 
-	  heads[i] = m.mk_not(heads[i].get());
-	preds.push_back(heads);
+			expr_ref_vector heads(m);
+			app_inst_preds(r->get_head(), rule_subst, heads);
+			for (unsigned i = 0; i < heads.size(); ++i) heads[i] = m.mk_not(heads[i].get());
+		preds.push_back(heads);
       }
       m_rule2info.push_back(info);
       // map body func_decls to rule
-      for (unsigned i = 0; i < usz; ++i)
-	m_func_decl_body2rules.
-	  insert_if_not_there2(r->get_decl(i), uint_set())->
-	  get_data().m_value.insert(r_id);
+      for (unsigned i = 0; i < usz; ++i) m_func_decl_body2rules.
+	  insert_if_not_there2(r->get_decl(i), uint_set())->get_data().m_value.insert(r_id);
     }
     
     void collect_predicates(rule_set& rules, unsigned r_id, ptr_vector<rule>& to_delete) {          
@@ -298,24 +305,19 @@ namespace datalog {
       if (!is_pred_abst(r)) return;
       func_decl* head_decl = r->get_decl();
       symbol suffix(head_decl->get_name().str().substr(8).c_str());
-      func_decl* suffix_decl = 
-	m.mk_func_decl(symbol(suffix), head_decl->get_arity(), 
-		       head_decl->get_domain(), head_decl->get_range());
+      func_decl* suffix_decl = m.mk_func_decl(symbol(suffix), head_decl->get_arity(), head_decl->get_domain(), head_decl->get_range());
       m_ast_trail.push_back(suffix_decl);
       // add predicates to m_func_decl2vars_preds
       expr_ref_vector* preds = alloc(expr_ref_vector, m);
       preds->reserve(r->get_tail_size());
-      for (unsigned i = 0; i < r->get_tail_size(); ++i)
-	(*preds)[i] = r->get_tail(i);
-      m_func_decl2vars_preds.
-	insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
+      for (unsigned i = 0; i < r->get_tail_size(); ++i) (*preds)[i] = r->get_tail(i);
+      m_func_decl2vars_preds.insert(suffix_decl, std::make_pair(r->get_head()->get_args(), preds));
       // rule is not used for inference
       to_delete.push_back(r);
     }
     
     bool is_pred_abst(rule *r) const {
-      return r->get_uninterpreted_tail_size() == 0 &&
-	r->get_decl()->get_name().str().substr(0, 8) == "__pred__";
+      return r->get_uninterpreted_tail_size() == 0 && r->get_decl()->get_name().str().substr(0, 8) == "__pred__";
     }
 
     void print_proof_prolog(std::ostream& out, unsigned id) const {
@@ -341,11 +343,8 @@ namespace datalog {
     
     // ground arguments of app using subst, and then instantiate each predicate
     // by replacing its free variables with grounded arguments of app
-    void app_inst_preds(app* appl, expr_ref_vector const& subst,
-			expr_ref_vector& inst_preds) {      
-        
-      func_decl2vars_preds::obj_map_entry* e = 
-	m_func_decl2vars_preds.find_core(appl->get_decl());
+    void app_inst_preds(app* appl, expr_ref_vector const& subst, expr_ref_vector& inst_preds) {        
+      func_decl2vars_preds::obj_map_entry* e = m_func_decl2vars_preds.find_core(appl->get_decl());
       if (!e) return;
       expr* const* vars = e->get_data().get_value().first;
       expr_ref_vector& preds = *e->get_data().get_value().second;
@@ -357,87 +356,83 @@ namespace datalog {
       inst.reserve(appl->get_num_args());
       app* gappl = to_app(subst_tmp);
       for (unsigned i = 0; i < appl->get_num_args(); ++i) {
-	unsigned idx = to_var(vars[i])->get_idx();
-	if (idx>=inst.size())
-	  inst.resize(idx+1);
-	inst[idx] = gappl->get_arg(i);
+			unsigned idx = to_var(vars[i])->get_idx();
+			if (idx>=inst.size()) inst.resize(idx+1);
+			inst[idx] = gappl->get_arg(i);
       } 
       // preds instantiates to inst_preds
       inst_preds.reserve(preds.size());
       for (unsigned i = 0; i < preds.size(); ++i) {
-	m_var_subst(preds[i].get(), inst.size(), inst.c_ptr(), subst_tmp);
-	inst_preds[i] = subst_tmp;
+			m_var_subst(preds[i].get(), inst.size(), inst.c_ptr(), subst_tmp);
+			inst_preds[i] = subst_tmp;
       }
     }
 
-    
-   bool cart_pred_abst_rule(unsigned r_id, 
-                             cube_t& cube,
-                             node_vector const& nodes = node_vector()) {
+   bool cart_pred_abst_rule(unsigned r_id, cube_t& cube, node_vector const& nodes = node_vector()) {
       // get instantiated predicates
       vector<expr_ref_vector> const& preds_vector = m_rule2info[r_id].m_preds;
       scoped_push _push1(m_solver);
       m_solver.assert_expr(m_rule2info[r_id].m_body);
       // load abstract states for nodes
       for (unsigned pos = 0; pos < nodes.size(); ++pos) {
-	cube_t& pos_cube = m_node2info[nodes[pos]].m_cube;
-	for (unsigned i = 0; i < preds_vector[pos].size(); ++i) 
-	  if (pos_cube[i]) m_solver.assert_expr(preds_vector[pos][i]);
+			cube_t& pos_cube = m_node2info[nodes[pos]].m_cube;
+			for (unsigned i = 0; i < preds_vector[pos].size(); ++i) 
+			if (pos_cube[i]) m_solver.assert_expr(preds_vector[pos][i]);
       }
       if (m_solver.check() == l_false) {
-	// unsat body
+		// unsat body
         return false; 
       }
       // collect abstract cube
       expr_ref_vector const& head_preds = preds_vector.back();
       cube.resize(head_preds.size());
       for (unsigned i = 0; i < head_preds.size(); ++i) {
-        scoped_push _push2(m_solver);
-	m_solver.assert_expr(head_preds[i]);
-	cube[i] = (m_solver.check() == l_false);
+			scoped_push _push2(m_solver);
+			m_solver.assert_expr(head_preds[i]);
+			cube[i] = (m_solver.check() == l_false);
       }
       return true;
     }
 
-    unsigned add_node(func_decl* sym, cube_t& cube, 
-		      unsigned r_id, node_vector const& nodes = node_vector()) {
+    unsigned add_node(func_decl* sym, cube_t& cube, unsigned r_id, node_vector const& nodes = node_vector()) {
       unsigned added_id = m_node2info.size();
-      func_decl2node_set::obj_map_entry * sym_nodes_entry =
-	m_func_decl2max_reach_node_set.find_core(sym);
+      func_decl2node_set::obj_map_entry * sym_nodes_entry =	m_func_decl2max_reach_node_set.find_core(sym);
       // first fixpoint check combined with maximality maintainance
       if (sym_nodes_entry) { 
-	// nodes exist at this sym
-	node_set& sym_nodes = sym_nodes_entry->get_data().m_value;
-	node_vector old_lt_nodes;
-	for (node_set::iterator it = sym_nodes.begin(), end = sym_nodes.end();
-	     it != end; ++it) {
-	  cube_t& old_cube = m_node2info[*it].m_cube;
-	  // if cube implies existing cube then nothing to add
-	  if (cube_leq(cube, old_cube)) {
-	    return NON_NODE;
-	  }
-	  // stronger old cubes will not be considered maximal
-	  if (cube_leq(old_cube, cube)) old_lt_nodes.push_back(*it);
-	}
-	// fixpoint reached since didn't return
-	// remove subsumed maximal nodes
-	for (node_vector::iterator it = old_lt_nodes.begin(), 
-	       end = old_lt_nodes.end(); it != end; ++it) {
-	  sym_nodes.remove(*it);
-	  m_node_worklist.remove(*it); // removing non-existent element is ok
-	}
-	sym_nodes.insert(added_id);
-      } else {
-	m_func_decl2max_reach_node_set.insert_if_not_there2(sym, node_set())->
-	  get_data().m_value.insert(added_id);
+			// nodes exist at this sym
+			node_set& sym_nodes = sym_nodes_entry->get_data().m_value;
+			node_vector old_lt_nodes;
+			for (node_set::iterator it = sym_nodes.begin(), end = sym_nodes.end(); it != end; ++it) {
+				  cube_t& old_cube = m_node2info[*it].m_cube;
+				  // if cube implies existing cube then nothing to add
+				  if (cube_leq(cube, old_cube)) {
+						return NON_NODE;
+					}
+				  // stronger old cubes will not be considered maximal
+				  if (cube_leq(old_cube, cube)) old_lt_nodes.push_back(*it);
+			}
+			// fixpoint reached since didn't return
+			// remove subsumed maximal nodes
+			for (node_vector::iterator it = old_lt_nodes.begin(), end = old_lt_nodes.end(); it != end; ++it) {
+				  sym_nodes.remove(*it);
+				  m_node_worklist.remove(*it); // removing non-existent element is ok
+			}
+			sym_nodes.insert(added_id);
+	   } 
+	  else {
+		m_func_decl2max_reach_node_set.insert_if_not_there2(sym, node_set())->get_data().m_value.insert(added_id);
       }
       // no fixpoint reached hence create new node
       m_node_worklist.insert(added_id);
       m_node2info.push_back(node_info(sym, cube, r_id, nodes));
+	  /*
+	  std::cout << "Node added: (" << added_id << ", " << sym->get_name().str() << ", " << r_id << ", [";
+	  for (unsigned i = 0; i < nodes.size(); i++)
+		  std::cout << nodes.get(i) << " ";
+	  std::cout << "]) \n";
+	  */
       return added_id;
     }
-
-
 
 	void check_node_property(rule_set const& rules, unsigned id) const {
 		if (id != NON_NODE && rules.is_output_predicate(m_node2info[id].m_func_decl)) 
@@ -447,6 +442,278 @@ namespace datalog {
 		}
 	}
 
+	//Theo's code
+	void collect_templates_extra(rule_set& rules, unsigned r_id) {
+		rule* r = rules.get_rule(r_id);
+		func_decl* head_decl = r->get_decl();
+		if (!is_template_extra(head_decl)) return;
+		std::cout << "I have read template extra : " << head_decl->get_name().str() << "\n";
+		expr_ref_vector temp_params(m, head_decl->get_arity(), r->get_head()->get_args());
+		expr_ref extras(r->get_tail(0), m);
+		std::cout << "before subst ...m_extras: " << mk_pp(extras.get(), m) << "\n";
+		arith_util arith(m);
+		expr_ref_vector extra_subst(m);
+		extra_subst.reserve(temp_params.size());
+		for (unsigned i = 0; i < extra_subst.size(); ++i) {
+			extra_subst[i] = expr_ref(m.mk_fresh_const("b", arith.mk_int()), m);
+		}
+		m_var_subst(extras, extra_subst.size(), extra_subst.c_ptr(), extras);
+		std::cout << "after subst ...m_extras: " << mk_pp(extras.get(), m) << "\n";
+		m_template.process_template_extra(extra_subst, extras);
+		rules.del_rule(r);
+	}
+
+	bool is_template_extra(func_decl * pred) const {
+		return pred->get_name().str().substr(0, 15) == "__temp__extra__";
+	}	
+	
+	void collect_templates(rule_set& rules, unsigned r_id) {
+		rule* r = rules.get_rule(r_id);
+		func_decl* head_decl = r->get_decl();
+		if (!is_template(head_decl)) return;
+		std::cout << "I have read template : " << r->get_head()->get_decl()->get_name().str() << "\n";
+		std::cout << "orig head : " << mk_pp(r->get_head(), m) << "\n";
+		symbol suffix(head_decl->get_name().str().substr(8).c_str());
+		unsigned new_arity = (head_decl->get_arity() - m_template.get_params_count());
+		std::cout << "new_arity : " << new_arity << "\n";
+
+		arith_util arith(m);
+		ptr_vector<sort> dom_sorts(new_arity, head_decl->get_domain());
+		func_decl* suffix_decl = m.mk_func_decl(suffix, new_arity, dom_sorts.c_ptr(), head_decl->get_range());
+		expr_ref_vector orig_vars(m, new_arity, r->get_head()->get_args());
+
+		
+		expr_ref body(r->get_tail(0), m);
+		if (m_template.get_names().contains(suffix)){
+			std::cout << "Multiple templates found for : " << suffix.str() << "\n";
+			throw(suffix);
+		}
+		else {
+			expr_ref_vector temp_subst(m);
+			temp_subst.reserve(new_arity);
+			for (unsigned i = 0; i < temp_subst.size(); ++i) 
+				temp_subst[i] = m.mk_fresh_const("v", arith.mk_int());
+			expr_ref_vector all_subst(temp_subst);
+			all_subst.append(m_template.get_params());
+			all_subst.reverse();
+
+			app* suffix_app = m.mk_app(suffix_decl, orig_vars.c_ptr());
+			
+			expr_ref body1(m);
+			expr_ref body2(m);
+			expr_ref head2(m);
+
+			m_var_subst(body, m_template.get_params().size(), m_template.get_params().c_ptr(), body1);
+			m_var_subst(body, all_subst.size(), all_subst.c_ptr(), body2);
+			m_var_subst(suffix_app, all_subst.size(), all_subst.c_ptr(), head2);
+
+			std::cout << "massaged head : " << mk_pp(suffix_app, m) << "\n";
+			std::cout << "orig body : " << mk_pp(body.get(), m) << "\n";
+			std::cout << "after subst1 ...body: " << mk_pp(body1.get(), m) << "\n";
+			std::cout << "after subst2 ...body: " << mk_pp(body2.get(), m) << "\n";
+			std::cout << "after subst ...head2: " << mk_pp(head2.get(), m) << "\n";
+
+			m_template.process_template_sk(rel_template2(suffix_app, body1));
+			m_template.process_template(suffix, rel_template2(suffix_app, body2), temp_subst);
+		}
+		rules.del_rule(r);
+	}
+
+	bool is_template(func_decl * pred) const {
+		return pred->get_name().str().substr(0, 8) == "__temp__";
+	}
+
+	void initialize_templates(rule_set& rules){		
+		m_template.init_template_instantiate();
+		//m_template.display();
+		std::cout << "initialize_templates ... begin\n";
+
+		unsigned inst_r_id = rules.get_num_rules();
+		for (unsigned i = 0; i < m_template.get_templat_instances().size(); i++) {
+			cube_t cube;
+			if (cart_temp_pred_abst_rule(m_template.get_templat_instances().get(i), m_template.get_templates_orig().get(i), cube)){
+				add_node(m_template.get_templates_orig().get(i).m_head->get_decl(), cube, inst_r_id, node_vector());
+				inst_r_id++;
+			}
+			else
+				throw(m_template.get_templat_instances().get(i).m_head);
+		}
+		
+		std::cout << "initialize_templates ... done ****\n";
+
+	}
+
+	bool cart_temp_pred_abst_rule(rel_template2 instance, rel_template2 orig_temp, cube_t& cube) {
+		//m_template.display();
+		//func_decl2vars_preds::obj_map_entry* e = m_func_decl2vars_preds.find_core(instance.m_head->get_decl());
+		func_decl2vars_preds::obj_map_entry* e = m_func_decl2vars_preds.find_core(orig_temp.m_head->get_decl());
+		if (!e) return false;
+		arith_util arith(m);
+		expr_ref_vector temp_subst2(m_template.get_temp_subst());
+		temp_subst2.reverse();
+	
+		scoped_push _push1(m_solver);
+		m_solver.assert_expr(instance.m_body);
+		std::cout << "instance.m_body: " << mk_pp(instance.m_body, m) << "\n";
+
+		if (m_solver.check() == l_false) return false;
+		expr_ref_vector& preds = *e->get_data().get_value().second;
+		std::cout << "preds.size() : " << preds.size() << "\n";
+		cube.resize(preds.size());
+		
+		for (unsigned i = 0; i < preds.size(); ++i) {
+			std::cout << "before pred " << i << " : " << mk_pp(preds[i].get(), m) << "\n";
+			expr_ref subst_pred(m);
+			m_var_subst(preds[i].get(), temp_subst2.size(), temp_subst2.c_ptr(), subst_pred);
+			std::cout << "after pred " << i << " : " << mk_pp(subst_pred, m) << "\n";
+			scoped_push _push2(m_solver);
+			m_solver.assert_expr(subst_pred);
+			cube[i] = (m_solver.check() == l_true);
+			std::cout << "cube[i] : " << cube[i] << "\n";
+		}
+		return true;
+	}
+
+	void mk_trace(unsigned n_id){
+		node_set todo_nodes;
+		todo_nodes.insert(n_id);
+		std::cout << "Error trace: \n";
+		while (!todo_nodes.empty()) {
+			unsigned curr_id = *todo_nodes.begin();
+			todo_nodes.remove(curr_id);
+			node_info const& node = m_node2info[curr_id]; 
+			std::cout << "(" << curr_id << ", " << node.m_func_decl->get_name().str() << ", " << node.m_parent_rule << ", [";
+			for (unsigned i = 0; i < node.m_parent_nodes.size(); i++) std::cout << node.m_parent_nodes.get(i) << " ";
+			std::cout << "]) \n";
+			for (unsigned i = 0; i < node.m_parent_nodes.size(); ++i)
+				todo_nodes.insert(node.m_parent_nodes[i]);
+		}
+	}
+	
+	void mk_leaf(expr_ref_vector args, unsigned n_id, rule_set rules, expr_ref& cs){
+		node_info const& node = m_node2info[n_id];
+		rule* r = rules.get_rule(node.m_parent_rule);
+		//r->display(m_ctx, std::cout);
+
+		ptr_vector<sort> free_sorts;
+		r->get_vars(m, free_sorts);
+		expr_ref_vector rule_subst(m);
+		rule_subst.reserve(free_sorts.size());
+		for (unsigned i = 0; i < rule_subst.size(); ++i) rule_subst[i] = m.mk_fresh_const("s", free_sorts[i]);
+		unsigned usz = r->get_uninterpreted_tail_size();
+		unsigned tsz = r->get_tail_size();
+		expr_ref conj(m.mk_and(tsz - usz, r->get_expr_tail() + usz), m);
+		m_var_subst(conj, rule_subst.size(), rule_subst.c_ptr(), conj);
+
+		expr_ref_vector qs(m);
+		for (unsigned i = 0; i < usz; ++i) {
+			expr_ref qs_i(m);
+			m_var_subst(r->get_tail(i), rule_subst.size(), rule_subst.c_ptr(), qs_i);
+			qs.push_back(qs_i);
+		}
+		expr_ref head(m);
+		if (!rules.is_output_predicate(r->get_decl())) {
+			m_var_subst(r->get_head(), rule_subst.size(), rule_subst.c_ptr(), head);
+		}
+
+		if (tsz > usz) {
+			cs = m.mk_and(cs, conj);
+		}
+
+		SASSERT(r->get_uninterpreted_tail_size() == node.m_parent_nodes.size());
+		if (args.size() != 0) {
+			mk_binder(args, expr_ref_vector(m, to_app(head)->get_decl()->get_arity(), to_app(head)->get_args()), cs);
+		}
+
+		for (unsigned i = 0; i < node.m_parent_nodes.size(); ++i){
+			if (m_template.get_names().contains(r->get_tail(i)->get_decl()->get_name())){
+				cs = m.mk_and(cs, qs.get(i));
+				return;
+			}
+			mk_leaf(expr_ref_vector(m, to_app(qs.get(i))->get_decl()->get_arity(), to_app(qs.get(i))->get_args()), node.m_parent_nodes.get(i), rules, cs);
+		}
+	}
+	
+	void mk_leaf2(expr_ref_vector args, unsigned n_id, rule_set rules, expr_ref_vector rule_head_subst, expr_ref& cs){
+		//std::cout << "round replacement .... " << rule_head_subst.size() << "\n";
+		//for (unsigned i = 0; i < rule_head_subst.size(); i++) std::cout << mk_pp(rule_head_subst.get(i), m) << "\n";
+		node_info const& node = m_node2info[n_id];
+		rule* r = rules.get_rule(node.m_parent_rule);
+		//r->display(m_ctx, std::cout);
+
+		unsigned usz = r->get_uninterpreted_tail_size();
+		unsigned tsz = r->get_tail_size();
+		expr_ref_vector qs(m);
+
+		expr_ref head(m);
+		expr_ref conj(m.mk_and(tsz - usz, r->get_expr_tail() + usz), m);
+
+		if (rule_head_subst.size() > 0) {
+			if (!rules.is_output_predicate(r->get_decl()))
+				m_var_subst(r->get_head(), rule_head_subst.size(), rule_head_subst.c_ptr(), head);
+
+			m_var_subst(conj, rule_head_subst.size(), rule_head_subst.c_ptr(), conj);
+
+
+			for (unsigned i = 0; i < usz; ++i) {
+				expr_ref qs_i(m);
+				m_var_subst(r->get_tail(i), rule_head_subst.size(), rule_head_subst.c_ptr(), qs_i);
+				qs.push_back(qs_i);
+			}
+		}
+		
+		
+		ptr_vector<sort> free_sorts;
+		r->get_vars(m, free_sorts);
+		expr_ref_vector rule_subst(m);
+		rule_subst.reserve(free_sorts.size());
+
+		for (unsigned i = 0; i < rule_subst.size(); ++i)
+			rule_subst[i] = m.mk_fresh_const("s", free_sorts[i]);
+
+		m_var_subst(conj, rule_subst.size(), rule_subst.c_ptr(), conj);
+
+		expr_ref_vector qs2(m);
+		
+		for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i) {
+			expr_ref qs_i(m);
+			if (rule_head_subst.size() > 0) {
+				m_var_subst(qs.get(i), rule_subst.size(), rule_subst.c_ptr(), qs_i);
+				qs2.push_back(qs_i);
+			}
+			else {
+				m_var_subst(r->get_tail(i), rule_subst.size(), rule_subst.c_ptr(), qs_i);
+				qs2.push_back(qs_i);
+			}
+
+		}
+
+
+		if (tsz > usz) {
+			cs = m.mk_and(cs, conj);
+		}
+
+		SASSERT(r->get_uninterpreted_tail_size() == node.m_parent_nodes.size());
+		if (args.size() != 0) {
+			//mk_binder(args, expr_ref_vector(m, to_app(head)->get_decl()->get_arity(), to_app(head)->get_args()), cs);
+		}
+
+		for (unsigned i = 0; i < node.m_parent_nodes.size(); ++i){
+			if (m_template.get_names().contains(r->get_tail(i)->get_decl()->get_name())){
+				cs = m.mk_and(cs, qs2.get(i));
+				return;
+			}
+			mk_leaf2(expr_ref_vector(m, to_app(qs2.get(i))->get_decl()->get_arity(), to_app(qs2.get(i))->get_args()), node.m_parent_nodes.get(i), 
+				rules, expr_ref_vector(m, to_app(qs2.get(i))->get_decl()->get_arity(), to_app(qs2.get(i))->get_args()), cs);
+		}
+	}
+
+	bool has_var_tail2(app* fml){
+		expr_ref_vector args(m, fml->get_decl()->get_arity(), fml->get_args());
+		for (unsigned i = 0; i < args.size(); i++)
+			if (is_var(to_app(args.get(i)))) return true;
+		return false;
+	}
 	bool is_wf_predicate(func_decl * pred) const {
 		return pred->get_name().str().substr(0, 6) == "__wf__";
 	}
@@ -482,7 +749,7 @@ namespace datalog {
 			throw reached_query(r_id);
 		}
 	}
-    
+   
     // return whether c1 implies c2
     bool cube_leq(cube_t const& c1, cube_t const& c2) const {
       unsigned size = c1.size();
@@ -492,61 +759,47 @@ namespace datalog {
     
     void inference_step(rule_set const& rules, unsigned current_id) {
       func_decl* current_func_decl = m_node2info[current_id].m_func_decl;
-      func_decl2uints::obj_map_entry* e_current_rules = 
-	m_func_decl_body2rules.find_core(current_func_decl);
+      func_decl2uints::obj_map_entry* e_current_rules = m_func_decl_body2rules.find_core(current_func_decl);
       if (!e_current_rules) return;
+	  //get all rules whose body contains the symbol with a new node
       uint_set& current_rules = e_current_rules->get_data().m_value;
-      for (uint_set::iterator r_id = current_rules.begin(),
-	     r_id_end = current_rules.end(); r_id != r_id_end; ++r_id) {
-	// positions of current_id among body func_decls
-	uint_set current_poss;
-	rule* r = rules.get_rule(*r_id);
-	for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i)
-	  if (r->get_decl(i) == current_func_decl) 
-	    current_poss.insert(i);
-	// create set of combinations of nodes to apply the rule
-	vector<node_vector> nodes_set;
-	nodes_set.push_back(node_vector());
-	// current_id is put on each appropriate position
-	for (uint_set::iterator current_pos = current_poss.begin(),
-	       current_pos_end = current_poss.end();
-	     current_pos != current_pos_end; ++current_pos) {
-	  node_set current_pos_singleton;
-	  current_pos_singleton.insert(current_id);
-	  // grow node combinations as cartesian product with nodes at pos
-	  for (unsigned pos = 0; pos < r->get_uninterpreted_tail_size();
-	       ++pos) {
-	    node_set& pos_nodes =
-	      (*current_pos == pos) ? 
-	      current_pos_singleton :
-	      m_func_decl2max_reach_node_set[r->get_decl(pos)];
-	    unsigned orig_nodes_set_size = nodes_set.size();
-	    // compute cartesian product
-	    // first, store the product with first node in place
-	    node_set::iterator pos_node = pos_nodes.begin();
-	    for (unsigned nodes_set_offset=0; 
-		 nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) 
-	      nodes_set[nodes_set_offset].push_back(*pos_node);
-	    ++pos_node;
-	    // then, product for rest nodes goes into additional vectors
-	    for (node_set::iterator pos_node_end = pos_nodes.end(); 
-		 pos_node != pos_node_end; ++pos_node) 
-	      for (unsigned nodes_set_offset=0; 
-		   nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) {
-		nodes_set.push_back(nodes_set[nodes_set_offset]);
-		nodes_set.back().push_back(*pos_node);
-	      }
-	  }
-	}
-	// apply rule on each node combination
-	for (vector<node_vector>::iterator nodes = nodes_set.begin(),
-                 nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
+	  //iterate over each rule
+      for (uint_set::iterator r_id = current_rules.begin(), r_id_end = current_rules.end(); r_id != r_id_end; ++r_id) {
+		// positions of current_id among body func_decls
+		uint_set current_poss;
+		rule* r = rules.get_rule(*r_id);
+		for (unsigned i = 0; i < r->get_uninterpreted_tail_size(); ++i)
+			if (r->get_decl(i) == current_func_decl) current_poss.insert(i);
+		// create set of combinations of nodes to apply the rule
+		vector<node_vector> nodes_set;
+		nodes_set.push_back(node_vector());
+		// current_id is put on each appropriate position
+		for (uint_set::iterator current_pos = current_poss.begin(), current_pos_end = current_poss.end(); current_pos != current_pos_end; ++current_pos) {
+			node_set current_pos_singleton;
+			current_pos_singleton.insert(current_id);
+			// grow node combinations as cartesian product with nodes at pos
+			for (unsigned pos = 0; pos < r->get_uninterpreted_tail_size(); ++pos) {
+			    node_set& pos_nodes = (*current_pos == pos) ? current_pos_singleton : m_func_decl2max_reach_node_set[r->get_decl(pos)];
+				unsigned orig_nodes_set_size = nodes_set.size();
+				// compute cartesian product
+				// first, store the product with first node in place
+				node_set::iterator pos_node = pos_nodes.begin();
+				for (unsigned nodes_set_offset=0; nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) 
+					nodes_set[nodes_set_offset].push_back(*pos_node);
+				++pos_node;
+				// then, product for rest nodes goes into additional vectors
+				for (node_set::iterator pos_node_end = pos_nodes.end(); pos_node != pos_node_end; ++pos_node) 
+					for (unsigned nodes_set_offset=0; nodes_set_offset<orig_nodes_set_size; ++nodes_set_offset) {
+						nodes_set.push_back(nodes_set[nodes_set_offset]);
+						nodes_set.back().push_back(*pos_node);
+					}
+			}
+		}
+		// apply rule on each node combination
+		for (vector<node_vector>::iterator nodes = nodes_set.begin(), nodes_end = nodes_set.end(); nodes != nodes_end; ++nodes) {
             cube_t cube;
             if (cart_pred_abst_rule(*r_id, cube, *nodes))
-                check_node_property(rules,
-                                    add_node(r->get_decl(),
-                                             cube,
-                                             *r_id, *nodes));
+                check_node_property(rules, add_node(r->get_decl(), cube, *r_id, *nodes));
         }
       }
     }
