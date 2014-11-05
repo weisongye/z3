@@ -14,7 +14,7 @@ Author:
 	Tewodros A. Beyene (t-tewbe) 2014-10-22.
 
 Revision History:
-
+        
 --*/
 #include "th_rewriter.h"
 #include "smt2parser.h"
@@ -218,12 +218,15 @@ private:
 		rewrite_pred(term);
 		SASSERT(arith.is_add(term.get()));
 		expr_ref_vector p_coeffs(m_pred_manager), p_vars(m_pred_manager), p_const_facts(m_pred_manager), add_facts(m_pred_manager);
-		add_facts.append(to_app(term)->get_num_args(), to_app(term)->get_args());
-		for (unsigned i = 0; i < add_facts.size(); ++i) {
-			expr_ref_vector mul_facts(m_pred_manager), var_mul_facts(m_pred_manager), const_mul_facts(m_pred_manager);
+        if (arith.is_add(term.get()))
+            add_facts.append(to_app(term)->get_num_args(), to_app(term)->get_args());
+        else
+            add_facts.push_back(term);
+        for (unsigned i = 0; i < add_facts.size(); ++i) {
+            expr_ref_vector mul_facts(m_pred_manager), var_mul_facts(m_pred_manager), const_mul_facts(m_pred_manager);
 			expr_ref mul_term(add_facts[i].get(), m_pred_manager);
 			get_all_terms(mul_term, m_vars, var_mul_facts, const_mul_facts, m_has_params);
-			SASSERT(var_mul_facts.size() <= 1);
+            SASSERT(var_mul_facts.size() <= 1);
 			if (var_mul_facts.size() == 0)
 				p_const_facts.push_back(add_facts[i].get());
 			else if (const_mul_facts.size() == 0){
@@ -359,14 +362,14 @@ public:
 		m_imp_manager(vars.get_manager()){
 	}
 
-	void set(expr_ref lhs_term, expr_ref& rhs_term) {
+	void set(expr_ref lhs_term, expr_ref rhs_term) {
 		expr_ref_vector conjs(m_imp_manager);
 		conjs.append(to_app(lhs_term)->get_num_args(), to_app(lhs_term)->get_args());
 		for (unsigned i = 0; i < conjs.size(); ++i) {
 			farkas_pred f_pred(m_vars);
 			f_pred.put(expr_ref(conjs.get(i), m_imp_manager));
-			std::cout << mk_pp(conjs.get(i), m_imp_manager) << "\n";
-			f_pred.display();
+			//std::cout << mk_pp(conjs.get(i), m_imp_manager) << "\n";
+			//f_pred.display();
 			m_lhs.add(f_pred);
 		}
 		m_rhs.put(rhs_term);
@@ -455,16 +458,18 @@ private:
 
 	void set_lambda_kinds(){
 		arith_util arith(m_imp_manager);
-		if (m_lhs.get_param_pred_count() == 1) 
+        if (m_lhs.get_param_pred_count() == 1) {
 			if (m_lhs.get_ops(0) == 0)
 				m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas.get(0), m_imp_manager), bilin_sing, m_lhs.get_ops(0)));
-		else 
+        }
+        else {
 			for (unsigned i = 0; i < m_lhs.conj_size(); ++i) {
 				if (i < m_lhs.get_param_pred_count())
 					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas.get(i), m_imp_manager), bilin, m_lhs.get_ops(i)));
 				else 
 					m_lambda_kinds.push_back(lambda_kind(expr_ref(m_lambdas.get(i), m_imp_manager), lin, m_lhs.get_ops(i)));
 			}
+        }
 	}
 
 };
@@ -473,7 +478,7 @@ bool exists_valid(expr_ref& formula, expr_ref_vector vars, expr_ref& constraint_
 
 bool well_founded(expr_ref_vector vars, expr_ref& LHS, expr_ref& bound, expr_ref& decrease);
 
-expr_ref_vector get_all_vars(expr_ref& fml);
+expr_ref_vector get_all_vars(expr_ref fml);
 
 expr_ref_vector vars_difference(expr_ref_vector source, expr_ref_vector to_remove);
 
@@ -495,6 +500,7 @@ struct rel_template2{
 	
 	}
 };
+
 
 class rel_template {
 
@@ -843,24 +849,90 @@ public:
 		display();
 		if (!fml.m().is_true(fml))
 			m_acc = fml.m().mk_and(fml, m_acc); 
-		instantiate_template();
+        expr_ref_vector args_coll(m_rel_manager);
+        expr_ref c1(subst_template_body(m_acc, m_rel_templates, args_coll), m_rel_manager);
+        args_coll.append(m_temp_subst);
+        
+        expr_ref constraint_st(m_rel_manager.mk_true(), m_rel_manager);
+        vector<lambda_kind> all_lambda_kinds;
+        if (mk_exists_forall_farkas(c1, args_coll, constraint_st, true, all_lambda_kinds)){
+            expr_ref lambda_cs(m_rel_manager.mk_true(),m_rel_manager);
+            int max_lambda = 2;
+            mk_bilin_lambda_constraint(all_lambda_kinds, max_lambda, lambda_cs);
+            //std::cout << "main cs  : " << mk_pp(constraint_st, m_rel_manager) << "\n";
+            //std::cout << "lambda cs  : " << mk_pp(lambda_cs, m_rel_manager) << "\n";
+            
+            smt_params new_param;
+            smt::kernel solver(m_rel_manager, new_param);
+            solver.assert_expr(constraint_st);
+            solver.assert_expr(lambda_cs);
+            solver.assert_expr(m_extras);
+            if (solver.check() == l_true){
+                model_ref modref;
+                solver.get_model(modref);
+                for (unsigned i = 0; i < m_rel_templates.size(); i++){
+                    expr_ref instance(m_rel_manager);
+                    if (modref.get()->eval(m_rel_templates[i].m_body, instance)){
+                        std::cout << "instance  : " << mk_pp(instance, m_rel_manager) << "\n";
+                        m_rel_template_instances.push_back(rel_template2(m_rel_templates[i].m_head, instance));
+                        
+                    }
+                }
+                //display();
+                std::cout << "Refinement done *** \n";
+            }
+            else {
+                std::cout << "NO refinement: No solution for the param(s) *** \n";
+            }
+            
+        }
+        else
+            std::cout << "No refinement: Non param disjunct which reaches true -> false ***";
 	}
 
 	void instantiate_template(){
 		std::cout << "instantiate_template begin ...\n";
-		display();
+		//display();
 		expr_ref_vector args_coll(m_rel_manager);
 		expr_ref c1(subst_template_body(m_acc, m_rel_templates, args_coll), m_rel_manager);
-		std::cout << "after subst fml: " << args_coll.size() << "  and " << mk_pp(c1, m_rel_manager) << "\n";
-
+		//std::cout << "after subst fml: " << args_coll.size() << "  and " << mk_pp(c1, m_rel_manager) << "\n";
 		args_coll.append(m_temp_subst);
-		for (unsigned i = 0; i < args_coll.size(); i++)
-			std::cout << "after subst fml: " << mk_pp(args_coll.get(i), m_rel_manager) << "\n";
 
 		expr_ref constraint_st(m_rel_manager.mk_true(), m_rel_manager);
 		vector<lambda_kind> all_lambda_kinds;
-		if (mk_exists_forall_farkas(c1, args_coll, constraint_st, false, all_lambda_kinds))
-			std::cout << "///////// \n";
+        if (mk_exists_forall_farkas(c1, args_coll, constraint_st, true, all_lambda_kinds)){
+            expr_ref lambda_cs(m_rel_manager.mk_true(),m_rel_manager);
+            int max_lambda = 2;
+            mk_bilin_lambda_constraint(all_lambda_kinds, max_lambda, lambda_cs);
+            std::cout << "main cs  : " << mk_pp(constraint_st, m_rel_manager) << "\n";
+            std::cout << "lambda cs  : " << mk_pp(lambda_cs, m_rel_manager) << "\n";
+            
+            smt_params new_param;
+            smt::kernel solver(m_rel_manager, new_param);
+            solver.assert_expr(constraint_st);
+            solver.assert_expr(lambda_cs);
+            solver.assert_expr(m_extras);
+            if (solver.check() == l_true){
+                model_ref modref;
+                solver.get_model(modref);
+                for (unsigned i = 0; i < m_rel_templates.size(); i++){
+                    expr_ref instance(m_rel_manager);
+                    if (modref.get()->eval(m_rel_templates[i].m_body, instance)){
+                        std::cout << "instance  : " << mk_pp(instance, m_rel_manager) << "\n";
+                        m_rel_template_instances.push_back(rel_template2(m_rel_templates[i].m_head, instance));
+
+                    }
+                }
+                
+            }
+            else {
+                std::cout << "Unrefineable **************** \n";
+                throw(constraint_st);
+            }
+            display();
+
+            
+        }
 		else
 			std::cout << "XXXXXXXXXX \n";
 
@@ -882,7 +954,7 @@ public:
 		for (unsigned i = 0; i < m_rel_template_instances.size(); i++){
 			if (m_rel_template_instances[i].m_head == head) return m_rel_template_instances[i].m_body;
 		}
-
+        return expr_ref(m_rel_manager.mk_true(),m_rel_manager);
 	}
 
 	unsigned get_params_count(){
@@ -928,3 +1000,6 @@ public:
 		return m_rel_manager;
 	}
 };
+
+
+

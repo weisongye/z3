@@ -39,17 +39,23 @@ vector<expr_ref_vector> cnf_to_dnf_struct(vector<vector<expr_ref_vector> > cnf_s
 
 expr_ref neg_expr(expr_ref& fml){
 	ast_manager& m = fml.get_manager();
-	std::cout << "in2negexpr: " << mk_pp(fml, m) << "\n";
+	//std::cout << "in2negexpr: " << mk_pp(fml, m) << "\n";
 	reg_decl_plugins(m);
 	arith_util a(m);
 	expr *e1, *e2;
 
 	expr_ref new_formula(m);
 
-	if (m.is_eq(fml, e1, e2)){
-		new_formula = m.mk_or(a.mk_lt(e1, e2), a.mk_gt(e1, e2));
-	}
-	else if (a.is_lt(fml, e1, e2)){
+    if (m.is_true(fml)){
+        new_formula = m.mk_false();
+    }
+    else if (m.is_false(fml)){
+        new_formula = m.mk_true();
+    }
+    else if (m.is_eq(fml, e1, e2)){
+        new_formula = m.mk_or(a.mk_lt(e1, e2), a.mk_gt(e1, e2));
+    }
+    else if (a.is_lt(fml, e1, e2)){
 		new_formula = a.mk_ge(e1, e2);
 	}
 	else if (a.is_le(fml, e1, e2)){
@@ -64,7 +70,7 @@ expr_ref neg_expr(expr_ref& fml){
 	else {
 		new_formula = fml;
 	}
-	std::cout << "out2negexpr: " << mk_pp(new_formula, m) << "\n";
+	//std::cout << "out2negexpr: " << mk_pp(new_formula, m) << "\n";
 	return new_formula;
 }
 
@@ -95,7 +101,7 @@ expr_ref non_neg_formula(expr_ref fml);
 
 expr_ref neg_formula(expr_ref fml){
 		ast_manager& m = fml.get_manager();
-		std::cout << "in2neg: " << mk_pp(fml, m) << "\n";
+		//std::cout << "in2neg: " << mk_pp(fml, m) << "\n";
 		expr_ref_vector sub_formulas(m);
 		expr_ref_vector new_sub_formulas(m);
 		if (m.is_and(fml)){
@@ -104,7 +110,7 @@ expr_ref neg_formula(expr_ref fml){
 				new_sub_formulas.push_back(neg_formula(expr_ref(sub_formulas[i].get(), m)));
 			}
 			expr_ref ee1(m.mk_or(new_sub_formulas.size(), new_sub_formulas.c_ptr()), m);
-			std::cout << "out2neg: " << mk_pp(ee1, m) << "\n";
+//			std::cout << "out2neg: " << mk_pp(ee1, m) << "\n";
 			return ee1;
 //			return expr_ref(m.mk_or(new_sub_formulas.size(), new_sub_formulas.c_ptr()), m);
 		}
@@ -114,7 +120,7 @@ expr_ref neg_formula(expr_ref fml){
 				new_sub_formulas.push_back(neg_formula(expr_ref(sub_formulas[i].get(), m)));
 			}
 			expr_ref ee2(m.mk_and(sub_formulas.size(), new_sub_formulas.c_ptr()), m);
-			std::cout << "out2neg: " << mk_pp(ee2, m) << "\n";
+//			std::cout << "out2neg: " << mk_pp(ee2, m) << "\n";
 			return ee2;
 
 			//return expr_ref(m.mk_and(sub_formulas.size(), new_sub_formulas.c_ptr()), m);
@@ -123,14 +129,14 @@ expr_ref neg_formula(expr_ref fml){
 			expr_ref ee3(to_app(fml)->get_arg(0), m);
 			expr_ref ee5(non_neg_formula(ee3));
 
-			std::cout << "out2neg: " << mk_pp(ee5, m) << "\n";
+//			std::cout << "out2neg: " << mk_pp(ee5, m) << "\n";
 			return ee5;
 
 			//return expr_ref(to_app(fml)->get_arg(0), m);
 		}
 		else {
 			expr_ref ee4(neg_expr(fml), m);
-			std::cout << "out2neg: " << mk_pp(ee4, m) << "\n";
+//			std::cout << "out2neg: " << mk_pp(ee4, m) << "\n";
 			return ee4;
 
 
@@ -206,7 +212,6 @@ bool exists_valid(expr_ref& fml, expr_ref_vector vars, expr_ref& constraint_st) 
 }
 
 bool mk_exists_forall_farkas(expr_ref& fml, expr_ref_vector vars, expr_ref& constraint_st, bool mk_lambda_kinds, vector<lambda_kind>& all_lambda_kinds) {
-	std::cout << "in mk_exists_forall_farkas 0...\n";
 	std::cout << "fml: " << mk_pp(fml.get(), fml.m()) << "\n";
 	expr_ref norm_fml(neg_and_2dnf(fml));
 	std::cout << "norm_fml: " << mk_pp(norm_fml, norm_fml.m()) << "\n";
@@ -214,24 +219,13 @@ bool mk_exists_forall_farkas(expr_ref& fml, expr_ref_vector vars, expr_ref& cons
 	SASSERT(fml.m().is_or(norm_fml));
 	expr_ref_vector disjs(fml.m());
 	disjs.append(to_app(norm_fml)->get_num_args(), to_app(norm_fml)->get_args());
-	std::cout << "in mk_exists_forall_farkas 1...\n";
 	for (unsigned i = 0; i < disjs.size(); ++i) {
-		std::cout << "in mk_exists_forall_farkas 2...\n";
 		farkas_imp f_imp(vars, mk_lambda_kinds);
-		std::cout << "in mk_exists_forall_farkas 3...\n";
 		f_imp.set(expr_ref(disjs[i].get(), fml.m()), expr_ref(fml.m().mk_false(), fml.m()));
 		f_imp.display();
-		std::cout << "in mk_exists_forall_farkas 4...\n";
 		if (f_imp.solve_constraint()) {
-			std::cout << "in mk_exists_forall_farkas 5...\n";
-			//std::cout << "constraint_st: " << mk_pp(constraint_st, norm_fml.m()) << "\n";
-			//std::cout << "f_imp.get_constraints(): " << mk_pp(f_imp.get_constraints(), norm_fml.m()) << "\n";
-
 			constraint_st = fml.m().mk_and(constraint_st, f_imp.get_constraints());
-			std::cout << "in mk_exists_forall_farkas 6...\n";
 			all_lambda_kinds.append(f_imp.get_lambda_kinds());
-			std::cout << "in mk_exists_forall_farkas 7...\n";
-
 		}
 		else
 			return false;
@@ -377,7 +371,7 @@ static expr_ref_vector get_all_pred_vars(expr_ref& fml){
 	return vars;
 }
 
- expr_ref_vector get_all_vars(expr_ref& fml){
+ expr_ref_vector get_all_vars(expr_ref fml){
 	ast_manager& m = fml.get_manager();
 	if (m.is_and(fml) || m.is_or(fml)){
 		expr_ref_vector all_vars(m);
@@ -446,11 +440,7 @@ expr_ref rel_template_suit::subst_template_body(expr_ref fml, vector<rel_templat
 	expr_ref new_formula(m);
 	expr_ref_vector sub_formulas(m);
 	expr_ref_vector new_sub_formulas(m);
-	//std::cout << "****** in subst : " << mk_pp(fml, m_rel_manager) << "\n";
-
 	if (m.is_and(fml)){
-
-		//std::cout << "and subst : " << mk_pp(fml, m_rel_manager) << "\n";
 		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
 		for (unsigned i = 0; i < sub_formulas.size(); ++i){
 			new_sub_formulas.push_back(subst_template_body(expr_ref(sub_formulas[i].get(), m), rel_templates, args_coll).get());
@@ -458,7 +448,6 @@ expr_ref rel_template_suit::subst_template_body(expr_ref fml, vector<rel_templat
 		new_formula = m.mk_and(new_sub_formulas.size(), new_sub_formulas.c_ptr());
 	}
 	else if (m.is_or(fml)){
-		//std::cout << "or subst : " << mk_pp(fml, m_rel_manager) << "\n";
 		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
 		for (unsigned i = 0; i < sub_formulas.size(); ++i){
 			new_sub_formulas.push_back(subst_template_body(expr_ref(sub_formulas[i].get(), m), rel_templates, args_coll).get());
@@ -467,15 +456,11 @@ expr_ref rel_template_suit::subst_template_body(expr_ref fml, vector<rel_templat
 
 	}
 	else if (m.is_not(fml)){
-		//std::cout << "not subst : " << mk_pp(fml, m_rel_manager) << "\n";
 		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
 		new_formula = m.mk_not(subst_template_body(expr_ref(sub_formulas[0].get(), m), rel_templates, args_coll));
 	}
 	else {
-		//app* mm = to_app(fml);
-		//std::cout << "No of args: " << mm->get_num_args() << "\n";
 		if (m_names.contains(to_app(fml)->get_decl()->get_name())){
-			//std::cout << "func decl subst : " << mk_pp(fml, m_rel_manager) << "\n";
 			for (unsigned i = 0; i < rel_templates.size(); i++){
 				if (to_app(fml)->get_decl()->get_name() == rel_templates.get(i).m_head->get_decl()->get_name()) {
 					expr_ref cs(m.mk_true(), m);
@@ -486,7 +471,6 @@ expr_ref rel_template_suit::subst_template_body(expr_ref fml, vector<rel_templat
 				}
 			}
 		}
-		//std::cout << "misc subst : " << mk_pp(fml, m_rel_manager) << "\n";
 		return fml;
 	}
 	return new_formula;

@@ -122,8 +122,7 @@ namespace datalog {
       m_ctx.ensure_opened();
       rule_set& rules = m_ctx.get_rules();
       rm.mk_query(query, rules);
-	  //rules.display(std::cout);
-      ptr_vector<rule> to_delete;
+	  ptr_vector<rule> to_delete;
       try {
           // collect predicates and delete corresponding rules
 		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) collect_predicates(rules, i, to_delete);
@@ -131,7 +130,8 @@ namespace datalog {
 
 		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) collect_templates_extra(rules, i);
 		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) collect_templates(rules, i);
-		  initialize_templates(rules);
+          rules.display(std::cout);
+          initialize_templates(rules);
 		  // for each rule: ground body and instantiate predicates for applications
 		  for (unsigned i = 0; !m_cancel && i < rules.get_num_rules(); ++i) instantiate_rule(rules, i);
 		  // initial abstract inference
@@ -146,14 +146,7 @@ namespace datalog {
 		  } 
 	  catch (reached_query& exc) {
 		  print_proof_prolog(std::cout, exc.m_node);
-		  mk_trace(exc.m_node);
-		  expr_ref cs(m.mk_true(), m);
-		  mk_leaf2(expr_ref_vector(m), exc.m_node, rules, expr_ref_vector(m), cs);
-		 // mk_leaf(expr_ref_vector(m), exc.m_node, rules, cs);
-		  expr_ref imp(m.mk_not(cs), m);
-		  std::cout << "Next obligation: " << mk_pp(imp, m) << "\n";
-		  m_template.constrain_template(imp);
-		  //m_template.display();
+		  refine_templates(rules, exc.m_node);
 		  return l_true;
 		  }
 	  if (m_cancel) return l_undef;
@@ -425,12 +418,12 @@ namespace datalog {
       // no fixpoint reached hence create new node
       m_node_worklist.insert(added_id);
       m_node2info.push_back(node_info(sym, cube, r_id, nodes));
-	  /*
+	  
 	  std::cout << "Node added: (" << added_id << ", " << sym->get_name().str() << ", " << r_id << ", [";
 	  for (unsigned i = 0; i < nodes.size(); i++)
 		  std::cout << nodes.get(i) << " ";
 	  std::cout << "]) \n";
-	  */
+	  
       return added_id;
     }
 
@@ -523,25 +516,37 @@ namespace datalog {
 		return pred->get_name().str().substr(0, 8) == "__temp__";
 	}
 
-	void initialize_templates(rule_set& rules){		
-		m_template.init_template_instantiate();
-		//m_template.display();
-		std::cout << "initialize_templates ... begin\n";
-
-		unsigned inst_r_id = rules.get_num_rules();
-		for (unsigned i = 0; i < m_template.get_templat_instances().size(); i++) {
-			cube_t cube;
-			if (cart_temp_pred_abst_rule(m_template.get_templat_instances().get(i), m_template.get_templates_orig().get(i), cube)){
-				add_node(m_template.get_templates_orig().get(i).m_head->get_decl(), cube, inst_r_id, node_vector());
-				inst_r_id++;
-			}
-			else
-				throw(m_template.get_templat_instances().get(i).m_head);
-		}
-		
-		std::cout << "initialize_templates ... done ****\n";
-
-	}
+    void initialize_templates(rule_set& rules){
+          m_template.init_template_instantiate();
+          //m_template.display();
+          std::cout << "initialize_templates ... begin\n";
+          
+          unsigned inst_r_id = rules.get_num_rules();
+          for (unsigned i = 0; i < m_template.get_templat_instances().size(); i++) {
+              cube_t cube;
+              if (cart_temp_pred_abst_rule(m_template.get_templat_instances().get(i), m_template.get_templates_orig().get(i), cube)){
+                  add_node(m_template.get_templates_orig().get(i).m_head->get_decl(), cube, inst_r_id, node_vector());
+                  inst_r_id++;
+              }
+              else
+                  throw(m_template.get_templat_instances().get(i).m_head);
+          }
+          
+          std::cout << "initialize_templates ... done ****\n";
+          
+      }
+      
+    void refine_templates(rule_set& rules, unsigned node_id){
+        mk_trace(node_id);
+        expr_ref cs(m.mk_true(), m);
+        mk_leaf2(expr_ref_vector(m), node_id, rules, expr_ref_vector(m), cs);
+        //mk_leaf(expr_ref_vector(m), exc.m_node, rules, cs);
+        expr_ref imp(m.mk_not(cs), m);
+        std::cout << "Next obligation: " << mk_pp(imp, m) << "\n";
+        m_template.constrain_template(imp);
+        //m_template.display();
+  
+      }
 
 	bool cart_temp_pred_abst_rule(rel_template2 instance, rel_template2 orig_temp, cube_t& cube) {
 		//m_template.display();
@@ -690,7 +695,10 @@ namespace datalog {
 
 
 		if (tsz > usz) {
-			cs = m.mk_and(cs, conj);
+            if(m.is_true(cs))
+               cs = conj;
+            else
+                cs = m.mk_and(cs, conj);
 		}
 
 		SASSERT(r->get_uninterpreted_tail_size() == node.m_parent_nodes.size());
@@ -700,7 +708,10 @@ namespace datalog {
 
 		for (unsigned i = 0; i < node.m_parent_nodes.size(); ++i){
 			if (m_template.get_names().contains(r->get_tail(i)->get_decl()->get_name())){
-				cs = m.mk_and(cs, qs2.get(i));
+                if(m.is_true(cs))
+                    cs = qs2.get(i);
+                else
+                    cs = m.mk_and(cs, qs2.get(i));
 				return;
 			}
 			mk_leaf2(expr_ref_vector(m, to_app(qs2.get(i))->get_decl()->get_arity(), to_app(qs2.get(i))->get_args()), node.m_parent_nodes.get(i), 
@@ -714,6 +725,7 @@ namespace datalog {
 			if (is_var(to_app(args.get(i)))) return true;
 		return false;
 	}
+      
 	bool is_wf_predicate(func_decl * pred) const {
 		return pred->get_name().str().substr(0, 6) == "__wf__";
 	}
