@@ -116,14 +116,14 @@ struct refine_pred_info{
 	
 };
 
-struct refine_cand_info2{
+struct refine_cand_info{
 
-	typedef vector<std::pair<symbol, vector<expr_ref_vector>>> refine_cand_rels_info2;
+	typedef vector<std::pair<symbol, vector<expr_ref_vector>>> refine_cand_rels_info;
 
-	refine_cand_rels_info2 m_allrels_info;
+	refine_cand_rels_info m_allrels_info;
 	ast_manager& m;
 
-	refine_cand_info2(ast_manager& in_m) : m(in_m){}
+	refine_cand_info(ast_manager& in_m) : m(in_m){}
 	void insert(symbol sym, expr_ref_vector args){
 		for (unsigned i = 0; i < m_allrels_info.size(); i++){
 			if (m_allrels_info.get(i).first == sym) {
@@ -149,7 +149,7 @@ struct refine_cand_info2{
 		}
 	}
 
-	refine_cand_rels_info2 get_info(){
+	refine_cand_rels_info get_info(){
 		return m_allrels_info;
 	}
 

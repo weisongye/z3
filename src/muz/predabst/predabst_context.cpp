@@ -470,8 +470,6 @@ namespace datalog {
 		}
 	}
 
-	//Theo's code
-
 	lbool abstract_check_refine(rule_set& rules, unsigned acr_count) {
 		std::cout << "=====================================+++++++++++++++++++ \n";
 		std::cout << "ACR step : " << acr_count << "\n";
@@ -515,7 +513,7 @@ namespace datalog {
 		rule* r = rules.get_rule(r_id);
 		func_decl* head_decl = r->get_decl();
 		if (!is_template_extra(head_decl)) return;
-		std::cout << "I have read template extra : " << head_decl->get_name().str() << "\n";
+		std::cout << "template extra : " << head_decl->get_name().str() << "\n";
 		expr_ref_vector temp_params(m, head_decl->get_arity(), r->get_head()->get_args());
 		expr_ref extras(r->get_tail(0), m);
 		std::cout << "before subst ...m_extras: " << mk_pp(extras.get(), m) << "\n";
@@ -539,7 +537,7 @@ namespace datalog {
 		rule* r = rules.get_rule(r_id);
 		func_decl* head_decl = r->get_decl();
 		if (!is_template(head_decl)) return;
-		std::cout << "I have read template : " << r->get_head()->get_decl()->get_name().str() << "\n";
+		std::cout << "template : " << r->get_head()->get_decl()->get_name().str() << "\n";
 		std::cout << "orig head : " << mk_pp(r->get_head(), m) << "\n";
 		symbol suffix(head_decl->get_name().str().substr(8).c_str());
 		unsigned new_arity = (head_decl->get_arity() - m_template.get_params_count());
@@ -644,7 +642,7 @@ namespace datalog {
 		core_tree core;
 		mk_core_tree(0, expr_ref_vector(m), node_id, 0, rules, solver, 0, names, core);
 		core_clauses2 clauses;
-		refine_cand_info2 to_refine_cand_info(m);
+		refine_cand_info to_refine_cand_info(m);
 		rule* r = rules.get_rule(m_node2info[node_id].m_parent_rule);
 		unsigned fresh_subst_size = r->get_head()->get_num_args();
 		ptr_vector<sort> free_sorts;
@@ -653,7 +651,6 @@ namespace datalog {
 		expr_ref to_wf(m.mk_true(), m);
 		for (unsigned i = 0; i < fresh_subst_size; ++i) head_args.push_back(m.mk_fresh_const("s", free_sorts.get(i)));
 		mk_core_tree_WF(r->get_head()->get_decl()->get_name(), head_args, node_id, rules, clauses, to_wf, to_refine_cand_info);
-		//to_refine_cand_info.display();
 		//display_core_clause2(m, clauses);
 		to_refine_cand_info.insert(r->get_head()->get_decl()->get_name(), head_args);
 		//to_refine_cand_info.display();
@@ -771,7 +768,7 @@ namespace datalog {
 	}
 
 	void mk_core_clauses(unsigned hname, expr_ref_vector hargs, unsigned last_name, core_tree core,
-		rule_set rules, expr_ref_vector& last_vars, core_clauses& clauses, refine_cand_info2& refine_cand_info_set){
+		rule_set rules, expr_ref_vector& last_vars, core_clauses& clauses, refine_cand_info& refine_cand_info_set){
 		vector<unsigned> names;
 		core_tree::iterator it = core.find(hname);
 		node_info const& node = m_node2info[it->second.first.first];
@@ -819,7 +816,7 @@ namespace datalog {
 			mk_core_clauses(todo.get(i).first, todo.get(i).second, last_name, core, rules, last_vars, clauses, refine_cand_info_set);
 	}
 
-	void mk_core_tree_WF(symbol hname, expr_ref_vector hargs, unsigned n_id, rule_set rules, core_clauses2& clauses, expr_ref& to_wf, refine_cand_info2& refine_cand_info_set){
+	void mk_core_tree_WF(symbol hname, expr_ref_vector hargs, unsigned n_id, rule_set rules, core_clauses2& clauses, expr_ref& to_wf, refine_cand_info& refine_cand_info_set){
 		node_info const& node = m_node2info[n_id];
 		rule* r = rules.get_rule(node.m_parent_rule);
 		//r->display(m_ctx, std::cout);
@@ -862,7 +859,7 @@ namespace datalog {
 	
 	bool refine_unreachable(core_to_throw from_throw, datalog::rule_set rules){
 		core_clauses clauses;
-		refine_cand_info2 allrels_info(m);
+		refine_cand_info allrels_info(m);
 		expr_ref_vector last_vars(m);
 		mk_core_clauses(from_throw.root_id, expr_ref_vector(m), from_throw.last_name, from_throw.core, rules, last_vars, clauses, allrels_info);
 		//allrels_info.display();
@@ -888,7 +885,7 @@ namespace datalog {
 		return false;
 	}
 
-	void refine_preds(refine_cand_info2 allrels_info, vector<refine_pred_info> interpolants){
+	void refine_preds(refine_cand_info allrels_info, vector<refine_pred_info> interpolants){
 		for (unsigned i = 0; i < allrels_info.get_info().size(); i++){
 			for (unsigned j = 0; j < m_ast_trail.size(); j++){
 				if (allrels_info.get_info().get(i).first == to_func_decl(m_ast_trail.get(j))->get_name()){
@@ -1035,8 +1032,6 @@ namespace datalog {
 		}
 	}
 
-	//End of Theo's code
-   
     // return whether c1 implies c2
     bool cube_leq(cube_t const& c1, cube_t const& c2) const {
       unsigned size = c1.size();
