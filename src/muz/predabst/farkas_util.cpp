@@ -20,6 +20,15 @@ Revision History:
 #include "farkas_util.h"
 
 
+void get_conj_terms(expr_ref conj, expr_ref_vector& terms){
+	if (conj.m().is_and(conj)){
+		for (unsigned i = 0; i < to_app(conj)->get_num_args(); i++)
+			get_conj_terms(expr_ref(to_app(conj)->get_arg(i), conj.m()), terms);
+	}
+	else
+		terms.push_back(conj);
+}
+
 vector<expr_ref_vector> cnf_to_dnf_struct(vector<vector<expr_ref_vector> > cnf_sets){
 	SASSERT(cnf_sets.size() >= 2);
 	vector<expr_ref_vector> result(cnf_sets.get(0));
@@ -194,7 +203,7 @@ void mk_binder(expr_ref_vector vars, expr_ref_vector args, expr_ref& cs){
 	}
 }
 
-bool exists_valid(expr_ref& fml, expr_ref_vector vars, expr_ref& constraint_st) {
+bool exists_valid(expr_ref& fml, expr_ref_vector& vars, expr_ref& constraint_st) {
 	expr_ref norm_fml(fml.m());
 	norm_fml = neg_and_2dnf(fml);
 	SASSERT(fml.m().is_or(norm_fml));
@@ -203,10 +212,9 @@ bool exists_valid(expr_ref& fml, expr_ref_vector vars, expr_ref& constraint_st) 
 	for (unsigned i = 0; i < disjs.size(); ++i) {
 		farkas_imp f_imp(vars);
 		f_imp.set(expr_ref(disjs.get(i), fml.m()), expr_ref(fml.m().mk_false(), fml.m()));
-		if (f_imp.solve_constraint())
-			constraint_st = fml.m().mk_and(constraint_st, f_imp.get_constraints());
-		else
-			return false;
+		//f_imp.display();
+		if (!f_imp.solve_constraint()) return false;
+		constraint_st = fml.m().mk_and(constraint_st, f_imp.get_constraints());
 	}
 	return true;
 }
@@ -222,7 +230,7 @@ bool mk_exists_forall_farkas(expr_ref& fml, expr_ref_vector vars, expr_ref& cons
 	for (unsigned i = 0; i < disjs.size(); ++i) {
 		farkas_imp f_imp(vars, mk_lambda_kinds);
 		f_imp.set(expr_ref(disjs[i].get(), fml.m()), expr_ref(fml.m().mk_false(), fml.m()));
-		f_imp.display();
+		//f_imp.display();
 		if (f_imp.solve_constraint()) {
 			constraint_st = fml.m().mk_and(constraint_st, f_imp.get_constraints());
 			all_lambda_kinds.append(f_imp.get_lambda_kinds());
@@ -237,19 +245,14 @@ bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr
 	ast_manager& m = LHS.get_manager();
 	arith_util arith(m);
 
-	SASSERT(!m.is_true(LHS));
-	SASSERT(m.is_and(LHS));
-	SASSERT(to_app(LHS)->get_num_args > 1);
+	if (m.is_true(LHS) || !m.is_and(LHS) || to_app(LHS)->get_num_args() <= 1 || (vsws.size() % 2) != 0) return false;
 	
-	SASSERT((vsws.size() % 2) == 0);
 	expr_ref_vector vs(m), ws(m);
 	for (unsigned i = 0; i < vsws.size(); i++){
-		if (i < (vsws.size() / 2)){
-			vs.push_back(vsws[i].get());
-		}
-		else {
-			ws.push_back(vsws[i].get());
-		}
+		if (i < (vsws.size() / 2))
+			vs.push_back(vsws.get(i));
+		else 
+			ws.push_back(vsws.get(i));
 	}
 	expr_ref_vector params(m);
 	expr_ref sum_psvs(arith.mk_numeral(rational(0), true), m);
@@ -289,6 +292,38 @@ bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr
 		return false; //unsat param
 	}
 	return false; //unsat lambda
+}
+
+void well_founded_cs(expr_ref_vector vsws, expr_ref& bound, expr_ref& decrease){
+	ast_manager& m = vsws.get_manager();
+	arith_util arith(m);
+
+	expr_ref_vector vs(m), ws(m);
+	for (unsigned i = 0; i < vsws.size(); i++){
+		if (i < (vsws.size() / 2))
+			vs.push_back(vsws.get(i));
+		else
+			ws.push_back(vsws.get(i));
+	}
+	expr_ref_vector params(m);
+	expr_ref sum_psvs(arith.mk_numeral(rational(0), true), m);
+	expr_ref sum_psws(arith.mk_numeral(rational(0), true), m);
+
+	for (unsigned i = 0; i < vs.size(); ++i) {
+		expr_ref param(m.mk_fresh_const("p", arith.mk_int()), m);
+		params.push_back(param);
+		sum_psvs = arith.mk_add(sum_psvs.get(), arith.mk_mul(param.get(), vs[i].get()));
+		sum_psws = arith.mk_add(sum_psws.get(), arith.mk_mul(param.get(), ws[i].get()));
+	}
+
+	expr_ref delta0(m.mk_const(symbol("delta0"), arith.mk_int()), m);
+	params.push_back(delta0);
+
+	bound = arith.mk_ge(sum_psvs, delta0);
+	decrease = arith.mk_lt(sum_psws, sum_psvs);
+
+	std::cout << "bound: " << mk_pp(bound, m) << "\n";
+	std::cout << "decrease: " << mk_pp(decrease, m) << "\n";
 }
 
 void mk_bilin_lambda_constraint(vector<lambda_kind> lambda_kinds, int max_lambda, expr_ref& cons){
@@ -345,9 +380,9 @@ void mk_bound_pairs(vector<lambda_kind>& lambda_kinds, int lin_max_lambda, int b
 	}
 }
 
-
-static expr_ref_vector get_all_pred_vars(expr_ref& fml){
+expr_ref_vector get_all_pred_vars(expr_ref& fml){
 	ast_manager& m = fml.get_manager();
+	arith_util a(m);
 	expr_ref_vector m_todo(m);
 	expr_ref_vector vars(m);
 	m_todo.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
@@ -360,7 +395,17 @@ static expr_ref_vector get_all_pred_vars(expr_ref& fml){
 			break;
 		}
 		case AST_APP: {
+			if (to_app(e)->get_num_args() == 0){
+				if (!a.is_numeral(e)){
+					if (!vars.contains(e)) vars.push_back(e);
+				}
+				break;
+			}
 			m_todo.append(to_app(e)->get_num_args(), to_app(e)->get_args());
+			break;
+		}
+		case AST_FUNC_DECL: {
+			if (!vars.contains(e)) vars.push_back(e);
 			break;
 		}
 		default:
@@ -371,27 +416,46 @@ static expr_ref_vector get_all_pred_vars(expr_ref& fml){
 	return vars;
 }
 
- expr_ref_vector get_all_vars(expr_ref fml){
-	ast_manager& m = fml.get_manager();
-	if (m.is_and(fml) || m.is_or(fml)){
-		expr_ref_vector all_vars(m);
-		expr_ref_vector sub_formulas(m);
-		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
-		for (unsigned i = 0; i < sub_formulas.size(); ++i)
-			all_vars.append(get_all_vars(expr_ref(sub_formulas[i].get(), m)));
-		return all_vars;
+void display_core_tree(core_tree m_core_tree){
+	for (unsigned i = 0; i < m_core_tree.size(); i++){
+		std::cout << "core_hname: " << m_core_tree.find(i)->first << ", core_id: " << m_core_tree.find(i)->second.first.first << ", core_ids: [";
+		for (unsigned j = 0; j < m_core_tree.find(i)->second.first.second.size(); j++) std::cout << " " << m_core_tree.find(i)->second.first.second.get(j);
+		std::cout << "], core_body_names: [";
+		for (unsigned j = 0; j < m_core_tree.find(i)->second.second.size(); j++) std::cout << " " << m_core_tree.find(i)->second.second.get(j);
+		std::cout << "]\n";
 	}
-	else if (m.is_not(fml)){
-		return get_all_vars(expr_ref(to_app(fml)->get_arg(0), m));
+
+}
+
+void display_core_clause(ast_manager& m, core_clauses clauses) {
+	core_clauses::iterator st = clauses.begin(), end = clauses.end();
+	for (; st != end; st++){
+		std::cout << "clause --> " << st->first << " ["; 
+		for (unsigned i = 0; i < st->second.first.size(); i++)
+			std::cout << mk_pp(st->second.first.get(i), m) << " ";
+		std::cout << "] : " << mk_pp(st->second.second.first, m) << " [";
+		for (unsigned i = 0; i < st->second.second.second.size(); i++)
+			std::cout << mk_pp(st->second.second.second.get(i), m) << " ";
+		std::cout << "]\n";
 	}
-	else {
-		if (is_func_decl(fml)){
-			return expr_ref_vector(m, to_app(fml)->get_num_args(), to_app(fml)->get_args());
-		}
-		else {
-			return get_all_pred_vars(fml);
-		}
+}
+
+void display_core_clause2(ast_manager& m, core_clauses2 clauses) {
+	for (unsigned j = 0; j < clauses.size(); j++){
+		std::cout << "clause --> " << clauses.get(j).first.str() << " [";
+		for (unsigned i = 0; i < clauses.get(j).second.first.size(); i++)
+			std::cout << mk_pp(clauses.get(j).second.first.get(i), m) << " ";
+		std::cout << "] : " << mk_pp(clauses.get(j).second.second.first, m) << " [";
+		for (unsigned i = 0; i < clauses.get(j).second.second.second.size(); i++)
+			std::cout << mk_pp(clauses.get(j).second.second.second.get(i), m) << " ";
+		std::cout << "]\n";
 	}
+}
+
+void display_expr_ref_vector(expr_ref_vector& vect){
+	std::cout << "expr vect --> [";
+	for (unsigned i = 0; i < vect.size(); i++) std::cout << mk_pp(vect.get(i), vect.m()) << " ";
+	std::cout << "]\n";
 }
 
 expr_ref_vector vars_difference(expr_ref_vector source, expr_ref_vector to_remove){
@@ -401,41 +465,7 @@ expr_ref_vector vars_difference(expr_ref_vector source, expr_ref_vector to_remov
 	return diff;
 }
 
-expr_ref rel_template::subst_template_body(expr_ref fml, func_decl2body map){
-	ast_manager& m = fml.get_manager();
-	expr_ref new_formula(m);
-	expr_ref_vector sub_formulas(m);
-	expr_ref_vector new_sub_formulas(m);
-
-	if (m.is_and(fml)){
-		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
-		for (unsigned i = 0; i < sub_formulas.size(); ++i)
-			new_sub_formulas.push_back(subst_template_body(expr_ref(sub_formulas[i].get(), m), map).get());
-		new_formula = m.mk_and(new_sub_formulas.size(), new_sub_formulas.c_ptr());
-	}
-	else if (m.is_or(fml)){
-		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
-		for (unsigned i = 0; i < sub_formulas.size(); ++i)
-			new_sub_formulas.push_back(subst_template_body(expr_ref(sub_formulas[i].get(), m), map).get());
-		new_formula = m.mk_or(new_sub_formulas.size(), new_sub_formulas.c_ptr());
-
-	}
-	else if (m.is_not(fml)){
-		sub_formulas.append(to_app(fml)->get_num_args(), to_app(fml)->get_args());
-		new_formula = m.mk_not(subst_template_body(expr_ref(sub_formulas[0].get(), m), map));
-	}
-	else {
-
-		if (is_func_decl(fml)){
-			func_decl2body::obj_map_entry* e = map.find_core(to_app(fml));
-			if (!e) return fml;
-			return expr_ref(e->get_data().get_value(), m);
-		}
-	}
-	return new_formula;
-}
-
-expr_ref rel_template_suit::subst_template_body(expr_ref fml, vector<rel_template2> rel_templates, expr_ref_vector& args_coll){
+expr_ref rel_template_suit::subst_template_body(expr_ref fml, vector<rel_template> rel_templates, expr_ref_vector& args_coll){
 	ast_manager& m = fml.get_manager();
 	expr_ref new_formula(m);
 	expr_ref_vector sub_formulas(m);
@@ -463,15 +493,186 @@ expr_ref rel_template_suit::subst_template_body(expr_ref fml, vector<rel_templat
 		if (m_names.contains(to_app(fml)->get_decl()->get_name())){
 			for (unsigned i = 0; i < rel_templates.size(); i++){
 				if (to_app(fml)->get_decl()->get_name() == rel_templates.get(i).m_head->get_decl()->get_name()) {
-					expr_ref cs(m.mk_true(), m);
+					expr_ref cs(m_rel_templates_orig.get(i).m_body);
 					expr_ref_vector args(m, to_app(fml)->get_decl()->get_arity(), to_app(fml)->get_args());
 					args_coll.append(args);
-					mk_binder(args, m_temp_subst, cs);
-					return  expr_ref(m.mk_and(cs, m_rel_templates.get(i).m_body), m);
+					args.append(m_params);
+					args.reverse();
+					m_var_subst(cs, args.size(), args.c_ptr(), cs);
+					return cs;
 				}
 			}
 		}
 		return fml;
 	}
 	return new_formula;
+}
+
+bool interpolate(expr_ref_vector vars, expr_ref fmlA, expr_ref fmlB, expr_ref& fmlQ_sol){
+	ast_manager& m = vars.get_manager();
+	arith_util arith(m);
+	expr_ref_vector params(m);
+	expr_ref sum_vars(arith.mk_numeral(rational(0), true), m);
+	std::cout << "fmlA: " << mk_pp(fmlA, m) << "\n";
+	std::cout << "fmlB: " << mk_pp(fmlB, m) << "\n";
+	for (unsigned i = 0; i < vars.size(); ++i) {
+		expr_ref param(m.mk_fresh_const("i", arith.mk_int()), m);
+		params.push_back(param);
+		sum_vars = arith.mk_add(sum_vars, arith.mk_mul(param, vars.get(i)));
+	}
+	expr_ref ic(m.mk_const(symbol("ic"), arith.mk_int()), m);
+	params.push_back(ic);
+	expr_ref fmlQ(arith.mk_le(sum_vars, ic), m);
+
+	expr_ref to_solve(m.mk_and(m.mk_or(m.mk_not(fmlA), fmlQ), m.mk_or(m.mk_not(fmlQ), m.mk_not(fmlB))), m);
+	std::cout << "interpolant: " << mk_pp(fmlQ, m) << "\n";
+
+	expr_ref constraint_st(m.mk_true(), m);
+	if (exists_valid(to_solve, vars, constraint_st)) {
+		smt_params new_param;
+		smt::kernel solver(m, new_param);
+		solver.assert_expr(constraint_st);
+		if (solver.check() == l_true){
+			expr_ref_vector values(m);
+			model_ref modref;
+			solver.get_model(modref);
+			if (modref.get()->eval(fmlQ.get(), fmlQ_sol)) {
+				std::cout << "Interpolant sol: " << mk_pp(fmlQ_sol, m) << "\n";
+				return true;
+			}
+			// when does it happen?		
+		}
+	}
+	return false; 
+}
+
+bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info>& interpolants){
+	//std::cout << "Interpolation  :" << interpolants.size() << "\n";
+	//display_core_clause(m, clauses);
+	core_clauses::iterator st = clauses.begin(), end = clauses.end();
+	expr_ref_vector vars(m);
+	for (core_clauses::iterator it = st; it != end; it++) vars.append(it->second.first);
+	end--;
+	for (int i = clauses.size() - 1; i >= 1; i--){
+		std::cout << "Interpolation step :" << clauses.size() - i << "\n";
+		expr_ref fmlA(m.mk_true(), m);
+		expr_ref fmlB(m.mk_true(), m);
+		int j = clauses.size() - 1;
+		core_clauses::iterator end2 = end;
+		for (; j >= i; j--, end2--)
+			fmlA = m.mk_and(fmlA, end2->second.second.first);
+		for (; j >= 0; j--, end2--)
+			fmlB = m.mk_and(fmlB, end2->second.second.first);
+		expr_ref fmlQ_sol(m);
+		if (interpolate(vars, fmlA, fmlB, fmlQ_sol))
+			interpolants.push_back(refine_pred_info(fmlQ_sol, get_all_pred_vars(fmlQ_sol)));
+		else
+			std::cout << "Interpolant not found! \n";
+	}
+	return (interpolants.size() > 0);
+}
+
+void get_interpolant_pred(expr_ref_vector args, expr_ref_vector vars, vector<refine_pred_info> interpolants, expr_ref_vector& in_preds){
+	bool is_args_pred;
+	for (unsigned i = 0; i < interpolants.size(); i++){
+		is_args_pred = true;
+		for (unsigned j = 0; j < interpolants.get(i).pred_vars.size(); j++){
+			if (!args.contains(interpolants.get(i).pred_vars.get(j))){
+				is_args_pred = false;
+				break;
+			}
+		}
+		if (is_args_pred) {
+			expr_ref in_pred(interpolants.get(i).pred);
+			replace_pred(args, vars, in_pred);
+			if (!in_preds.contains(in_pred)) in_preds.push_back(in_pred);
+		}
+	}
+}
+
+static bool replace_pred(expr_ref_vector args, expr_ref_vector vars, expr_ref& pred) {
+	ast_manager& m = pred.m();
+	arith_util arith(pred.m());
+	expr *e1, *e2;
+	if (pred.m().is_eq(pred, e1, e2)){
+		expr_ref ee1(e1, m), ee2(e2, m);
+		replace_pred(args, vars, ee1);
+		replace_pred(args, vars, ee2);
+		pred = m.mk_eq(ee1, ee2);
+	}
+	else if (arith.is_le(pred, e1, e2)){
+		expr_ref ee1(e1, m), ee2(e2, m);
+		replace_pred(args, vars, ee1);
+		replace_pred(args, vars, ee2);
+		pred = arith.mk_le(ee1, ee2);
+	}
+	else if (arith.is_ge(pred, e1, e2)){
+		expr_ref ee1(e1, m), ee2(e2, m);
+		replace_pred(args, vars, ee1);
+		replace_pred(args, vars, ee2);
+		pred = arith.mk_ge(ee1, ee2);
+	}
+	else if (arith.is_lt(pred, e1, e2)){
+		expr_ref ee1(e1, m), ee2(e2, m);
+		replace_pred(args, vars, ee1);
+		replace_pred(args, vars, ee2);
+		pred = arith.mk_lt(ee1, ee2);
+	}
+	else if (arith.is_gt(pred, e1, e2)){
+		expr_ref ee1(e1, m), ee2(e2, m);
+		replace_pred(args, vars, ee1);
+		replace_pred(args, vars, ee2);
+		pred = arith.mk_gt(ee1, ee2);
+	}
+	else if (arith.is_add(pred, e1, e2)){
+		expr_ref ee1(e1, m), ee2(e2, m);
+		replace_pred(args, vars, ee1);
+		replace_pred(args, vars, ee2);
+		pred = arith.mk_add(ee1, ee2);
+	}
+	else if (arith.is_mul(pred, e1, e2)){
+		expr_ref ee1(e1, m), ee2(e2, m);
+		replace_pred(args, vars, ee1);
+		replace_pred(args, vars, ee2);
+		pred = arith.mk_mul(ee1, ee2);
+	}
+	else if (m.is_not(pred, e1)){
+		expr_ref ee1(e1, m);
+		replace_pred(args, vars, ee1);
+		pred = m.mk_not(ee1);
+	}
+	else if (to_app(pred)->get_num_args() == 0){
+		if (args.contains(pred)){
+			for (unsigned i = 0; i < args.size(); i++){
+				if (args.get(i) == pred){
+					pred = vars.get(i);
+					break;
+				}
+			}
+		}
+	}
+	else {
+		std::cout << "after subst fml: " << mk_pp(pred, pred.m()) << "\n";
+		std::cout << "Unable to recognize predicate \n";
+		return false;
+	}
+	return true;
+}
+
+void mk_conj(expr_ref_vector terms, expr_ref& conj){
+	if (terms.size() == 0)
+		conj = terms.m().mk_true();
+	else if (terms.size() == 1)
+		conj = terms.get(0);
+	else
+		conj = terms.m().mk_and(terms.size(), terms.c_ptr());
+}
+
+void mk_conj(expr_ref term1, expr_ref term2, expr_ref& conj){
+	if (term1.m().is_true(term1))
+		conj = term2;
+	else if (term1.m().is_true(term2))
+		conj = term1;
+	else
+		conj = term1.m().mk_and(term1, term2);
 }

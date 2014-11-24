@@ -29,14 +29,130 @@ Revision History:
 #include "model_smt2_pp.h"
 #include "ast_counter.h"
 #include "var_subst.h"
+#include "map"
+
+struct core_clause {
+	unsigned cl_name;
+	expr_ref_vector cl_vars;
+	expr_ref cl_body_as;
+	expr_ref_vector cl_body_qs;
+
+	core_clause(ast_manager m) : cl_vars(m), cl_body_as(m), cl_body_qs(m){}
+
+	core_clause(unsigned in_cl_name, expr_ref_vector in_cl_vars, expr_ref in_cl_body_as, expr_ref_vector in_cl_body_qs):
+		cl_name(in_cl_name), cl_vars(in_cl_vars), cl_body_as(in_cl_body_as), cl_body_qs(in_cl_body_qs){
+	}
+
+	void display(){
+		std::cout << "cl_name: " << cl_name << ", cl_vars: [";
+		for (unsigned i = 0; i < cl_vars.size(); i++) std::cout << " " << mk_pp(cl_vars.get(i), cl_body_as.m());
+		std::cout << "], cl_body_as : " << mk_pp(cl_body_as.get(), cl_body_as.m()) << ", cl_body_qs : [";
+		for (unsigned i = 0; i < cl_body_qs.size(); i++) std::cout << " " << mk_pp(cl_body_qs.get(i), cl_body_as.m());
+		std::cout << "]\n";
+	}
+};
 
 
+typedef std::pair<unsigned, vector<unsigned>> tId2Ids;
+typedef std::pair<unsigned, symbol> name2symbol;
+typedef std::map<unsigned, std::pair<std::pair<unsigned, vector<unsigned>>, vector<unsigned>>> core_tree;
+void display_core_tree(core_tree m_core_tree);
 
-class scoped_push2 {
-	smt::kernel& s;
-public:
-	scoped_push2(smt::kernel& s) :s(s){ s.push(); }
-	~scoped_push2() { s.pop(1); }
+struct core_to_throw{
+	unsigned root_id;
+	unsigned last_name;
+	unsigned last_node_tid;
+	vector<unsigned> last_node_ids;
+	unsigned pos;
+	vector<name2symbol> name_map;
+	core_tree core;
+
+	core_to_throw(unsigned in_root_id, unsigned in_last_name, unsigned in_last_node_tid, vector<unsigned> in_last_node_ids, unsigned in_pos, 
+		vector<name2symbol> in_name_map, core_tree in_core){
+		root_id = in_root_id;
+		last_name = in_last_name;
+		last_node_tid = in_last_node_tid;
+		last_node_ids = in_last_node_ids;
+		pos = in_pos;
+		name_map = in_name_map;
+		core = in_core;
+	}
+
+	void display(){
+		std::cout << "root_id: " << root_id << ", last_name: " << last_name << ", last_id: " << last_node_tid << ", last_ids: [";
+		for (unsigned i = 0; i < last_node_ids.size(); i++) std::cout << " " << last_node_ids.get(i);
+		std::cout << "], critical pos: " << pos << "\n";
+		std::cout << "name_map: [";
+		for (unsigned i = 0; i < name_map.size(); i++) std::cout << " " << name_map.get(i).first << "-" << name_map.get(i).second.str();
+		std::cout << "]\n";
+		std::cout << "core size: " << core.size() << "\n";
+		display_core_tree(core);
+	}
+};
+
+typedef std::map<unsigned, std::pair<expr_ref_vector, std::pair<expr_ref, expr_ref_vector>>> core_clauses;
+typedef vector<std::pair<symbol, std::pair<expr_ref_vector, std::pair<expr_ref, expr_ref_vector>>>> core_clauses2;
+
+void display_core_clause(ast_manager& m, core_clauses clauses);
+void display_core_clause2(ast_manager& m, core_clauses2 clauses);
+
+void display_expr_ref_vector(expr_ref_vector& vect);
+
+struct refine_pred_info{
+	expr_ref pred;
+	expr_ref_vector pred_vars;
+
+	refine_pred_info(expr_ref in_pred, expr_ref_vector in_pred_vars) : pred_vars(in_pred_vars), pred(in_pred){}
+
+	void display(){
+		std::cout << "pred: " << mk_pp(pred.get(), pred.m()) << ", pred_vars: [";
+		for (unsigned i = 0; i < pred_vars.size(); i++) std::cout << " " << mk_pp(pred_vars.get(i), pred.m());
+		std::cout << "]\n";
+	}
+
+	bool has_var(expr_ref arg){
+		return pred_vars.contains(arg);
+	}
+	
+};
+
+struct refine_cand_info2{
+
+	typedef vector<std::pair<symbol, vector<expr_ref_vector>>> refine_cand_rels_info2;
+
+	refine_cand_rels_info2 m_allrels_info;
+	ast_manager& m;
+
+	refine_cand_info2(ast_manager& in_m) : m(in_m){}
+	void insert(symbol sym, expr_ref_vector args){
+		for (unsigned i = 0; i < m_allrels_info.size(); i++){
+			if (m_allrels_info.get(i).first == sym) {
+				m_allrels_info.get(i).second.push_back(args);
+				return;
+			}
+		}
+		vector<expr_ref_vector> new_args;
+		new_args.push_back(args);
+		m_allrels_info.push_back(std::make_pair(sym, new_args));
+	}
+
+	void display(){
+		for (unsigned i = 0; i < m_allrels_info.size(); i++){
+			std::cout << "refine_cand_info: " << i << ": " << m_allrels_info.get(i).first.str() << " -[ ";
+			for (unsigned j = 0; j < m_allrels_info.get(i).second.size(); j++){
+				std::cout << "usage " << j << " -[ ";
+				for (unsigned k = 0; k < m_allrels_info.get(i).second.get(j).size(); k++)
+					std::cout << mk_pp(m_allrels_info.get(i).second.get(j).get(k), m) << " ";
+				std::cout << " ] ";
+			}
+			std::cout << " ] \n";
+		}
+	}
+
+	refine_cand_rels_info2 get_info(){
+		return m_allrels_info;
+	}
+
 };
 
 template<class T>
@@ -53,6 +169,8 @@ static void push_front_0(expr_ref_vector& v, expr_ref e){
 }
 
 typedef enum  { bilin_sing, bilin, lin } lambda_kind_sort;
+
+typedef enum  { reach, wf, temp } acr_error_kind;
 
 struct lambda_kind {
 	expr_ref m_lambda;
@@ -99,6 +217,11 @@ static void get_all_terms(expr_ref term, expr_ref_vector vars, expr_ref_vector& 
 			get_all_terms(expr_ref(facts[i].get(), term.m()),vars, var_facts, const_facts,has_params);
 	}
 }
+
+void get_interpolant_pred(expr_ref_vector args, expr_ref_vector vars, vector<refine_pred_info> interpolants, expr_ref_vector& in_pred);
+
+void get_conj_terms(expr_ref conj, expr_ref_vector& terms);
+
 
 class farkas_pred{
 	expr_ref_vector m_vars;
@@ -474,11 +597,11 @@ private:
 
 };
 
-bool exists_valid(expr_ref& formula, expr_ref_vector vars, expr_ref& constraint_st);
+bool exists_valid(expr_ref& formula, expr_ref_vector& vars, expr_ref& constraint_st);
 
 bool well_founded(expr_ref_vector vars, expr_ref& LHS, expr_ref& bound, expr_ref& decrease);
 
-expr_ref_vector get_all_vars(expr_ref fml);
+void well_founded_cs(expr_ref_vector vsws, expr_ref& bound, expr_ref& decrease);
 
 expr_ref_vector vars_difference(expr_ref_vector source, expr_ref_vector to_remove);
 
@@ -486,367 +609,108 @@ bool mk_exists_forall_farkas(expr_ref& fml, expr_ref_vector vars, expr_ref& cons
 
 void mk_bilin_lambda_constraint(vector<lambda_kind> lambda_kinds, int max_lambda, expr_ref& cons);
 
-typedef obj_map<app, expr*> func_decl2body;
-
 void mk_binder(expr_ref_vector vars, expr_ref_vector args, expr_ref& cs);
 
+expr_ref_vector get_all_pred_vars(expr_ref& fml);
 
+static bool replace_pred(expr_ref_vector args, expr_ref_vector vars, expr_ref& pred);
 
-struct rel_template2{
+bool interpolate(expr_ref_vector vars, expr_ref fmlA, expr_ref fmlB, expr_ref& fmlQ_sol);
+
+bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info>& interpolants);
+
+void mk_conj(expr_ref_vector terms, expr_ref& conj);
+
+void mk_conj(expr_ref term1, expr_ref term2, expr_ref& conj);
+
+struct rel_template{
 	app* m_head;
 	expr_ref m_body;
 
-	rel_template2(app* head, expr_ref body) : m_head(head), m_body(body) {
+	rel_template(app* head, expr_ref body) : m_head(head), m_body(body) {
 	
 	}
 };
-
-
-class rel_template {
-
-	ast_manager& m_rel_manager;
-	ast_manager& m_rel_sol_manager;
-	
-	func_decl2body m_rel_templates;
-	vector<rel_template2> rel_templates2;
-
-	expr_ref_vector m_params;
-	expr_ref m_extras;
-	expr_ref m_acc;
-
-	func_decl2body m_rel_template_instances;
-	vector<rel_template2> m_rel_template_instances2;
-	vector<symbol> m_names;
-
-
-	expr_ref subst_template_body(expr_ref fml, func_decl2body map);
-
-	expr_ref_vector m_const_extra_vars;
-	var_subst m_var_subst;
-	expr_ref_vector m_extra_subst;
-
-public:
-
-	rel_template(ast_manager& m) : m_rel_manager(m), m_rel_sol_manager(m),
-		m_extras(expr_ref(m_rel_manager.mk_true(), m_rel_manager)), m_acc(expr_ref(m_rel_manager.mk_true(), m_rel_manager)), m_params(m_rel_manager),
-		m_var_subst(m_rel_manager, false), m_extra_subst(m_rel_manager),
-		m_const_extra_vars(m_rel_manager){
-	}
-
-	void process_template_extra(expr_ref_vector& t_params, expr_ref extras){
-		m_params.append(t_params);
-		std::cout << "before subst ...m_extras: " << mk_pp(extras.get(), m_rel_manager) << "\n";
-		arith_util arith(m_rel_manager);
-		m_extra_subst.reserve(t_params.size());
-		for (unsigned i = 0; i < m_extra_subst.size(); ++i) {
-			expr_ref b(m_rel_manager.mk_fresh_const("b", arith.mk_int()), m_rel_manager);
-			m_extra_subst[i] = b.get();
-			m_const_extra_vars.push_back(b);
-		}
-		m_var_subst(extras, m_extra_subst.size(), m_extra_subst.c_ptr(), m_extras);
-		std::cout << "after subst ...m_extras: " << mk_pp(m_extras.get(), m_rel_manager) << "\n";
-
-	}
-
-	void process_template(app* head, expr* body){
-		arith_util arith(m_rel_manager);
-		symbol head_name = head->get_decl()->get_name();
-		if (m_names.contains(head_name)){
-			std::cout << "Multiple templates found for : " << head_name.str() << "\n";
-			throw(head_name);
-		}
-		else {
-			expr_ref_vector vars(m_rel_manager, head->get_decl()->get_arity(), head->get_args());
-			expr_ref_vector temp_subst(m_rel_manager);
-			temp_subst.reserve(vars.size());
-			for (unsigned i = 0; i < temp_subst.size(); ++i) temp_subst[i] = m_rel_manager.mk_fresh_const("v", arith.mk_int());
-			temp_subst.append(m_extra_subst);
-			temp_subst.reverse();
-			expr_ref body2(body, m_rel_manager);
-			m_var_subst(body2, temp_subst.size(), temp_subst.c_ptr(), body2);
-			std::cout << "after subst ...body2: " << mk_pp(body2.get(), m_rel_manager) << "\n";
-			m_rel_templates.insert(head, to_app(body2));
-			m_names.push_back(head_name);
-		}
-	}
-
-	void instantiate_template(){
-		std::cout << "model setting up ...\n";
-		if (m_rel_manager.is_true(m_acc)){ //No obligation
-			smt_params new_param;
-			smt::kernel solver(m_rel_manager, new_param);
-
-			solver.assert_expr(m_extras.get());
-			if (solver.check() == l_true){
-				expr_ref instance(m_rel_manager);
-				model_ref modref;
-				solver.get_model(modref);
-
-				std::cout << "m_extra : " << mk_pp(m_extras, m_rel_manager) << "\n";
-				if (modref.get()->eval(m_extras.get(), instance)) {
-					std::cout << "m_extra solution : " << mk_pp(instance, m_rel_manager) << "\n";
-					//m_rel_template_instances.insert(it->m_key, instance);
-				}
-				else {// when does this happen?
-					std::cout << "no solution for instance.... \n";
-					//throw(it->m_key->get_decl()->get_name());
-				}
-				return;
-			}
-			throw(m_acc);
-
-		}
-		else {
-			smt_params new_param;
-			smt::kernel solver(m_rel_manager, new_param);
-
-			expr_ref m_acc_subst(subst_template_body(m_acc, m_rel_templates));
-			expr_ref farkas_cons(m_acc.m()), lambda_cons(m_acc.m());
-			vector<lambda_kind> all_lambda_kinds;
-			expr_ref_vector all_vars(get_all_vars(m_acc));
-			expr_ref_vector vars(vars_difference(all_vars, m_params));
-			mk_exists_forall_farkas(m_acc_subst, vars, farkas_cons, true, all_lambda_kinds);
-			int max_lambda = 2;
-			mk_bilin_lambda_constraint(all_lambda_kinds, max_lambda, lambda_cons);
-			solver.assert_expr(m_acc.m().mk_and(farkas_cons, m_acc.m().mk_and(lambda_cons, m_extras)));
-
-
-			if (solver.check() == l_true){
-				model_ref modref;
-				solver.get_model(modref);
-				expr_ref instance(m_acc.m());
-				std::cout << "model checking 1...templates size: " << m_rel_templates.size() << "\n";
-
-
-				//func_decl2body::iterator it = m_rel_templates.begin();
-				//func_decl2body::iterator end = m_rel_templates.end();
-
-				std::cout << "model checking 2...templates size: " << m_rel_templates.size() << "\n";
-
-				/**/
-				for (func_decl2body::iterator it = m_rel_templates.begin(), end = m_rel_templates.end(); it != end; it++) {
-					std::cout << "********** \n";
-					std::cout << mk_pp(it->get_value(), m_rel_manager);
-					if (modref.get()->eval(it->get_value(), instance)) {
-						std::cout << "solution for instance.... \n";
-						m_rel_template_instances.insert(it->m_key, instance);
-					}
-					else {// when does this happen?
-						std::cout << "no solution for instance.... \n";
-						//throw(it->m_key->get_decl()->get_name());
-					}
-				}
-
-				std::cout << "model checking end...\n";
-				return;
-			}
-			throw(m_acc);
-		}
-
-		std::cout << "model checking 0...\n";
-		
-		
-	}
-
-	void init_template_instantiate(){
-		std::cout << "in init_template_instantiate... templates number :" << m_rel_templates.size() << "\n";
-		if (m_rel_templates.size() == 0)
-			return;
-		
-		expr_ref init_extras_sol(m_extras.m().mk_true(), m_extras.m());
-		init_template_instantiate2(init_extras_sol);
-		std::cout << "init_extras_sol : " << mk_pp(init_extras_sol, m_rel_manager) << "\n";
-
-		func_decl2body::iterator it2 = m_rel_templates.begin();
-		func_decl2body::iterator end2 = m_rel_templates.end();
-		for (; it2 != end2; it2++){
-
-			std::cout << "template : " << mk_pp(it2->m_value, m_rel_manager) << "\n";
-
-		}
-	}
-
-	void init_template_instantiate2(expr_ref& init_extras_sol){
-		
-		smt_params new_param;
-		smt::kernel solver(m_extras.m(), new_param);
-		solver.assert_expr(m_extras);
-		if (solver.check() == l_true){
-		model_ref modref;
-		solver.get_model(modref);
-		expr_ref b_sol(m_rel_manager);
-		for (unsigned i = 0; i < m_extra_subst.size(); i++)
-			if (modref.get()->eval(m_extra_subst[i].get(), b_sol))
-				init_extras_sol = m_rel_manager.mk_and(init_extras_sol, m_rel_manager.mk_eq(m_extra_subst[i].get(), b_sol));
-		}
-	}
-
-	void constrain_template(expr_ref fml){
-		std::cout << "in constrain_template...begin! \n";
-		if (!fml.m().is_true(fml)) 
-			m_acc = fml.m().mk_and(fml, m_acc); //updating the constraint store
-		instantiate_template();
-		std::cout << "in constrain_template...end! \n";
-	}
-
-	/*
-		void init_template_instantiate_true(){
-		if (m_rel_templates.size() == 0)
-			return;
-		for (func_decl2body::iterator it = m_rel_templates.begin(), end = m_rel_templates.end(); it != end; ++it)
-			m_rel_template_instances.insert(it->m_key, m_acc.m().mk_true());
-	}
-	void process_template(app* head, expr_ref body, expr_ref extra){
-		func_decl2body in_rel_templates;
-		in_rel_templates.insert(head, body);
-		process_template(in_rel_templates, extra);
-	}
-
-	void process_template(func_decl2body in_rel_templates, expr_ref extra){
-		ast_manager m;
-		func_decl2body::iterator it = in_rel_templates.begin();
-		func_decl2body::iterator end = in_rel_templates.end();
-
-		for (; it != end; ++it){
-			symbol head_name = it->m_key->get_decl()->get_name();
-			if (m_names.contains(head_name)){
-				std::cout << "Multiple templates found for : " << head_name.str() << "\n";
-				throw(head_name);
-			}
-			else {
-				expr_ref_vector body_vars(get_all_vars(expr_ref(it->get_value(), m)));
-				expr_ref_vector head_vars(m, it->m_key->get_num_args(), it->m_key->get_args());
-				expr_ref_vector temp_params(m);
-				for (unsigned j = 0; j < body_vars.size(); j++)
-					if (!head_vars.contains(body_vars[j].get())) temp_params.push_back(body_vars[j].get());
-				m_map.insert(it->m_key, std::make_pair(temp_params.c_ptr(), it->m_value));
-				m_names.push_back(head_name);
-				m_params.append(temp_params);
-			}
-		}
-		m_extras = m.mk_and(m_extras, extra);
-	}
-
-
-
-	*/
-
-	func_decl2body get_templat_instances(){
-		return m_rel_template_instances;
-	}
-
-	func_decl2body get_templates(){
-		return m_rel_templates;
-	}
-	expr* get_templat_instance(app* temp_head){
-		func_decl2body::obj_map_entry* e = m_rel_template_instances.find_core(temp_head);
-		return e->get_data().m_value;
-	}
-
-	unsigned get_params_count(){
-		return m_params.size();
-	}
-
-	void display_templates(){
-		std::cout << "templates: " << m_rel_templates.size() << "\n";
-		func_decl2body::iterator it = m_rel_templates.begin();
-		func_decl2body::iterator end = m_rel_templates.end();
-		unsigned tcount = 1;
-		for (; it != end; ++it){
-			std::cout << "template " << tcount << " : " << it->m_key->get_decl()->get_name().str() << " / " << it->m_key->get_decl()->get_arity() << "\n";
-			std::cout << "template body : " << mk_pp(it->m_value, m_rel_manager) << "\n";
-		}
-		std::cout << "instances: " << m_rel_template_instances.size() << "\n";
-		it = m_rel_template_instances.begin();
-		end = m_rel_template_instances.end();
-		tcount = 1;
-		for (; it != end; ++it){
-			std::cout << "instances " << tcount << " : " << it->m_key->get_decl()->get_name().str() << " / " << it->m_key->get_decl()->get_arity() << "\n";
-			std::cout << "instances body : " << mk_pp(it->m_value, m_rel_manager) << "\n";
-		}
-
-	}
-};
-
 
 class rel_template_suit {
 
 	ast_manager& m_rel_manager;
 	
-	vector<rel_template2> m_rel_templates;
-	vector<rel_template2> m_rel_templates_orig;
+	vector<rel_template> m_rel_templates;
+	vector<rel_template> m_rel_templates_orig;
+	vector<rel_template> m_rel_template_instances;
 
 	expr_ref_vector m_params;
 	expr_ref m_extras;
+	expr_ref m_extra_sol;
 	expr_ref m_acc;
 
-	vector<rel_template2> m_rel_template_instances;
 	vector<symbol> m_names;
 
-	
-	expr_ref subst_template_body(expr_ref fml, vector<rel_template2> rel_templates);
-	expr_ref subst_template_body(expr_ref fml, vector<rel_template2> rel_templates, expr_ref_vector& args);
+	expr_ref subst_template_body(expr_ref fml, vector<rel_template> rel_templates);
+	expr_ref subst_template_body(expr_ref fml, vector<rel_template> rel_templates, expr_ref_vector& args);
 
 	var_subst m_var_subst;
 	expr_ref_vector m_extra_subst;
 	expr_ref_vector m_temp_subst;
 
+	model_ref m_modref;
 
 public:
 
 	rel_template_suit(ast_manager& m) : m_rel_manager(m),
 		m_extras(m_rel_manager),
-		m_acc(expr_ref(m_rel_manager.mk_true(), m_rel_manager)), 
+		m_extra_sol(m_rel_manager),
+		m_acc(expr_ref(m_rel_manager.mk_true(), m_rel_manager)),
 		m_params(m_rel_manager),
 		m_var_subst(m_rel_manager, false),
 		m_extra_subst(m_rel_manager),
 		m_temp_subst(m_rel_manager){
 	}
 
-
 	void process_template_extra(expr_ref_vector& t_params, expr_ref extras){
 		m_params.append(t_params);
 		m_extras = extras;
 	}
 
-	void process_template(symbol head_name, rel_template2 aa, expr_ref_vector temp_subst){
+	void process_template(symbol head_name, rel_template aa, expr_ref_vector temp_subst){
 		m_rel_templates.push_back(aa);
 		m_names.push_back(head_name);
 		m_temp_subst.append(temp_subst);
 	}
 	
-	void process_template_sk(rel_template2 aa){
+	void process_template_sk(rel_template aa){
 		m_rel_templates_orig.push_back(aa);
 	}
 
-
 	void init_template_instantiate(){
-		std::cout << "init_template_instantiate begin ...\n";
-		display();
+		std::cout << "init_template_instantiate\n";
 		if (m_rel_templates.size() == 0)
 			return;
+		display();
 		std::cout << "m_extras  : " << mk_pp(m_extras, m_rel_manager) << "\n";
 		smt_params new_param;
 		smt::kernel solver(m_rel_manager, new_param);
 		solver.assert_expr(m_extras);
+		solver.display(std::cout);
 		if (solver.check() == l_true){
-			model_ref modref;
-			solver.get_model(modref);
-			expr_ref b_sol(m_rel_manager);
+			//model_ref modref;
+			solver.get_model(m_modref);
 			for (unsigned i = 0; i < m_rel_templates.size(); i++){
 				expr_ref instance(m_rel_manager);
-				if (modref.get()->eval(m_rel_templates[i].m_body, instance)) m_rel_template_instances.push_back(rel_template2(m_rel_templates[i].m_head, instance));
+				if (m_modref.get()->eval(m_rel_templates[i].m_body, instance)) {
+					m_rel_template_instances.push_back(rel_template(m_rel_templates[i].m_head, instance));
+				}
 			}
-
 		}
-
 
 	}
 
-
-	void constrain_template(expr_ref fml){
+	bool constrain_template(expr_ref fml){
 		std::cout << "constrain_template begin ...\n";
+		reset();
 		display();
+		bool instance_found = true;
 		if (!fml.m().is_true(fml))
 			m_acc = fml.m().mk_and(fml, m_acc); 
         expr_ref_vector args_coll(m_rel_manager);
@@ -855,106 +719,80 @@ public:
         
         expr_ref constraint_st(m_rel_manager.mk_true(), m_rel_manager);
         vector<lambda_kind> all_lambda_kinds;
-        if (mk_exists_forall_farkas(c1, args_coll, constraint_st, true, all_lambda_kinds)){
-            expr_ref lambda_cs(m_rel_manager.mk_true(),m_rel_manager);
-            int max_lambda = 2;
-            mk_bilin_lambda_constraint(all_lambda_kinds, max_lambda, lambda_cs);
-            //std::cout << "main cs  : " << mk_pp(constraint_st, m_rel_manager) << "\n";
-            //std::cout << "lambda cs  : " << mk_pp(lambda_cs, m_rel_manager) << "\n";
-            
-            smt_params new_param;
-            smt::kernel solver(m_rel_manager, new_param);
-            solver.assert_expr(constraint_st);
-            solver.assert_expr(lambda_cs);
-            solver.assert_expr(m_extras);
-            if (solver.check() == l_true){
-                model_ref modref;
-                solver.get_model(modref);
-                for (unsigned i = 0; i < m_rel_templates.size(); i++){
-                    expr_ref instance(m_rel_manager);
-                    if (modref.get()->eval(m_rel_templates[i].m_body, instance)){
-                        std::cout << "instance  : " << mk_pp(instance, m_rel_manager) << "\n";
-                        m_rel_template_instances.push_back(rel_template2(m_rel_templates[i].m_head, instance));
-                        
-                    }
-                }
-                //display();
-                std::cout << "Refinement done *** \n";
-            }
-            else {
-                std::cout << "NO refinement: No solution for the param(s) *** \n";
-            }
-            
-        }
-        else
-            std::cout << "No refinement: Non param disjunct which reaches true -> false ***";
+		if (mk_exists_forall_farkas(c1, args_coll, constraint_st, true, all_lambda_kinds)){
+			expr_ref lambda_cs(m_rel_manager.mk_true(), m_rel_manager);
+			int max_lambda = 2;
+			mk_bilin_lambda_constraint(all_lambda_kinds, max_lambda, lambda_cs);
+
+			smt_params new_param;
+			smt::kernel solver(m_rel_manager, new_param);
+			solver.assert_expr(constraint_st);
+			solver.assert_expr(lambda_cs);
+			solver.assert_expr(m_extras);
+			if (solver.check() == l_true){
+				model_ref modref;
+				solver.get_model(modref);
+				for (unsigned i = 0; i < m_rel_templates.size(); i++){
+					expr_ref instance(m_rel_manager);
+					if (modref.get()->eval(m_rel_templates[i].m_body, instance)){
+						std::cout << "instance  : " << mk_pp(instance, m_rel_manager) << "\n";
+						m_rel_template_instances.push_back(rel_template(m_rel_templates[i].m_head, instance));
+
+					}
+					else {
+						// at least one template can't have a satisfying instance
+						return false;
+					}
+				}
+				// each template has a satisfying instance
+				return true;
+			}
+		}
+		return false;
 	}
 
-	void instantiate_template(){
-		std::cout << "instantiate_template begin ...\n";
-		//display();
-		expr_ref_vector args_coll(m_rel_manager);
-		expr_ref c1(subst_template_body(m_acc, m_rel_templates, args_coll), m_rel_manager);
-		//std::cout << "after subst fml: " << args_coll.size() << "  and " << mk_pp(c1, m_rel_manager) << "\n";
-		args_coll.append(m_temp_subst);
-
-		expr_ref constraint_st(m_rel_manager.mk_true(), m_rel_manager);
-		vector<lambda_kind> all_lambda_kinds;
-        if (mk_exists_forall_farkas(c1, args_coll, constraint_st, true, all_lambda_kinds)){
-            expr_ref lambda_cs(m_rel_manager.mk_true(),m_rel_manager);
-            int max_lambda = 2;
-            mk_bilin_lambda_constraint(all_lambda_kinds, max_lambda, lambda_cs);
-            std::cout << "main cs  : " << mk_pp(constraint_st, m_rel_manager) << "\n";
-            std::cout << "lambda cs  : " << mk_pp(lambda_cs, m_rel_manager) << "\n";
-            
-            smt_params new_param;
-            smt::kernel solver(m_rel_manager, new_param);
-            solver.assert_expr(constraint_st);
-            solver.assert_expr(lambda_cs);
-            solver.assert_expr(m_extras);
-            if (solver.check() == l_true){
-                model_ref modref;
-                solver.get_model(modref);
-                for (unsigned i = 0; i < m_rel_templates.size(); i++){
-                    expr_ref instance(m_rel_manager);
-                    if (modref.get()->eval(m_rel_templates[i].m_body, instance)){
-                        std::cout << "instance  : " << mk_pp(instance, m_rel_manager) << "\n";
-                        m_rel_template_instances.push_back(rel_template2(m_rel_templates[i].m_head, instance));
-
-                    }
-                }
-                
-            }
-            else {
-                std::cout << "Unrefineable **************** \n";
-                throw(constraint_st);
-            }
-            display();
-
-            
-        }
-		else
-			std::cout << "XXXXXXXXXX \n";
-
-	}
-
-	vector<rel_template2> get_templat_instances(){
+	vector<rel_template> get_template_instances(){
 		return m_rel_template_instances;
 	}
 
-	vector<rel_template2> get_templates(){
+	vector<rel_template> get_templates(){
 		return m_rel_templates;
 	}
 
-	vector<rel_template2> get_templates_orig(){
+	bool get_orig_template(app* in_head, expr_ref& body){
+		for (unsigned i = 0; i < m_rel_templates.size(); i++){
+			if (m_rel_templates.get(i).m_head->get_decl()->get_name() == in_head->get_decl()->get_name()){
+				body = m_rel_templates_orig.get(i).m_body;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	vector<rel_template> get_orig_templates(){
 		return m_rel_templates_orig;
 	}
 
 	expr_ref get_instance(app* head){
 		for (unsigned i = 0; i < m_rel_template_instances.size(); i++){
-			if (m_rel_template_instances[i].m_head == head) return m_rel_template_instances[i].m_body;
+			std::cout << "in get_instance : " << m_rel_template_instances[i].m_head->get_decl()->get_name().str() << "\n";
+			std::cout << "in get_instance head : " << head->get_decl()->get_name().str() << "\n";
+			if (m_rel_template_instances[i].m_head == head)
+				return m_rel_template_instances[i].m_body;
 		}
         return expr_ref(m_rel_manager.mk_true(),m_rel_manager);
+	}
+
+	bool get_instance(app* head, expr_ref& body, expr_ref_vector& vars){
+		for (unsigned i = 0; i < m_rel_template_instances.size(); i++){
+			if (m_rel_template_instances[i].m_head->get_decl()->get_name() == head->get_decl()->get_name()){
+				body = m_rel_template_instances[i].m_body;
+				vars.append(m_rel_template_instances[i].m_head->get_decl()->get_arity(), m_rel_template_instances[i].m_head->get_args());
+				return true;
+			}
+
+		}
+		return false;
 	}
 
 	unsigned get_params_count(){
@@ -977,10 +815,16 @@ public:
 			std::cout << "instance " << i << " : " << m_rel_template_instances[i].m_head->get_decl()->get_name() << " / " << m_rel_template_instances[i].m_head->get_decl()->get_arity() << "\n";
 			std::cout << "instance body : " << mk_pp(m_rel_template_instances[i].m_body, m_rel_manager) << "\n";
 			std::cout << "instance head : " << mk_pp(m_rel_template_instances[i].m_head, m_rel_manager) << "\n";
+			
+			expr_ref_vector inst_body_terms(m_rel_manager);
+			get_conj_terms(m_rel_template_instances[i].m_body, inst_body_terms);
+			std::cout << "inst_body_terms: " << inst_body_terms.size() << "\n";
+			for (unsigned j = 0; j < inst_body_terms.size(); j++)
+				std::cout << "inst_body_terms : " << mk_pp(inst_body_terms.get(j), m_rel_manager) << "\n";
 		}
 
 		std::cout << "orig templates: " << m_rel_templates_orig.size() << "\n";
-		for (unsigned i = 0; i < m_rel_template_instances.size(); i++){
+		for (unsigned i = 0; i < m_rel_templates_orig.size(); i++){
 			std::cout << "orig template " << i << " : " << m_rel_templates_orig[i].m_head->get_decl()->get_name() << " / " << m_rel_templates_orig[i].m_head->get_decl()->get_arity() << "\n";
 			std::cout << "orig template body : " << mk_pp(m_rel_templates_orig[i].m_body, m_rel_manager) << "\n";
 			std::cout << "orig template head : " << mk_pp(m_rel_templates_orig[i].m_head, m_rel_manager) << "\n";
@@ -999,7 +843,17 @@ public:
 	ast_manager& get_rel_manager(){
 		return m_rel_manager;
 	}
+
+	expr_ref get_extras(){
+		return m_extras;
+	}
+
+	model_ref get_modref(){
+		return m_modref;
+	}
+
+	void reset(){
+		m_rel_template_instances.reset();
+	}
+
 };
-
-
-
