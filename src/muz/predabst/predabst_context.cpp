@@ -903,6 +903,7 @@ namespace datalog {
 		}
 	}
 
+	/*
 	void iter_pos_body(expr_ref_vector& body, unsigned& curr_pos, expr_ref pred, unsigned crit_pos){
 		if (!m.is_true(pred)) body.push_back(pred);
 		if (curr_pos == crit_pos)
@@ -910,6 +911,8 @@ namespace datalog {
 		else
 			curr_pos++;
 	}
+	*/
+	
 
 	void last_clause_body(expr_ref_vector hvars, unsigned crit_pos, unsigned tid, vector<unsigned> ids, rule_set rules){
 		node_info const& node = m_node2info[tid];
@@ -919,30 +922,15 @@ namespace datalog {
 		expr_ref_vector rule_subst(m), body(m);
 		get_subst_vect(r, hvars, rule_subst);
 
-		/*
-		ptr_vector<sort> free_sorts;
-		r->get_vars(m, free_sorts);
-		unsigned fresh_subst_size = free_sorts.size() - hvars.size();
-		rule_subst.reserve(fresh_subst_size);
-		for (unsigned i = 0; i < fresh_subst_size; ++i) rule_subst[i] = m.mk_fresh_const("s", free_sorts[i]);
-		rule_subst.append(hvars);
-		rule_subst.reverse();
-
-		*/
-
-		//expr_ref head(m);
-		//m_var_subst(r->get_head(), rule_subst.size(), rule_subst.c_ptr(), head);
-
-		//expr_ref_vector targs(m, to_app(head)->get_decl()->get_arity(), to_app(head)->get_args());
-		//SASSERT(hvars.size() == targs.size());
 		unsigned usz = r->get_uninterpreted_tail_size(), tsz = r->get_tail_size(), curr_pos = hvars.size()+1;
-
-		//for (unsigned i = 0; i < hvars.size(); i++) iter_pos_body(body, curr_pos, expr_ref(m.mk_true(), m), crit_pos);
-
 		for (unsigned i = usz; i < tsz; i++) {
 			expr_ref as(m);
 			m_var_subst(r->get_tail(i), rule_subst.size(), rule_subst.c_ptr(), as);
-			iter_pos_body(body, curr_pos, as, crit_pos);
+			//iter_pos_body(body, curr_pos, as, crit_pos);
+			if (!m.is_true(as)) body.push_back(as);
+			if (curr_pos == crit_pos)
+				throw (body);
+			curr_pos++;
 		}
 		for (unsigned i = 0; i < usz; i++) {
 			expr_ref qs_i(m), inst_body(m);
@@ -950,8 +938,14 @@ namespace datalog {
 			if (m_template.get_instance(to_app(qs_i), inst_body, expr_ref_vector(m))){
 				expr_ref_vector inst_body_terms(m);
 				get_conj_terms(inst_body, inst_body_terms);
-				for (unsigned j = 0; j < inst_body_terms.size(); j++)
-					iter_pos_body(body, curr_pos, expr_ref(inst_body_terms.get(j), m), crit_pos);
+				for (unsigned j = 0; j < inst_body_terms.size(); j++){
+					//iter_pos_body(body, curr_pos, expr_ref(inst_body_terms.get(j), m), crit_pos);
+					//if (!m.is_true(inst_body_terms.get(j))) body.push_back(inst_body_terms.get(j));
+					body.push_back(inst_body_terms.get(j));
+					if (curr_pos == crit_pos)
+						throw (body);
+					curr_pos++;
+				}					
 			}
 		}
 	}

@@ -53,7 +53,7 @@ struct core_clause {
 };
 
 
-typedef std::pair<unsigned, vector<unsigned>> tId2Ids;
+//typedef std::pair<unsigned, vector<unsigned>> tId2Ids;
 typedef std::pair<unsigned, symbol> name2symbol;
 typedef std::map<unsigned, std::pair<std::pair<unsigned, vector<unsigned>>, vector<unsigned>>> core_tree;
 void display_core_tree(core_tree m_core_tree);
@@ -771,16 +771,6 @@ public:
 
 	vector<rel_template> get_orig_templates(){
 		return m_rel_templates_orig;
-	}
-
-	expr_ref get_instance(app* head){
-		for (unsigned i = 0; i < m_rel_template_instances.size(); i++){
-			std::cout << "in get_instance : " << m_rel_template_instances[i].m_head->get_decl()->get_name().str() << "\n";
-			std::cout << "in get_instance head : " << head->get_decl()->get_name().str() << "\n";
-			if (m_rel_template_instances[i].m_head == head)
-				return m_rel_template_instances[i].m_body;
-		}
-        return expr_ref(m_rel_manager.mk_true(),m_rel_manager);
 	}
 
 	bool get_instance(app* head, expr_ref& body, expr_ref_vector& vars){
