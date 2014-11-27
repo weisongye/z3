@@ -1,19 +1,8 @@
 (set-logic HORN)
 (set-option :fixedpoint.engine predabst)
-;(set-option :produce-proofs true)
-
-(declare-const c Int)
-(declare-fun __pred__p1 (Int) Bool)
-(declare-fun __pred__t1 (Int Int) Bool)
-
 
 (declare-fun p1 (Int) Bool)
 (declare-fun t1 (Int Int) Bool)
-
-; predicate abstraction definition
-(assert (forall ((x Int)) (=> (and (>= x 0) (<= x 0)) (__pred__p1 x))))
-(assert (forall ((x Int) (y Int))
-(=> (and (= y (- x 2)) (= y (- x 1))) (__pred__t1 x y))))
 
 ; verification conditions
 (assert (forall ((x Int)) (=> (= x 0) (p1 x))))
@@ -22,9 +11,6 @@
 (assert (forall ((x Int)) (=> (p1 x) (>= x 0))))
 
 (check-sat)
-;(get-model)
-;(get-proof)
-
 
 
 

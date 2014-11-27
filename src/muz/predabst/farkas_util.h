@@ -29,7 +29,8 @@ Revision History:
 #include "model_smt2_pp.h"
 #include "ast_counter.h"
 #include "var_subst.h"
-#include "map"
+#include <map>
+#include "qe_lite.h"
 
 struct core_clause {
 	unsigned cl_name;
@@ -339,7 +340,8 @@ private:
 	void set(expr_ref& term) {
 		arith_util arith(m_pred_manager);
 		rewrite_pred(term);
-		SASSERT(arith.is_add(term.get()));
+        //std::cout << " ************** after subst fml: " << mk_pp(term, term.m()) << "\n";
+		//SASSERT(arith.is_add(term.get()));
 		expr_ref_vector p_coeffs(m_pred_manager), p_vars(m_pred_manager), p_const_facts(m_pred_manager), add_facts(m_pred_manager);
         if (arith.is_add(term.get()))
             add_facts.append(to_app(term)->get_num_args(), to_app(term)->get_args());
@@ -597,7 +599,7 @@ private:
 
 };
 
-bool exists_valid(expr_ref& formula, expr_ref_vector& vars, expr_ref& constraint_st);
+bool exists_valid(expr_ref& formula, expr_ref_vector& vars, app_ref_vector& q_vars, expr_ref& constraint_st);
 
 bool well_founded(expr_ref_vector vars, expr_ref& LHS, expr_ref& bound, expr_ref& decrease);
 
@@ -622,6 +624,7 @@ bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info
 void mk_conj(expr_ref_vector terms, expr_ref& conj);
 
 void mk_conj(expr_ref term1, expr_ref term2, expr_ref& conj);
+
 
 struct rel_template{
 	app* m_head;
@@ -707,10 +710,11 @@ public:
 	}
 
 	bool constrain_template(expr_ref fml){
+        if (m_rel_templates.size() == 0) return false;
 		std::cout << "constrain_template begin ...\n";
 		reset();
 		display();
-		bool instance_found = true;
+		//bool instance_found = true;
 		if (!fml.m().is_true(fml))
 			m_acc = fml.m().mk_and(fml, m_acc); 
         expr_ref_vector args_coll(m_rel_manager);

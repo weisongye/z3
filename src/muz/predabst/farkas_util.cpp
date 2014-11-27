@@ -183,14 +183,22 @@ expr_ref non_neg_formula(expr_ref fml){
 	}
 }
 
-expr_ref neg_and_2dnf(expr_ref fml){
+void neg_and_2dnf(expr_ref& fml, expr_ref& fml2){
 		vector<expr_ref_vector> dnf_struct;
 		dnf_struct = to_dnf_struct(neg_formula(fml));
 		expr_ref_vector disjs(fml.m());
 		for (unsigned i = 0; i < dnf_struct.size(); ++i) {
-			disjs.push_back(fml.m().mk_and(dnf_struct[i].size(), dnf_struct[i].c_ptr()));
-		}
-		return expr_ref(fml.m().mk_or(disjs.size(), disjs.c_ptr()), fml.m());
+            //disjs.push_back(fml.m().mk_and(dnf_struct[i].size(), dnf_struct[i].c_ptr()));
+            smt_params new_param;
+            smt::kernel solver(fml.m(), new_param);
+            expr_ref conj(fml.m().mk_and(dnf_struct[i].size(), dnf_struct[i].c_ptr()), fml.m());
+            
+            solver.assert_expr(conj);
+            if (solver.check() == l_true)
+                disjs.push_back(conj);
+            solver.reset();
+        }
+        fml2 = expr_ref(fml.m().mk_or(disjs.size(), disjs.c_ptr()), fml.m());
 	}
 
 void mk_binder(expr_ref_vector vars, expr_ref_vector args, expr_ref& cs){
@@ -203,15 +211,20 @@ void mk_binder(expr_ref_vector vars, expr_ref_vector args, expr_ref& cs){
 	}
 }
 
-bool exists_valid(expr_ref& fml, expr_ref_vector& vars, expr_ref& constraint_st) {
+bool exists_valid(expr_ref& fml, expr_ref_vector& vars, app_ref_vector& q_vars, expr_ref& constraint_st) {
+    ast_manager& m = fml.m();
 	expr_ref norm_fml(fml.m());
-	norm_fml = neg_and_2dnf(fml);
+    neg_and_2dnf(fml, norm_fml);
 	SASSERT(fml.m().is_or(norm_fml));
 	expr_ref_vector disjs(fml.m());
 	disjs.append(to_app(norm_fml)->get_num_args(), to_app(norm_fml)->get_args());
 	for (unsigned i = 0; i < disjs.size(); ++i) {
+        expr_ref each_disj(disjs.get(i), fml.m());
+         app_ref_vector q_vars_disj(q_vars);
+        qe_lite ql1(fml.m());  
+        ql1(q_vars_disj, each_disj);
 		farkas_imp f_imp(vars);
-		f_imp.set(expr_ref(disjs.get(i), fml.m()), expr_ref(fml.m().mk_false(), fml.m()));
+        f_imp.set(expr_ref(each_disj, fml.m()), expr_ref(fml.m().mk_false(), fml.m()));
 		//f_imp.display();
 		if (!f_imp.solve_constraint()) return false;
 		constraint_st = fml.m().mk_and(constraint_st, f_imp.get_constraints());
@@ -220,15 +233,15 @@ bool exists_valid(expr_ref& fml, expr_ref_vector& vars, expr_ref& constraint_st)
 }
 
 bool mk_exists_forall_farkas(expr_ref& fml, expr_ref_vector vars, expr_ref& constraint_st, bool mk_lambda_kinds, vector<lambda_kind>& all_lambda_kinds) {
-	std::cout << "fml: " << mk_pp(fml.get(), fml.m()) << "\n";
-	expr_ref norm_fml(neg_and_2dnf(fml));
-	std::cout << "norm_fml: " << mk_pp(norm_fml, norm_fml.m()) << "\n";
-
+	//std::cout << "fml: " << mk_pp(fml.get(), fml.m()) << "\n";
+    expr_ref norm_fml(fml.m());
+    neg_and_2dnf(fml, norm_fml);
+	//std::cout << "norm_fml: " << mk_pp(norm_fml, norm_fml.m()) << "\n";
 	SASSERT(fml.m().is_or(norm_fml));
 	expr_ref_vector disjs(fml.m());
 	disjs.append(to_app(norm_fml)->get_num_args(), to_app(norm_fml)->get_args());
 	for (unsigned i = 0; i < disjs.size(); ++i) {
-		farkas_imp f_imp(vars, mk_lambda_kinds);
+        farkas_imp f_imp(vars, mk_lambda_kinds);
 		f_imp.set(expr_ref(disjs[i].get(), fml.m()), expr_ref(fml.m().mk_false(), fml.m()));
 		//f_imp.display();
 		if (f_imp.solve_constraint()) {
@@ -244,16 +257,31 @@ bool mk_exists_forall_farkas(expr_ref& fml, expr_ref_vector vars, expr_ref& cons
 bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr_ref& sol_decrease){
 	ast_manager& m = LHS.get_manager();
 	arith_util arith(m);
-
 	if (m.is_true(LHS) || !m.is_and(LHS) || to_app(LHS)->get_num_args() <= 1 || (vsws.size() % 2) != 0) return false;
 	
 	expr_ref_vector vs(m), ws(m);
+    bool hasv = false, hasvp = false;
+    expr_ref_vector LHS_vars(get_all_pred_vars(LHS));
 	for (unsigned i = 0; i < vsws.size(); i++){
-		if (i < (vsws.size() / 2))
-			vs.push_back(vsws.get(i));
-		else 
-			ws.push_back(vsws.get(i));
+        if (i < (vsws.size() / 2)){
+            vs.push_back(vsws.get(i));
+            if (!hasv && LHS_vars.contains(vsws.get(i))) hasv = true;
+        }
+
+        else {
+            ws.push_back(vsws.get(i));
+            if (!hasvp && LHS_vars.contains(vsws.get(i))) hasvp = true;
+        }
+			
 	}
+
+    if (!hasv || !hasvp) return false;
+
+    app_ref_vector q_vars(m);
+    for (unsigned j = 0; j < LHS_vars.size(); j++)
+        if (!vsws.contains(LHS_vars.get(j))) q_vars.push_back(to_app(LHS_vars.get(j)));
+
+
 	expr_ref_vector params(m);
 	expr_ref sum_psvs(arith.mk_numeral(rational(0), true), m);
 	expr_ref sum_psws(arith.mk_numeral(rational(0), true), m);
@@ -274,9 +302,8 @@ bool well_founded(expr_ref_vector vsws, expr_ref& LHS, expr_ref& sol_bound, expr
 
 	std::cout << "bound: " << mk_pp(bound, m) << "\n";
 	std::cout << "decrease: " << mk_pp(decrease, m) << "\n";
-
 	expr_ref constraint_st(m.mk_true(), m);
-	if (exists_valid(to_solve, vsws, constraint_st)) {
+    if (exists_valid(to_solve, vsws, q_vars, constraint_st)) {
 		smt_params new_param;
 		smt::kernel solver(m, new_param);
 		solver.assert_expr(constraint_st);
@@ -513,8 +540,8 @@ bool interpolate(expr_ref_vector vars, expr_ref fmlA, expr_ref fmlB, expr_ref& f
 	arith_util arith(m);
 	expr_ref_vector params(m);
 	expr_ref sum_vars(arith.mk_numeral(rational(0), true), m);
-	std::cout << "fmlA: " << mk_pp(fmlA, m) << "\n";
-	std::cout << "fmlB: " << mk_pp(fmlB, m) << "\n";
+	//std::cout << "fmlA: " << mk_pp(fmlA, m) << "\n";
+	//std::cout << "fmlB: " << mk_pp(fmlB, m) << "\n";
 	for (unsigned i = 0; i < vars.size(); ++i) {
 		expr_ref param(m.mk_fresh_const("i", arith.mk_int()), m);
 		params.push_back(param);
@@ -525,10 +552,11 @@ bool interpolate(expr_ref_vector vars, expr_ref fmlA, expr_ref fmlB, expr_ref& f
 	expr_ref fmlQ(arith.mk_le(sum_vars, ic), m);
 
 	expr_ref to_solve(m.mk_and(m.mk_or(m.mk_not(fmlA), fmlQ), m.mk_or(m.mk_not(fmlQ), m.mk_not(fmlB))), m);
-	std::cout << "interpolant: " << mk_pp(fmlQ, m) << "\n";
+	//std::cout << "interpolant: " << mk_pp(fmlQ, m) << "\n";
 
+    app_ref_vector q_vars(m);
 	expr_ref constraint_st(m.mk_true(), m);
-	if (exists_valid(to_solve, vars, constraint_st)) {
+    if (exists_valid(to_solve, vars, q_vars, constraint_st)) {
 		smt_params new_param;
 		smt::kernel solver(m, new_param);
 		solver.assert_expr(constraint_st);
@@ -537,7 +565,7 @@ bool interpolate(expr_ref_vector vars, expr_ref fmlA, expr_ref fmlB, expr_ref& f
 			model_ref modref;
 			solver.get_model(modref);
 			if (modref.get()->eval(fmlQ.get(), fmlQ_sol)) {
-				std::cout << "Interpolant sol: " << mk_pp(fmlQ_sol, m) << "\n";
+				//std::cout << "Interpolant sol: " << mk_pp(fmlQ_sol, m) << "\n";
 				return true;
 			}
 			// when does it happen?		
@@ -554,7 +582,7 @@ bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info
 	for (core_clauses::iterator it = st; it != end; it++) vars.append(it->second.first);
 	end--;
 	for (int i = clauses.size() - 1; i >= 1; i--){
-		std::cout << "Interpolation step :" << clauses.size() - i << "\n";
+		//std::cout << "Interpolation step :" << clauses.size() - i << "\n";
 		expr_ref fmlA(m.mk_true(), m);
 		expr_ref fmlB(m.mk_true(), m);
 		int j = clauses.size() - 1;
@@ -566,8 +594,8 @@ bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info
 		expr_ref fmlQ_sol(m);
 		if (interpolate(vars, fmlA, fmlB, fmlQ_sol))
 			interpolants.push_back(refine_pred_info(fmlQ_sol, get_all_pred_vars(fmlQ_sol)));
-		else
-			std::cout << "Interpolant not found! \n";
+		//else
+			//std::cout << "Interpolant not found! \n";
 	}
 	return (interpolants.size() > 0);
 }
@@ -676,3 +704,4 @@ void mk_conj(expr_ref term1, expr_ref term2, expr_ref& conj){
 	else
 		conj = term1.m().mk_and(term1, term2);
 }
+
