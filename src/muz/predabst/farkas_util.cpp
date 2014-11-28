@@ -223,7 +223,7 @@ bool exists_valid(expr_ref& fml, expr_ref_vector& vars, app_ref_vector& q_vars, 
          app_ref_vector q_vars_disj(q_vars);
         qe_lite ql1(fml.m());  
         ql1(q_vars_disj, each_disj);
-		farkas_imp f_imp(vars);
+        farkas_imp f_imp(vars);
         f_imp.set(expr_ref(each_disj, fml.m()), expr_ref(fml.m().mk_false(), fml.m()));
 		//f_imp.display();
 		if (!f_imp.solve_constraint()) return false;
@@ -540,6 +540,30 @@ bool interpolate(expr_ref_vector vars, expr_ref fmlA, expr_ref fmlB, expr_ref& f
 	arith_util arith(m);
 	expr_ref_vector params(m);
 	expr_ref sum_vars(arith.mk_numeral(rational(0), true), m);
+
+    //std::cout << "solve_clauses2: fmlA before " << mk_pp(fmlA, m) << "\n";
+    app_ref_vector q_varsA(m);
+    qe_lite ql(fmlA.m());
+    expr_ref_vector all_varsA(get_all_pred_vars(fmlA));
+    //display_expr_ref_vector(all_varsA);
+    for (unsigned j = 0; j < all_varsA.size(); j++){
+        if (!vars.contains(all_varsA.get(j))){
+            q_varsA.push_back(to_app(all_varsA.get(j)));
+        }
+    }   
+
+    ql(q_varsA, fmlA);
+    //std::cout << "solve_clauses2: fmlA after " << mk_pp(fmlA, m) << "\n";
+    //std::cout << "solve_clauses2: fmlB before " << mk_pp(fmlB, m) << "\n";
+    app_ref_vector q_varsB(fmlB.m());
+    expr_ref_vector all_varsB(get_all_pred_vars(fmlB));
+    for (unsigned j = 0; j < all_varsB.size(); j++){
+        if (!vars.contains(all_varsB.get(j))){
+            q_varsB.push_back(to_app(all_varsB.get(j)));
+        }
+    }
+    ql(q_varsB, fmlB);
+    //std::cout << "solve_clauses2: fmlB after " << mk_pp(fmlB, m) << "\n";
 	//std::cout << "fmlA: " << mk_pp(fmlA, m) << "\n";
 	//std::cout << "fmlB: " << mk_pp(fmlB, m) << "\n";
 	for (unsigned i = 0; i < vars.size(); ++i) {
@@ -582,7 +606,7 @@ bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info
 	for (core_clauses::iterator it = st; it != end; it++) vars.append(it->second.first);
 	end--;
 	for (int i = clauses.size() - 1; i >= 1; i--){
-		//std::cout << "Interpolation step :" << clauses.size() - i << "\n";
+		std::cout << "Interpolation step :" << clauses.size() - i << "\n";
 		expr_ref fmlA(m.mk_true(), m);
 		expr_ref fmlB(m.mk_true(), m);
 		int j = clauses.size() - 1;
@@ -594,10 +618,34 @@ bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info
 		expr_ref fmlQ_sol(m);
 		if (interpolate(vars, fmlA, fmlB, fmlQ_sol))
 			interpolants.push_back(refine_pred_info(fmlQ_sol, get_all_pred_vars(fmlQ_sol)));
-		//else
-			//std::cout << "Interpolant not found! \n";
+		else
+			std::cout << "Interpolant not found! \n";
 	}
 	return (interpolants.size() > 0);
+}
+
+bool solve_clauses2(core_clauses clauses, ast_manager& m, vector<refine_pred_info>& interpolants){
+    //std::cout << "clauses.size() :" << clauses.size() << "\n";
+    core_clauses::iterator st = clauses.begin(), end = clauses.end();
+    end--;
+    for (int i = clauses.size() - 1; i >= 1; i--){
+       
+        //std::cout << "Interpolation step :" << clauses.size() - i << "\n";
+        expr_ref fmlA(m.mk_true(), m);
+        expr_ref fmlB(m.mk_true(), m);
+        int j = clauses.size() - 1;
+        core_clauses::iterator end2 = end;
+        for (; j >= i; j--, end2--) mk_conj(fmlA, end2->second.second.first, fmlA);
+        core_clauses::iterator end4 = end2; end4++;
+        expr_ref_vector vars(end4->second.first);
+        //display_expr_ref_vector(vars);
+        for (; j >= 0; j--, end2--) mk_conj(fmlB, end2->second.second.first,fmlB);
+        expr_ref fmlQ_sol(m);
+
+        if (interpolate(vars, fmlA, fmlB, fmlQ_sol))
+            interpolants.push_back(refine_pred_info(fmlQ_sol, get_all_pred_vars(fmlQ_sol)));
+    }
+    return (interpolants.size() > 0);
 }
 
 void get_interpolant_pred(expr_ref_vector args, expr_ref_vector vars, vector<refine_pred_info> interpolants, expr_ref_vector& in_preds){
@@ -705,3 +753,12 @@ void mk_conj(expr_ref term1, expr_ref term2, expr_ref& conj){
 		conj = term1.m().mk_and(term1, term2);
 }
 
+void print_node_info(unsigned added_id, func_decl* sym, vector<bool> cube, unsigned r_id, vector<unsigned> parent_nodes) {
+    std::cout << "Node added: (" << added_id << ", " << sym->get_name().str() << ", " << r_id << ", [";
+    for (unsigned i = 0; i < parent_nodes.size(); i++)
+        std::cout << parent_nodes.get(i) << " ";
+    std::cout << "]) " << ", [";
+    for (unsigned i = 0; i < cube.size(); i++)
+        std::cout << cube.get(i) << " ";
+    std::cout << "]) \n";
+}

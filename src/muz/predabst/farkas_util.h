@@ -223,6 +223,7 @@ void get_interpolant_pred(expr_ref_vector args, expr_ref_vector vars, vector<ref
 
 void get_conj_terms(expr_ref conj, expr_ref_vector& terms);
 
+void print_node_info(unsigned added_id, func_decl* sym, vector<bool> cube, unsigned r_id, vector<unsigned> parent_nodes);
 
 class farkas_pred{
 	expr_ref_vector m_vars;
@@ -620,6 +621,8 @@ static bool replace_pred(expr_ref_vector args, expr_ref_vector vars, expr_ref& p
 bool interpolate(expr_ref_vector vars, expr_ref fmlA, expr_ref fmlB, expr_ref& fmlQ_sol);
 
 bool solve_clauses(core_clauses clauses, ast_manager& m, vector<refine_pred_info>& interpolants);
+
+bool solve_clauses2(core_clauses clauses, ast_manager& m, vector<refine_pred_info>& interpolants);
 
 void mk_conj(expr_ref_vector terms, expr_ref& conj);
 
