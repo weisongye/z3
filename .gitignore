@@ -69,3 +69,6 @@ src/api/ml/z3native_stubs.c
 src/api/ml/z3native.ml
 src/api/ml/z3enums.ml
 src/api/ml/z3.mllib
+*.bak
+doc/api
+doc/code
