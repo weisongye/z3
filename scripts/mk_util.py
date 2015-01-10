@@ -1548,7 +1548,7 @@ def mk_config():
         CXXFLAGS = '%s -c' % CXXFLAGS
         HAS_OMP = test_openmp(CXX)
         if HAS_OMP:
-            CXXFLAGS = '%s -fopenmp -mfpmath=sse' % CXXFLAGS
+            CXXFLAGS = '%s -fopenmp -mfloat-abi=softfp' % CXXFLAGS
             LDFLAGS  = '%s -fopenmp' % LDFLAGS
             SLIBEXTRAFLAGS = '%s -fopenmp' % SLIBEXTRAFLAGS
         else:
@@ -1597,7 +1597,7 @@ def mk_config():
             CPPFLAGS     = '%s -DZ3DEBUG' % CPPFLAGS
         if TRACE or DEBUG_MODE:
             CPPFLAGS     = '%s -D_TRACE' % CPPFLAGS
-        CXXFLAGS         = '%s -msse -msse2' % CXXFLAGS
+        CXXFLAGS         = '%s -fsigned-char -mfpu=neon -fPIC' % CXXFLAGS
         config.write('PREFIX=%s\n' % PREFIX)
         config.write('CC=%s\n' % CC)
         config.write('CXX=%s\n' % CXX)
